@@ -1,0 +1,20 @@
+{
+  "name": "groovescript-web-editor",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild vendor/bundle-entry.js --bundle --format=esm --outfile=vendor/codemirror.bundle.js --minify",
+    "test": "node --test gs-mode.test.js"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6",
+    "@codemirror/language": "^6",
+    "@codemirror/state": "^6",
+    "@codemirror/view": "^6",
+    "@lezer/highlight": "^1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25"
+  }
+}

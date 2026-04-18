@@ -1,0 +1,19 @@
+name: Editor CI
+on:
+  push:
+    paths: ['editors/web/**', '.github/workflows/editor-ci.yml']
+  pull_request:
+    paths: ['editors/web/**', '.github/workflows/editor-ci.yml']
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: editors/web } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - name: Bundle-drift check
+        run: git diff --exit-code vendor/codemirror.bundle.js

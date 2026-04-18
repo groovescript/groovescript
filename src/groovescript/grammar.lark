@@ -1,0 +1,163 @@
+// GrooveScript grammar — Iteration 12: inferred subdivisions + *N star syntax
+
+%import common.ESCAPED_STRING
+%import common.INT
+
+start: statement*
+
+?statement: metadata_block
+          | metadata_line
+          | groove_def
+          | section_def
+          | fill_def
+
+metadata_block: "metadata" ":" metadata_line+
+metadata_line: title_line
+             | tempo_line
+             | time_signature_line
+             | dsl_version_line
+             | default_groove_line
+             | default_bars_line
+
+title_line: "title" ":" ESCAPED_STRING
+tempo_line: "tempo" ":" INT
+time_signature_line: "time_signature" ":" TIME_SIGNATURE
+dsl_version_line: "dsl_version" ":" INT
+default_groove_line: "default_groove" ":" ESCAPED_STRING
+default_bars_line: "default_bars" ":" INT
+
+groove_def: "groove" ESCAPED_STRING ":" groove_body
+groove_body: pattern_content
+           | groove_cn_body
+           | extend_body
+extend_body: "extend" ":" ESCAPED_STRING pattern_content
+           | "extend" ":" ESCAPED_STRING
+groove_cn_body: "count" ":" ESCAPED_STRING "notes" ":" ESCAPED_STRING
+pattern_content: pattern_block_line+ groove_dynamic_line*
+               | pattern_bar+ groove_dynamic_line*
+groove_dynamic_line: section_dynamic_line
+?pattern_block_line: pattern_line | groove_pos_line
+pattern_bar: "bar" INT ":" pattern_bar_item+
+?pattern_bar_item: pattern_line | groove_pos_line | pattern_bar_text | bar_like_line
+bar_like_line: "like" ":" "bar" INT
+pattern_bar_text: "text" ":" ESCAPED_STRING
+pattern_line: INSTRUMENT ":" pattern_value      // instrument→positions: BD: 1, 3
+groove_pos_line: BEAT_LABEL ":" fill_instruments // position→instruments: 1: BD, HH
+
+fill_def: "fill" ESCAPED_STRING ":" fill_bar_block+ fill_dynamic_line*
+fill_dynamic_line: section_dynamic_line
+?fill_bar_block: fill_count_block | fill_cn_bar
+fill_count_block: "count" ESCAPED_STRING ":" fill_count_item+
+fill_cn_bar: "count" ":" ESCAPED_STRING "notes" ":" ESCAPED_STRING
+?fill_count_item: fill_line | fill_instr_line
+fill_line: BEAT_LABEL ":" fill_instruments       // position→instruments: 3: SN, BD
+fill_instr_line: INSTRUMENT ":" pattern_value     // instrument→positions: BD: 1, 3 or BD: *8 except 4&
+fill_instrument_hit: INSTRUMENT MODIFIER*
+fill_instruments: fill_instrument_hit ("," fill_instrument_hit)*
+
+section_def: "section" ESCAPED_STRING ":" section_line*
+section_line: bars_line
+            | groove_line
+            | repeat_line
+            | like_line
+            | section_fill_line
+            | section_fill_placeholder_line
+            | section_variation_block
+            | section_cue_line
+            | section_tempo_line
+            | section_time_signature_line
+            | section_dynamic_line
+            | section_crash_in_line
+            | play_block
+bars_line: "bars" ":" INT
+groove_line: "groove" ":" ESCAPED_STRING
+           | "groove" ":" groove_body
+repeat_line: "repeat" ":" INT
+like_line: "like" ESCAPED_STRING ("with" INHERIT_CATEGORY (","? INHERIT_CATEGORY)*)?
+INHERIT_CATEGORY: "fills" | "variations" | "cues"
+section_tempo_line: "tempo" ":" INT
+section_time_signature_line: "time_signature" ":" TIME_SIGNATURE
+// Flag line: first cymbal/riding hit of this section's first bar is
+// replaced with a crash. See `_apply_crash_in` in compiler.py. Defined as
+// a single two-word terminal so the ``crash`` keyword doesn't shadow the
+// ``crash`` instrument alias inside pattern lines.
+section_crash_in_line: CRASH_IN
+CRASH_IN: /crash\s+in/
+
+play_block: "play" ":" play_item+
+?play_item: play_groove | play_bar | play_rest
+play_groove: "groove" ESCAPED_STRING repeat_count?                   -> play_groove_named
+           | "groove" ESCAPED_STRING repeat_count? ":" groove_body   -> play_groove_named_inline
+           | "groove" repeat_count? ":" groove_body                  -> play_groove_inline
+play_bar:    "bar"    ESCAPED_STRING repeat_count? play_bar_body?
+play_rest:   "rest"                  repeat_count?
+play_bar_body: ":" pattern_bar_item+
+repeat_count: "x" INT
+section_fill_line: "fill" ESCAPED_STRING "at" "bar" bar_number_list
+                 | "fill" ESCAPED_STRING "at" "bar" bar_number_list "beat" BEAT_LABEL
+                 | "fill" ESCAPED_STRING "at" "bars" bar_number_list
+                 | "fill" ESCAPED_STRING "at" "bars" bar_number_list "beat" BEAT_LABEL
+                 | "fill" "at" "bar" bar_number_list ":" fill_bar_block+ fill_dynamic_line*
+                 | "fill" "at" "bar" bar_number_list "beat" BEAT_LABEL ":" fill_bar_block+ fill_dynamic_line*
+                 | "fill" "at" "bars" bar_number_list ":" fill_bar_block+ fill_dynamic_line*
+                 | "fill" "at" "bars" bar_number_list "beat" BEAT_LABEL ":" fill_bar_block+ fill_dynamic_line*
+section_fill_placeholder_line: "fill" "placeholder" "at" "bar" INT
+                              | "fill" "placeholder" ESCAPED_STRING "at" "bar" INT
+                              | "fill" "placeholder" "at" "bar" INT "beat" BEAT_LABEL
+                              | "fill" "placeholder" ESCAPED_STRING "at" "bar" INT "beat" BEAT_LABEL
+section_cue_line: "cue" ESCAPED_STRING "at" "bar" INT
+                | "cue" ESCAPED_STRING "at" "bar" INT "beat" BEAT_LABEL
+section_dynamic_line: DYNAMIC_KIND "from" "bar" INT "to" "bar" INT
+                    | DYNAMIC_KIND "from" "bar" INT "beat" BEAT_LABEL "to" "bar" INT
+                    | DYNAMIC_KIND "from" "bar" INT "to" "bar" INT "beat" BEAT_LABEL
+                    | DYNAMIC_KIND "from" "bar" INT "beat" BEAT_LABEL "to" "bar" INT "beat" BEAT_LABEL
+                    | DYNAMIC_KIND "bar" INT
+// Longer alternatives must precede their prefixes so Python regex takes the full token.
+DYNAMIC_KIND: "crescendo" | "decrescendo" | "cresc" | "decresc"
+
+section_variation_block: "variation" ESCAPED_STRING "at" "bar" bar_number_list ":" variation_action+
+                       | "variation" "at" "bar" bar_number_list ":" variation_action+
+                       | "variation" ESCAPED_STRING "at" "bars" bar_number_list ":" variation_action+
+                       | "variation" "at" "bars" bar_number_list ":" variation_action+
+bar_number_list: INT ("," INT)*
+?variation_action: add_action | remove_action | replace_action | substitute_action | modify_action
+add_action: "add" add_instr_spec+ "at" variation_target
+add_instr_spec: INSTRUMENT MODIFIER*
+remove_action: "remove" INSTRUMENT+ "at" variation_target
+replace_action: "replace" INSTRUMENT+ "with" replace_instr_spec+ "at" variation_target
+replace_instr_spec: INSTRUMENT MODIFIER*
+substitute_action: "count" ":" ESCAPED_STRING "notes" ":" ESCAPED_STRING
+modify_action: "modify" "add" MODIFIER+ "at" variation_target     -> modify_add_action
+             | "modify" "remove" MODIFIER+ "at" variation_target  -> modify_remove_action
+
+?pattern_value: STAR_VALUE "except" beat_list -> star_except
+              | STAR_VALUE -> star
+              | beat_list
+
+// Variation actions accept a bare ``*`` as "all beats" in addition to a beat list.
+?variation_target: BARE_STAR -> variation_star
+                 | beat_list
+BARE_STAR: "*"
+
+beat_list: beat ("," beat)*
+beat: BEAT_LABEL MODIFIER*
+
+// Canonical abbreviations plus common long-form and lowercase aliases.
+// Longer alternatives must precede any of their prefixes in the alternation
+// so that Python regex takes the full token (e.g. "snare" before "sn").
+// cr(?!esc) prevents the 'cr' abbreviation from consuming the first two chars
+// of the 'cresc' dynamic keyword before the lexer can match DYNAMIC_KIND.
+INSTRUMENT: /SCS|cross-stick|floortom|hightom|hitom|lowtom|midtom|openhat|hihatfoot|footchick|hihat|snare|crash|click|ride|bass|kick|open|hat|BD|bd|SN|sn|OH|oh|RD|rd|CR|cr(?!esc)|FT|ft|HH|hh|HT|ht|MT|mt|HF|hf/
+TIME_SIGNATURE: /[0-9]+\/[0-9]+/
+// [e&a] = 16th suffixes; [tl] = triplet (trip/let) suffixes; beats 1-99 to cover
+// compound meters (12/8, 10/8, 11/8, 12/16, …) as well as odd meters.
+// "and" is a long-form alias for "&" (e.g. "1and" ↔ "1&")
+BEAT_LABEL: /[1-9][0-9]?(trip|let|and|[e&atl])?/ | /trip/ | /let/ | /and/
+MODIFIER: "ghost" | "accent" | "flam" | "drag" | "double" | /buzz(?::[1-9][0-9]?d{0,2})?/
+// *N = "every 1/N note"; optional 't' suffix marks a triplet grid
+// (e.g. *8t = 8th-note triplets, *4t = quarter-note triplets).
+STAR_VALUE: /\*(2|4|8|16)t?/
+
+%ignore /\s+/
+%ignore /\/\/[^\n]*/
+%ignore /#[^\n]*/

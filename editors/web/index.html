@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>GrooveScript Editor</title>
+
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="header">
+    <span class="app-title">GrooveScript</span>
+    <div class="header-actions">
+      <button id="btn-share" class="action-btn" aria-label="Share document">Share</button>
+      <button id="btn-copy"  class="action-btn" aria-label="Copy document to clipboard">Copy</button>
+    </div>
+  </header>
+
+  <div class="editor-container">
+    <div id="editor"></div>
+  </div>
+
+  <div id="symbol-bar" role="toolbar" aria-label="Symbol shortcuts"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

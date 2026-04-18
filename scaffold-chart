@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TEMPLATES_DIR="$SCRIPT_DIR/templates"
+CHARTS_DIR="$SCRIPT_DIR/charts"
+
+usage() {
+    echo "Usage: $0 [-t TEMPLATE] <chart-name>" >&2
+    echo "" >&2
+    echo "  Scaffolds a new chart at charts/<chart-name>.gs from a template." >&2
+    echo "  <chart-name> must be kebab-case (e.g. my-new-song)." >&2
+    echo "" >&2
+    echo "  Options:" >&2
+    echo "    -t, --template TEMPLATE  Template to use (default: rock)" >&2
+    echo "    -h, --help               Show this help message" >&2
+    echo "" >&2
+    echo "  Available templates:" >&2
+    for t in "$TEMPLATES_DIR"/*.gs; do
+        echo "    $(basename "$t" .gs)" >&2
+    done
+    exit 1
+}
+
+TEMPLATE="rock"
+NAME=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -t|--template)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --template requires an argument" >&2
+                usage
+            fi
+            TEMPLATE="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            ;;
+        -*)
+            echo "Error: unknown option: $1" >&2
+            usage
+            ;;
+        *)
+            if [[ -n "$NAME" ]]; then
+                echo "Error: unexpected argument: $1" >&2
+                usage
+            fi
+            NAME="$1"
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$NAME" ]]; then
+    echo "Error: chart name is required" >&2
+    usage
+fi
+
+if ! echo "$NAME" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$'; then
+    echo "Error: chart name must be kebab-case (lowercase letters, digits, and hyphens only; no leading/trailing hyphens)" >&2
+    exit 1
+fi
+
+TEMPLATE_FILE="$TEMPLATES_DIR/${TEMPLATE}.gs"
+if [[ ! -f "$TEMPLATE_FILE" ]]; then
+    echo "Error: template '$TEMPLATE' not found" >&2
+    echo "Available templates:" >&2
+    for t in "$TEMPLATES_DIR"/*.gs; do
+        echo "  $(basename "$t" .gs)" >&2
+    done
+    exit 1
+fi
+
+OUTPUT_FILE="$CHARTS_DIR/${NAME}.gs"
+if [[ -f "$OUTPUT_FILE" ]]; then
+    echo "Error: $OUTPUT_FILE already exists" >&2
+    exit 1
+fi
+
+# Convert kebab-case to Title Case for the title field
+TITLE=$(echo "$NAME" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2)); print}')
+
+sed "s/{{TITLE}}/$TITLE/g" "$TEMPLATE_FILE" > "$OUTPUT_FILE"
+
+echo "Created $OUTPUT_FILE"
+echo "  Template: $TEMPLATE"
+echo "  Title:    $TITLE"
+echo ""
+echo "Edit $OUTPUT_FILE, then run:"
+echo "  ./build-pdf $NAME"

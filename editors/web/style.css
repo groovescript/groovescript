@@ -1,0 +1,197 @@
+/* ── Reset / base ───────────────────────────────────────────────────────────── */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+:root {
+  --header-height: 48px;
+  --symbol-bar-height: 40px;
+  --bg: #ffffff;
+  --surface: #f5f5f5;
+  --text: #212121;
+  --accent: #1565c0;
+  --accent-fg: #ffffff;
+  --accent-feedback: #2e7d32;
+  --border: #e0e0e0;
+  --btn-radius: 6px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1e1e1e;
+    --surface: #2a2a2a;
+    --text: #e0e0e0;
+    --accent: #61afef;
+    --accent-fg: #1e1e1e;
+    --accent-feedback: #98c379;
+    --border: #3a3a3a;
+  }
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-monospace, 'Cascadia Code', Menlo, monospace;
+}
+
+/* ── Layout ─────────────────────────────────────────────────────────────────── */
+
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh; /* dynamic viewport height: shrinks when keyboard opens */
+}
+
+/* Fallback for browsers without dvh */
+@supports not (height: 100dvh) {
+  body { height: 100vh; }
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────────── */
+
+.header {
+  flex: 0 0 var(--header-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  padding-left: max(12px, env(safe-area-inset-left));
+  padding-right: max(12px, env(safe-area-inset-right));
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.app-title {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  user-select: none;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────────── */
+
+.action-btn {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 14px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: none;
+  border-radius: var(--btn-radius);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.action-btn:active {
+  opacity: 0.75;
+}
+
+.action-btn.feedback {
+  background: var(--accent-feedback);
+}
+
+/* ── Editor container ───────────────────────────────────────────────────────── */
+
+.editor-container {
+  flex: 1 1 auto;
+  min-height: 0; /* prevents flex child from overflowing */
+  overflow: hidden;
+}
+
+#editor {
+  height: 100%;
+}
+
+/* Prevent iOS auto-zoom on focus (font must be >= 16px) */
+.cm-editor,
+.cm-content {
+  font-size: 16px !important;
+  font-family: ui-monospace, 'Cascadia Code', Menlo, monospace !important;
+}
+
+/* Let CodeMirror own its scrolling */
+.cm-editor {
+  height: 100%;
+  background: var(--bg) !important;
+}
+
+.cm-scroller {
+  overflow: auto;
+}
+
+/* ── Symbol accessory bar ───────────────────────────────────────────────────── */
+
+#symbol-bar {
+  display: none; /* shown by JS when keyboard is up */
+  flex-direction: row;
+  align-items: center;
+  height: var(--symbol-bar-height);
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 2px 6px;
+  padding-left: max(6px, env(safe-area-inset-left));
+  padding-right: max(6px, env(safe-area-inset-right));
+  padding-bottom: max(2px, env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  gap: 4px;
+  /* Positioned fixed above keyboard by JS */
+  left: 0;
+  right: 0;
+  z-index: 100;
+  /* Prevent scroll bars on macOS */
+  scrollbar-width: none;
+}
+
+#symbol-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.sym-btn {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  white-space: nowrap;
+  transition: background 0.08s;
+}
+
+/* Wider buttons for multi-char labels */
+.sym-btn:not(:where([data-short])) {
+  width: auto;
+  min-width: 36px;
+  padding: 0 8px;
+}
+
+.sym-btn:active {
+  background: var(--accent);
+  color: var(--accent-fg);
+}

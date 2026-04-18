@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "groovescript"
+version = "0.1.0"
+description = "A DSL (domain-specific language) for fast, iterative drum score transcription"
+authors = [{name = "Matthew Finifter"}]
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "lark>=1.1,<2",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Sound/Audio",
+]
+
+[project.urls]
+Homepage = "https://github.com/groovescript/groovescript"
+Issues = "https://github.com/groovescript/groovescript/issues"
+
+[project.scripts]
+groovescript = "groovescript.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+groovescript = ["*.lark", "*.gs", "*.ly"]
+
+[dependency-groups]
+dev = ["pytest>=9.0.3"]
