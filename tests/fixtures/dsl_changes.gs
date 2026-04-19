@@ -34,9 +34,10 @@ time_signature: 4/4
 //     action (e.g. `remove snare hat at 2`).
 //   - `substitute` (via `count:` / `notes:`) wipes a bar and replaces it with
 //     events expanded from a count+notes body.
-//   - `modify add <mod> at <target>` / `modify remove <mod> at <target>`
-//     decorates existing hits with (or strips) a modifier without re-stating
-//     the instrument.
+//   - `modify add <mod> to <instrument> at <target>` /
+//     `modify remove <mod> from <instrument> at <target>` decorates an
+//     existing hit on the named instrument with (or strips) a modifier
+//     without re-stating the beat positions.
 
 // Classic pattern — commas optional in beat lists; `and` shorthand on HH.
 groove "money beat":
@@ -116,14 +117,14 @@ section "bridge":
   groove: "money beat"
   // Named fill placed at multiple bars via a bar list.
   fill "build" at bar 4, 8 beat 3
-  // Accent all hits on beat 2 of bars 2 and 6 without retyping each
-  // instrument; space-separated bar list, no comma required.
+  // Accent the snare on beat 2 of bars 2 and 6 without retyping its beat
+  // positions; space-separated bar list, no comma required.
   variation at bars 2 6:
-    modify add accent at 2
-  // Strip an accent modifier from an existing hit without touching the
-  // underlying snare event.
+    modify add accent to snare at 2
+  // Strip an accent modifier from an existing snare hit without touching
+  // the event itself.
   variation at bar 3:
-    modify remove accent at 2
+    modify remove accent from snare at 2
 
 section "outro":
   bars: 2

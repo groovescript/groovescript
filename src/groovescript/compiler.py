@@ -1006,10 +1006,12 @@ def _apply_variation_actions(
                     )
                 )
         elif action.action == "modify_add":
-            # Add each modifier to every existing event at the target positions,
-            # skipping modifiers the event already carries.
+            # Add each modifier to the named instrument's events at the target
+            # positions, skipping modifiers the event already carries.
             for event in result:
                 if event.beat_position not in positions:
+                    continue
+                if event.instrument != action.instrument:
                     continue
                 _validate_flam_instrument(event.instrument, action.modifiers, f"variation modify add at beat {event.beat_position}")
                 for mod in action.modifiers:
@@ -1019,11 +1021,14 @@ def _apply_variation_actions(
                     event.buzz_duration = action.buzz_duration
                     event.duration = _buzz_span(action.buzz_duration, beats_per_bar, beat_unit)
         elif action.action == "modify_remove":
-            # Drop each listed modifier from every existing event at the target
-            # positions. Silently tolerates modifiers that aren't present so
-            # sweeping removals (e.g. "modify remove accent at *") are painless.
+            # Drop each listed modifier from the named instrument's events at
+            # the target positions. Silently tolerates modifiers that aren't
+            # present so sweeping removals (e.g. "modify remove accent from
+            # snare at *") are painless.
             for event in result:
                 if event.beat_position not in positions:
+                    continue
+                if event.instrument != action.instrument:
                     continue
                 for mod in action.modifiers:
                     if mod in event.modifiers:
