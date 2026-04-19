@@ -38,8 +38,13 @@ _KNOWN_MODIFIERS: tuple[str, ...] = ("ghost", "accent", "flam", "drag", "double"
 
 
 @dataclass
-class GrooveScriptError(Exception):
+class GrooveScriptError(ValueError):
     """A user-facing GrooveScript error.
+
+    Inherits from :class:`ValueError` so that compile-time raise sites can
+    be upgraded to ``GrooveScriptError`` (for line-number-carrying
+    diagnostics) without breaking callers that catch the broader
+    ``ValueError``.
 
     Attributes:
         message: Short one-line description of what went wrong.
