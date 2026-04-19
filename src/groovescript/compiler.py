@@ -78,6 +78,9 @@ class Event:
     # must be preceded by a matching voice split, else LilyPond drops
     # the tie).
     tied_from_prev: bool = False
+    # 1-indexed source line of the pattern line or variation action that
+    # produced this event, threaded through from the AST for diagnostics.
+    source_line: int | None = None
 
 
 @dataclass
@@ -561,6 +564,7 @@ def _expand_pattern_line(
                 bar=bar,
                 beat_position=Fraction(i * step, subdivision),
                 instrument=line.instrument,
+                source_line=line.line,
             )
             for i in range(hits)
             if Fraction(i * step, subdivision) not in except_positions
@@ -585,6 +589,7 @@ def _expand_pattern_line(
                 modifiers=list(mods),
                 duration=duration,
                 buzz_duration=buzz_dur_str if duration is not None else None,
+                source_line=line.line,
             )
         )
     return events
@@ -831,6 +836,7 @@ def _apply_fill_overlay(
             modifiers=list(fe.modifiers),
             duration=fe.duration,
             buzz_duration=fe.buzz_duration,
+            source_line=fe.source_line,
         )
         for fe in fill_bar.events
     ]
@@ -926,6 +932,7 @@ def _apply_variation_actions(
                             beat_position=position,
                             instrument=str(hit),
                             modifiers=list(mods),
+                            source_line=action.line,
                         )
                     )
             continue
@@ -969,6 +976,7 @@ def _apply_variation_actions(
                         modifiers=list(action.modifiers),
                         duration=duration,
                         buzz_duration=action.buzz_duration if duration is not None else None,
+                        source_line=action.line,
                     )
                 )
         elif action.action == "replace":
@@ -1003,6 +1011,7 @@ def _apply_variation_actions(
                         modifiers=list(action.modifiers),
                         duration=duration,
                         buzz_duration=action.buzz_duration if duration is not None else None,
+                        source_line=action.line,
                     )
                 )
         elif action.action == "modify_add":
@@ -1014,12 +1023,19 @@ def _apply_variation_actions(
                 if event.instrument != action.instrument:
                     continue
                 _validate_flam_instrument(event.instrument, action.modifiers, f"variation modify add at beat {event.beat_position}")
+                added_any = False
                 for mod in action.modifiers:
                     if mod not in event.modifiers:
                         event.modifiers.append(mod)
+                        added_any = True
                 if "buzz" in action.modifiers and action.buzz_duration is not None:
                     event.buzz_duration = action.buzz_duration
                     event.duration = _buzz_span(action.buzz_duration, beats_per_bar, beat_unit)
+                # When a modifier was actually added, point diagnostics at the
+                # variation line rather than the original pattern line: the
+                # newly-stamped modifier is what can create notation conflicts.
+                if added_any and action.line is not None:
+                    event.source_line = action.line
         elif action.action == "modify_remove":
             # Drop each listed modifier from the named instrument's events at
             # the target positions. Silently tolerates modifiers that aren't
@@ -1646,6 +1662,7 @@ def compile_song(song: Song) -> IRSong:
                     modifiers=list(event.modifiers),
                     duration=event.duration,
                     buzz_duration=event.buzz_duration,
+                    source_line=event.source_line,
                 )
                 for event in template_events
             ]
@@ -1740,6 +1757,7 @@ def compile_song(song: Song) -> IRSong:
                     modifiers=list(event.modifiers),
                     duration=event.duration,
                     buzz_duration=event.buzz_duration,
+                    source_line=event.source_line,
                 )
                 for event in template_events
             ]
@@ -1883,6 +1901,7 @@ def _split_cross_bar_buzz_events(
                 duration=remainder,
                 buzz_duration=None,
                 tied_from_prev=True,
+                source_line=event.source_line,
             )
             next_bar.events.append(continuation)
             next_bar.events.sort(key=lambda e: e.beat_position)

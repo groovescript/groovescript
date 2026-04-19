@@ -100,6 +100,8 @@ class PatternLine:
     # Either a list of BeatHit/str entries (e.g. ``["1", "2&", "3e"]``) or a
     # ``StarSpec`` describing a ``*N``/``*Nt`` auto-fill.
     beats: list[str] | StarSpec
+    # 1-indexed source line where this pattern line appeared, for diagnostics.
+    line: int | None = None
 
 
 @dataclass
@@ -207,6 +209,8 @@ class VariationAction:
     count_notes: tuple[str, str] | None = None
     # Buzz-roll duration (e.g. "4", "2d") when modifiers contains "buzz".
     buzz_duration: str | None = None
+    # 1-indexed source line where this action appeared, for diagnostics.
+    line: int | None = None
 
 
 @dataclass

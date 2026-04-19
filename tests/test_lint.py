@@ -246,6 +246,51 @@ section "verse":
     assert "3 hand-played instruments" in warnings[0].message
 
 
+def test_notation_warning_carries_source_line() -> None:
+    """Regression: notation warnings from groove pattern lines must carry the
+    source line so `groovescript lint` can render a Rust-style diagnostic with
+    a file:line pointer instead of a bare bar number.
+    """
+    src = """\
+groove "busy":
+    1: HH, SN, OH
+    2: BD
+"""
+    song = parse(src)
+    ir = compile_groove(song.grooves[0])
+    warnings = check_notation(ir)
+    assert len(warnings) == 1
+    # The conflicting pattern line is line 2 of the source.
+    assert warnings[0].line == 2
+
+
+def test_notation_warning_from_modify_add_flam_points_at_variation() -> None:
+    """Regression: when `modify add flam` on an existing hit creates a hand
+    conflict with another instrument at the same beat, the warning should
+    point at the variation line (that's the newly-introduced conflict
+    source), not the unchanged pattern line that just happened to be there.
+    """
+    src = """\
+groove "base":
+    1: HH
+    2: SN
+    3: HH
+    4: SN, HH
+
+section "verse":
+  bars: 1
+  groove: "base"
+  variation at bar 1:
+    modify add flam to snare at 4
+"""
+    song = parse(src)
+    ir = compile_song(song)
+    warnings = check_notation(ir)
+    assert len(warnings) == 1
+    # `modify add flam to snare at 4` is on line 11 of the source.
+    assert warnings[0].line == 11
+
+
 # ── check_notation: flam + simultaneous hand instrument ──────────────────
 
 
