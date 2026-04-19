@@ -29,9 +29,9 @@ from dataclasses import dataclass
 _KNOWN_INSTRUMENT_ALIASES: tuple[str, ...] = (
     "bd", "sn", "scs", "hh", "oh", "rd", "cr", "ft", "ht", "mt", "hf",
     "bass", "kick", "snare", "click", "cross-stick",
-    "hat", "hihat", "hi-hat", "openhat", "open",
+    "hat", "hihat", "openhat", "open",
     "ride", "crash", "floortom", "lowtom", "hightom", "hitom", "midtom",
-    "hihatfoot", "hi-hat-foot", "footchick", "foot-chick",
+    "hihatfoot", "footchick",
 )
 
 _KNOWN_MODIFIERS: tuple[str, ...] = ("ghost", "accent", "flam", "drag", "double", "32nd")
