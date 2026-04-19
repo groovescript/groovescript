@@ -9,6 +9,17 @@ charts: reusable grooves and fills, section-based song structure,
 time-anchored variations, placeholder fills for incremental chart-building,
 and full support for changing meters.
 
+## Get started
+
+**No terminal? No problem.** Write charts in the browser and render them to PDF from your phone:
+
+1. **[Open the web editor →](https://groovescript.github.io/groovescript/)** — write `.gs` files with syntax highlighting, no install required
+2. **[Use the charts template →](https://github.com/groovescript/charts-template)** — one click to create a private GitHub repo that automatically renders every chart you commit to a PDF
+
+The template repo includes step-by-step instructions for the full iPhone workflow.
+
+---
+
 ## Core concepts
 
 - **Grooves** — named, reusable drum patterns that repeat for the duration of a section. Define once, reference everywhere.
