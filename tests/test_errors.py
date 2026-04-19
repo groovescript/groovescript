@@ -57,6 +57,18 @@ def test_misspelled_instrument_name_suggests_alternative() -> None:
     assert "snare" in err.hint
 
 
+def test_hi_hat_with_hyphen_suggests_hihat() -> None:
+    """Regression: 'hi-hat' is not in the grammar INSTRUMENT terminal (intentionally
+    excluded; use 'hihat'). The hint must not suggest 'hi-hat' back to the user."""
+    err = _err(
+        'groove "x":\n'
+        "    hi-hat: *8\n"
+    )
+    assert err.hint is not None
+    # The suggestion must be 'hihat', not 'hi-hat' again.
+    assert err.hint.endswith("'hihat'?")
+
+
 def test_completely_unknown_word_lists_expected_content() -> None:
     err = _err(
         'groove "x":\n'
