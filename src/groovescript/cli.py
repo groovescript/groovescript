@@ -17,6 +17,20 @@ def _fail(err: GrooveScriptError) -> None:
     sys.exit(1)
 
 
+def _attach_source_context(err: GrooveScriptError, input_path: str) -> None:
+    """Fill in ``filename`` and ``source`` on a compile-time error so the
+    source line and caret can be rendered. Parser errors already carry these
+    fields; compiler errors raised from AST line metadata typically do not.
+    """
+    if err.filename is None:
+        err.filename = input_path
+    if err.source is None:
+        try:
+            err.source = Path(input_path).read_text()
+        except OSError:
+            pass
+
+
 def _check_output_not_input(input_path: str, output_path: str) -> int | None:
     """Reject `-o` pointing at the source file to prevent silent data loss."""
     try:
@@ -46,8 +60,7 @@ def _compile_or_exit(song, input_path: str):
     try:
         return compile_song(song) if song.sections else compile_groove(song.grooves[0])
     except GrooveScriptError as err:
-        if err.filename is None:
-            err.filename = input_path
+        _attach_source_context(err, input_path)
         _fail(err)
     except ValueError as err:
         _fail(GrooveScriptError(message=str(err), filename=input_path))
@@ -75,8 +88,7 @@ def _run_lint(input_path: str, with_style: bool) -> int:
         try:
             ir = compile_song(song) if song.sections else compile_groove(song.grooves[0])
         except GrooveScriptError as err:
-            if err.filename is None:
-                err.filename = input_path
+            _attach_source_context(err, input_path)
             print(err.render(), file=sys.stderr)
             return 1
         except ValueError as err:
@@ -130,8 +142,7 @@ def _run_midi(input_path: str, output_path: str) -> int:
     try:
         ir = compile_song(song) if song.sections else compile_groove(song.grooves[0])
     except GrooveScriptError as err:
-        if err.filename is None:
-            err.filename = input_path
+        _attach_source_context(err, input_path)
         print(err.render(), file=sys.stderr)
         return 1
     except ValueError as err:
@@ -171,8 +182,7 @@ def _run_musicxml(input_path: str, output_path: str) -> int:
     try:
         ir = compile_song(song) if song.sections else compile_groove(song.grooves[0])
     except GrooveScriptError as err:
-        if err.filename is None:
-            err.filename = input_path
+        _attach_source_context(err, input_path)
         print(err.render(), file=sys.stderr)
         return 1
     except ValueError as err:
@@ -212,8 +222,7 @@ def _run_compile(input_path: str, output_path: str) -> int:
     try:
         ir = compile_song(song) if song.sections else compile_groove(song.grooves[0])
     except GrooveScriptError as err:
-        if err.filename is None:
-            err.filename = input_path
+        _attach_source_context(err, input_path)
         print(err.render(), file=sys.stderr)
         return 1
     except ValueError as err:

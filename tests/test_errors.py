@@ -250,3 +250,149 @@ def test_count_notes_mismatch_shows_original_unquoted_source() -> None:
     rendered = excinfo.value.render()
     assert "count: 1 e & a 2" in rendered
     assert 'count: "1 e & a 2"' not in rendered
+
+
+# ── Compile-time diagnostics carry line numbers ──────────────────────────
+#
+# Compile errors that originate from a specific AST node (variation action,
+# pattern line, buzz event) must surface the line where the user wrote the
+# offending construct. Without the line the diagnostic is a flat string
+# that forces the user to grep their chart for the cited bar number.
+
+
+def _compile_err(src: str) -> GrooveScriptError:
+    song = parse(src, filename="song.gs")
+    with pytest.raises(GrooveScriptError) as excinfo:
+        if song.sections:
+            compile_song(song)
+        else:
+            compile_groove(song.grooves[0])
+    err = excinfo.value
+    # Mirror what the CLI does so render() produces the full visual output.
+    if err.source is None:
+        err.source = src
+    if err.filename is None:
+        err.filename = "song.gs"
+    return err
+
+
+def test_variation_replace_stacking_reports_line() -> None:
+    """Regression: a ``replace X with Y`` action that would stack two Y
+    notes must cite the variation's source line, not just the bar number.
+    Guards against the einstein-on-the-beach debugging experience where the
+    user had to grep to find which ``replace`` line was at fault.
+    """
+    src = (
+        'groove "money":\n'
+        "  HH: *8\n"
+        "  BD: 1, 3\n"
+        "  SN: 2, 4\n"
+        "\n"
+        'section "bridge":\n'
+        "  bars: 2\n"
+        '  groove: "money"\n'
+        "\n"
+        '  variation "stack" at bar 2:\n'
+        "    add CR at 1\n"
+        "    replace HH with CR at 1\n"
+    )
+    err = _compile_err(src)
+    assert err.line == 12, f"expected line 12 (the replace action), got {err.line}"
+    assert "already present" in err.message
+    rendered = err.render()
+    assert "replace HH with CR at 1" in rendered
+
+
+def test_variation_add_stacking_reports_line() -> None:
+    """Regression: an ``add`` action that duplicates an existing hit must
+    cite the variation's source line.
+    """
+    src = (
+        'groove "money":\n'
+        "  HH: *8\n"
+        "  BD: 1, 3\n"
+        "  SN: 2, 4\n"
+        "\n"
+        'section "verse":\n'
+        "  bars: 1\n"
+        '  groove: "money"\n'
+        "\n"
+        '  variation "dup" at bar 1:\n'
+        "    add BD at 1\n"
+    )
+    err = _compile_err(src)
+    assert err.line == 11, f"expected line 11 (the add action), got {err.line}"
+    assert "already present" in err.message
+
+
+def test_variation_substitute_count_notes_mismatch_reports_line() -> None:
+    """Regression: a ``substitute`` whose count/notes lengths differ must
+    cite the substitute line, not surface as an unlocated diagnostic.
+    """
+    src = (
+        'groove "g":\n'
+        "  BD: 1, 2, 3, 4\n"
+        "\n"
+        'section "s":\n'
+        "  bars: 1\n"
+        '  groove: "g"\n'
+        "\n"
+        '  variation "sub" at bar 1:\n'
+        "    count: 1 2\n"
+        "    notes: BD, SN, SN\n"
+    )
+    err = _compile_err(src)
+    # The substitute action spans the count/notes pair; parser attaches it
+    # at the ``count:`` line.
+    assert err.line == 9, f"expected line 9 (the substitute), got {err.line}"
+
+
+def test_variation_add_flam_on_hihat_reports_line() -> None:
+    """Regression: a ``flam`` modifier on an instrument that does not
+    support it (e.g. HH) must cite the variation line.
+    """
+    src = (
+        'groove "g":\n'
+        "  BD: 1, 3\n"
+        "\n"
+        'section "s":\n'
+        "  bars: 1\n"
+        '  groove: "g"\n'
+        "\n"
+        '  variation "bad" at bar 1:\n'
+        "    add HH flam at 2\n"
+    )
+    err = _compile_err(src)
+    assert err.line == 9, f"expected line 9 (the add), got {err.line}"
+    assert "flam" in err.message
+
+
+def test_pattern_line_buzz_on_non_snare_reports_line() -> None:
+    """Regression: a ``buzz`` modifier on anything other than the snare
+    must cite the pattern line that declared the hit.
+    """
+    src = (
+        'groove "g":\n'
+        "  BD: 1\n"
+        "  HH: 2 buzz:4\n"
+    )
+    err = _compile_err(src)
+    assert err.line == 3, f"expected line 3 (the HH line), got {err.line}"
+    assert "buzz" in err.message
+
+
+def test_buzz_overlap_with_hand_played_reports_line() -> None:
+    """Regression: a snare buzz span that overlaps a hand-played hit
+    (e.g. HH) must cite the offending hand-played hit's pattern line.
+    """
+    src = (
+        'groove "g":\n'
+        "  SN: 1 buzz:2\n"
+        "  HH: 1, 2\n"
+    )
+    err = _compile_err(src)
+    # The overlap error is attributed to the HH line (the thing that
+    # conflicts with the pre-existing buzz span), so it should point at
+    # line 3, not line 2.
+    assert err.line == 3, f"expected line 3 (the HH line), got {err.line}"
+    assert "overlap" in err.message

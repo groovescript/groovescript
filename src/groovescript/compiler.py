@@ -24,6 +24,7 @@ from .ast_nodes import (
     Variation,
     VariationAction,
 )
+from .errors import GrooveScriptError
 
 # Maps a beat-label suffix to its fractional offset within a single beat.
 # Used by ``_beat_label_to_fraction`` to compute Fraction positions that work
@@ -257,14 +258,17 @@ def _buzz_span(
     return base
 
 
-def _validate_buzz_modifier_compat(modifiers: list[str], context: str) -> None:
+def _validate_buzz_modifier_compat(
+    modifiers: list[str], context: str, source_line: int | None = None
+) -> None:
     """Reject buzz combined with incompatible modifiers."""
     if "buzz" not in modifiers:
         return
     for bad in ("flam", "drag", "double", "ghost"):
         if bad in modifiers:
-            raise ValueError(
-                f"'buzz' modifier is incompatible with {bad!r} in {context}"
+            raise GrooveScriptError(
+                message=f"'buzz' modifier is incompatible with {bad!r} in {context}",
+                line=source_line,
             )
 
 
@@ -282,9 +286,12 @@ def _validate_buzz_event(
     if event.duration is None:
         return
     if event.instrument != "SN":
-        raise ValueError(
-            f"'buzz' modifier is only supported on SN (snare) — got "
-            f"{event.instrument!r} in {context}"
+        raise GrooveScriptError(
+            message=(
+                f"'buzz' modifier is only supported on SN (snare) — got "
+                f"{event.instrument!r} in {context}"
+            ),
+            line=event.source_line,
         )
 
 
@@ -313,14 +320,22 @@ def _validate_buzz_overlap(events: list[Event], context: str) -> None:
             if other.instrument in _FOOT_INSTRUMENTS:
                 continue
             if other.instrument in _HAND_INSTRUMENTS:
-                raise ValueError(
-                    f"{other.instrument} event at beat position "
-                    f"{other.beat_position} overlaps a snare buzz roll span "
-                    f"[{start}, {end}) in {context}"
+                raise GrooveScriptError(
+                    message=(
+                        f"{other.instrument} event at beat position "
+                        f"{other.beat_position} overlaps a snare buzz roll span "
+                        f"[{start}, {end}) in {context}"
+                    ),
+                    line=other.source_line,
                 )
 
 
-def _validate_double_modifier(modifiers: list[str], subdivision: int, context: str) -> None:
+def _validate_double_modifier(
+    modifiers: list[str],
+    subdivision: int,
+    context: str,
+    source_line: int | None = None,
+) -> None:
     """Raise ValueError if the 'double' modifier is used in an invalid context.
 
     - Only valid at 16th-note subdivision (4 slots per beat).
@@ -336,30 +351,52 @@ def _validate_double_modifier(modifiers: list[str], subdivision: int, context: s
     # (beats_per_bar is not available here, but we can check against the known valid values.)
     # We delegate the per-beat check to compile_groove; here we validate incompatible modifiers.
     if "flam" in modifiers:
-        raise ValueError(f"'double' modifier is incompatible with 'flam' in {context}")
+        raise GrooveScriptError(
+            message=f"'double' modifier is incompatible with 'flam' in {context}",
+            line=source_line,
+        )
     if "drag" in modifiers:
-        raise ValueError(f"'double' modifier is incompatible with 'drag' in {context}")
-
-
-def _validate_double_subdivision(subdivision: int, beats_per_bar: int, context: str) -> None:
-    """Raise ValueError if 'double' modifier is used at a non-16th subdivision."""
-    slots_per_beat = subdivision // beats_per_bar
-    if slots_per_beat != 4:
-        raise ValueError(
-            f"'double' modifier requires 16th-note subdivision "
-            f"(4 slots per beat), but got {slots_per_beat} slots per beat "
-            f"(subdivision={subdivision}, beats_per_bar={beats_per_bar}) in {context}"
+        raise GrooveScriptError(
+            message=f"'double' modifier is incompatible with 'drag' in {context}",
+            line=source_line,
         )
 
 
-def _validate_flam_instrument(instrument: str, modifiers: list[str], context: str) -> None:
+def _validate_double_subdivision(
+    subdivision: int,
+    beats_per_bar: int,
+    context: str,
+    source_line: int | None = None,
+) -> None:
+    """Raise ValueError if 'double' modifier is used at a non-16th subdivision."""
+    slots_per_beat = subdivision // beats_per_bar
+    if slots_per_beat != 4:
+        raise GrooveScriptError(
+            message=(
+                f"'double' modifier requires 16th-note subdivision "
+                f"(4 slots per beat), but got {slots_per_beat} slots per beat "
+                f"(subdivision={subdivision}, beats_per_bar={beats_per_bar}) in {context}"
+            ),
+            line=source_line,
+        )
+
+
+def _validate_flam_instrument(
+    instrument: str,
+    modifiers: list[str],
+    context: str,
+    source_line: int | None = None,
+) -> None:
     """Raise ValueError if 'flam' is used on an instrument that doesn't support it."""
     if "flam" not in modifiers:
         return
     if instrument not in _FLAM_INSTRUMENTS:
-        raise ValueError(
-            f"'flam' modifier is only supported on snare and toms "
-            f"(SN, FT, HT, MT) — got {instrument!r} in {context}"
+        raise GrooveScriptError(
+            message=(
+                f"'flam' modifier is only supported on snare and toms "
+                f"(SN, FT, HT, MT) — got {instrument!r} in {context}"
+            ),
+            line=source_line,
         )
 
 
@@ -486,7 +523,10 @@ def _infer_bar_subdivision(
             star = line.beats
             # Validate hit count up-front so we get a clean error instead
             # of a cryptic slot-math failure later.
-            _star_hits_per_bar(star, beats_per_bar, beat_unit, context)
+            try:
+                _star_hits_per_bar(star, beats_per_bar, beat_unit, context)
+            except ValueError as exc:
+                raise GrooveScriptError(message=str(exc), line=line.line) from None
             if star.triplet:
                 has_triplet_content = True
             else:
@@ -527,10 +567,13 @@ def _infer_bar_subdivision(
         if isinstance(line.beats, StarSpec):
             need = _star_min_slots_per_beat(line.beats, beat_unit)
             if need > slots_per_beat:
-                raise ValueError(
-                    f"{line.beats} requires {need} slots per beat, which is "
-                    f"not supported (max supported is 4 straight / 3 triplet) "
-                    f"in {context}"
+                raise GrooveScriptError(
+                    message=(
+                        f"{line.beats} requires {need} slots per beat, which is "
+                        f"not supported (max supported is 4 straight / 3 triplet) "
+                        f"in {context}"
+                    ),
+                    line=line.line,
                 )
 
     return slots_per_beat * beats_per_bar
@@ -545,11 +588,17 @@ def _expand_pattern_line(
 ) -> list[Event]:
     if isinstance(line.beats, StarSpec):
         star = line.beats
-        hits = _star_hits_per_bar(star, beats_per_bar, beat_unit, f"instrument {line.instrument!r}")
+        try:
+            hits = _star_hits_per_bar(star, beats_per_bar, beat_unit, f"instrument {line.instrument!r}")
+        except ValueError as exc:
+            raise GrooveScriptError(message=str(exc), line=line.line) from None
         if subdivision % hits != 0:
-            raise ValueError(
-                f"{star} on instrument {line.instrument!r}: bar subdivision "
-                f"{subdivision} is not a multiple of {hits} hits"
+            raise GrooveScriptError(
+                message=(
+                    f"{star} on instrument {line.instrument!r}: bar subdivision "
+                    f"{subdivision} is not a multiple of {hits} hits"
+                ),
+                line=line.line,
             )
         step = subdivision // hits
         # Compute positions to exclude (from the ``except`` clause).
@@ -575,9 +624,9 @@ def _expand_pattern_line(
         mods = getattr(b, "modifiers", [])
         buzz_dur_str = getattr(b, "buzz_duration", None)
         if mods:
-            _validate_double_modifier(mods, subdivision, f"instrument {line.instrument!r} at beat {b!r}")
-            _validate_buzz_modifier_compat(mods, f"instrument {line.instrument!r} at beat {b!r}")
-            _validate_flam_instrument(line.instrument, mods, f"instrument {line.instrument!r} at beat {b!r}")
+            _validate_double_modifier(mods, subdivision, f"instrument {line.instrument!r} at beat {b!r}", source_line=line.line)
+            _validate_buzz_modifier_compat(mods, f"instrument {line.instrument!r} at beat {b!r}", source_line=line.line)
+            _validate_flam_instrument(line.instrument, mods, f"instrument {line.instrument!r} at beat {b!r}", source_line=line.line)
         duration: Fraction | None = None
         if "buzz" in (mods or []):
             duration = _buzz_span(buzz_dur_str or "4", beats_per_bar, beat_unit)
@@ -904,7 +953,10 @@ def _apply_variation_actions(
     for action in actions:
         if action.action == "substitute":
             if action.count_notes is None:
-                raise ValueError("substitute action missing count_notes body")
+                raise GrooveScriptError(
+                    message="substitute action missing count_notes body",
+                    line=action.line,
+                )
             from .parser import (
                 _format_count_notes_mismatch,
                 _parse_count_tokens,
@@ -915,10 +967,11 @@ def _apply_variation_actions(
             beat_labels = _parse_count_tokens(count_str)
             note_groups = _parse_notes_tokens(notes_str)
             if len(beat_labels) != len(note_groups):
-                raise ValueError(
-                    _format_count_notes_mismatch(
+                raise GrooveScriptError(
+                    message=_format_count_notes_mismatch(
                         "variation substitute", count_str, notes_str
-                    )
+                    ),
+                    line=action.line,
                 )
             # Substitute wipes everything in the bar, then places the new events.
             result = []
@@ -951,21 +1004,24 @@ def _apply_variation_actions(
             ]
         elif action.action == "add":
             if action.modifiers:
-                _validate_double_modifier(action.modifiers, subdivision, f"variation add {action.instrument!r}")
-                _validate_buzz_modifier_compat(action.modifiers, f"variation add {action.instrument!r}")
-                _validate_flam_instrument(action.instrument, action.modifiers, f"variation add {action.instrument!r}")
+                _validate_double_modifier(action.modifiers, subdivision, f"variation add {action.instrument!r}", source_line=action.line)
+                _validate_buzz_modifier_compat(action.modifiers, f"variation add {action.instrument!r}", source_line=action.line)
+                _validate_flam_instrument(action.instrument, action.modifiers, f"variation add {action.instrument!r}", source_line=action.line)
                 if "double" in action.modifiers:
-                    _validate_double_subdivision(subdivision, beats_per_bar, f"variation add {action.instrument!r}")
+                    _validate_double_subdivision(subdivision, beats_per_bar, f"variation add {action.instrument!r}", source_line=action.line)
             duration: Fraction | None = None
             if "buzz" in action.modifiers:
                 duration = _buzz_span(action.buzz_duration or "4", beats_per_bar, beat_unit)
             occupied = {e.beat_position for e in result if e.instrument == action.instrument}
             for pos in sorted(positions):
                 if pos in occupied:
-                    raise ValueError(
-                        f"variation add {action.instrument!r} at {_beat_label_for(pos, beats_per_bar)} "
-                        f"(bar {absolute_bar}): a {action.instrument!r} note is already present "
-                        f"at that position — adding would stack two notes on top of each other"
+                    raise GrooveScriptError(
+                        message=(
+                            f"variation add {action.instrument!r} at {_beat_label_for(pos, beats_per_bar)} "
+                            f"(bar {absolute_bar}): a {action.instrument!r} note is already present "
+                            f"at that position — adding would stack two notes on top of each other"
+                        ),
+                        line=action.line,
                     )
                 occupied.add(pos)
                 result.append(
@@ -981,11 +1037,11 @@ def _apply_variation_actions(
                 )
         elif action.action == "replace":
             if action.modifiers:
-                _validate_double_modifier(action.modifiers, subdivision, f"variation replace → {action.target_instrument!r}")
-                _validate_buzz_modifier_compat(action.modifiers, f"variation replace → {action.target_instrument!r}")
-                _validate_flam_instrument(action.target_instrument, action.modifiers, f"variation replace → {action.target_instrument!r}")
+                _validate_double_modifier(action.modifiers, subdivision, f"variation replace → {action.target_instrument!r}", source_line=action.line)
+                _validate_buzz_modifier_compat(action.modifiers, f"variation replace → {action.target_instrument!r}", source_line=action.line)
+                _validate_flam_instrument(action.target_instrument, action.modifiers, f"variation replace → {action.target_instrument!r}", source_line=action.line)
                 if "double" in action.modifiers:
-                    _validate_double_subdivision(subdivision, beats_per_bar, f"variation replace → {action.target_instrument!r}")
+                    _validate_double_subdivision(subdivision, beats_per_bar, f"variation replace → {action.target_instrument!r}", source_line=action.line)
             result = [
                 e for e in result
                 if not (e.instrument == action.instrument and e.beat_position in positions)
@@ -996,11 +1052,14 @@ def _apply_variation_actions(
             occupied = {e.beat_position for e in result if e.instrument == action.target_instrument}
             for pos in sorted(positions):
                 if pos in occupied:
-                    raise ValueError(
-                        f"variation replace {action.instrument!r} with {action.target_instrument!r} "
-                        f"at {_beat_label_for(pos, beats_per_bar)} (bar {absolute_bar}): a "
-                        f"{action.target_instrument!r} note is already present at that position — "
-                        f"replace would stack two notes on top of each other"
+                    raise GrooveScriptError(
+                        message=(
+                            f"variation replace {action.instrument!r} with {action.target_instrument!r} "
+                            f"at {_beat_label_for(pos, beats_per_bar)} (bar {absolute_bar}): a "
+                            f"{action.target_instrument!r} note is already present at that position — "
+                            f"replace would stack two notes on top of each other"
+                        ),
+                        line=action.line,
                     )
                 occupied.add(pos)
                 result.append(
@@ -1022,7 +1081,7 @@ def _apply_variation_actions(
                     continue
                 if event.instrument != action.instrument:
                     continue
-                _validate_flam_instrument(event.instrument, action.modifiers, f"variation modify add at beat {event.beat_position}")
+                _validate_flam_instrument(event.instrument, action.modifiers, f"variation modify add at beat {event.beat_position}", source_line=action.line)
                 added_any = False
                 for mod in action.modifiers:
                     if mod not in event.modifiers:
@@ -1888,9 +1947,12 @@ def _split_cross_bar_buzz_events(
             event.duration = Fraction(1) - event.beat_position
             event.tied_to_next = True
             if bar_index + 1 >= len(bars):
-                raise ValueError(
-                    f"buzz roll in bar {bar.number} ties past the end of the "
-                    f"song (need {remainder} more of a bar)"
+                raise GrooveScriptError(
+                    message=(
+                        f"buzz roll in bar {bar.number} ties past the end of the "
+                        f"song (need {remainder} more of a bar)"
+                    ),
+                    line=event.source_line,
                 )
             next_bar = bars[bar_index + 1]
             continuation = Event(
