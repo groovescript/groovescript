@@ -1399,7 +1399,29 @@ def _collect_section_dynamic_spans(
         if fill is None or not fill.dynamic_spans:
             continue
         offset = fp.bar - 1
+        fill_bars = max(1, len(fill.bars))
         for span in fill.dynamic_spans:
+            # Fill-internal spans are 1-indexed within the fill, so their bar
+            # numbers must fall inside [1, fill_bars]. Silently accepting an
+            # out-of-range bar would shift the span past the end of the
+            # section and drop it from the output — surprising for users who
+            # wrote the section-bar number (where the fill is placed) instead
+            # of the fill-internal bar number.
+            if not (1 <= span.from_bar <= fill_bars and 1 <= span.to_bar <= fill_bars):
+                raise GrooveScriptError(
+                    message=(
+                        f"{span.kind} span inside fill placed at bar {fp.bar} "
+                        f"references bar {span.from_bar} to bar {span.to_bar}, "
+                        f"but the fill only has {fill_bars} bar(s) — "
+                        f"bar numbers inside a fill are 1-indexed within the fill"
+                    ),
+                    line=span.line,
+                    hint=(
+                        f"write bars 1..{fill_bars} (fill-internal); the "
+                        f"compiler shifts them to section-bar {fp.bar} at "
+                        f"placement time"
+                    ),
+                )
             collected.append(_shift_span(span, offset))
 
     return collected

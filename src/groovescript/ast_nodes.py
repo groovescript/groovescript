@@ -240,6 +240,8 @@ class DynamicSpan:
     to_bar: int  # 1-indexed within the section
     from_beat: str | None = None  # if None, starts at beginning of bar
     to_beat: str | None = None  # if None, ends at end of bar
+    # 1-indexed source line where this span was declared, for diagnostics.
+    line: int | None = None
 
 
 @dataclass

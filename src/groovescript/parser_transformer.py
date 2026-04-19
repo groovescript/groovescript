@@ -713,7 +713,8 @@ class _GrooveScriptTransformer(Transformer):
         beat = _normalize_beat_label(str(items[2])) if len(items) > 2 else None
         return ("cue", Cue(text=text, bar=bar, beat=beat))
 
-    def section_dynamic_line(self, items):
+    @v_args(meta=True)
+    def section_dynamic_line(self, meta, items):
         # Five alternatives depending on form:
         #   cresc bar N                                    → [KIND, INT]         (shorthand)
         #   cresc from bar N to bar M                      → [KIND, INT, INT]
@@ -726,6 +727,7 @@ class _GrooveScriptTransformer(Transformer):
             kind = "cresc"
         elif kind == "decrescendo":
             kind = "decresc"
+        source_line = _meta_line(meta)
         # Walk items[1:] parsing INT/BEAT_LABEL tokens in order
         ints = []
         beats = []
@@ -736,7 +738,7 @@ class _GrooveScriptTransformer(Transformer):
                 ints.append(int(item))
         if len(ints) == 1:
             # Shorthand: cresc bar N → single-bar hairpin
-            return ("dynamic_span", DynamicSpan(kind=kind, from_bar=ints[0], to_bar=ints[0]))
+            return ("dynamic_span", DynamicSpan(kind=kind, from_bar=ints[0], to_bar=ints[0], line=source_line))
         from_bar, to_bar = ints[0], ints[1]
         if len(beats) == 0:
             from_beat, to_beat = None, None
@@ -751,7 +753,7 @@ class _GrooveScriptTransformer(Transformer):
                 from_beat, to_beat = None, beats[0]
         else:
             from_beat, to_beat = None, None
-        return ("dynamic_span", DynamicSpan(kind=kind, from_bar=from_bar, to_bar=to_bar, from_beat=from_beat, to_beat=to_beat))
+        return ("dynamic_span", DynamicSpan(kind=kind, from_bar=from_bar, to_bar=to_bar, from_beat=from_beat, to_beat=to_beat, line=source_line))
 
     def bar_number_list(self, items):
         return [int(i) for i in items]
