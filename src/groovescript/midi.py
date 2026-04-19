@@ -40,6 +40,11 @@ _VEL_GRACE   = 60   # velocity for flam/drag grace strokes
 _GRACE_TICKS  = 30  # ticks before main note that a grace stroke falls
 _HIT_DURATION = 30  # note-on → note-off gap for a standard percussive hit
 
+# Cymbals ring: their note-off is deferred until just before the next strike
+# of the same pitch (or extended past the end of the song with a tail).
+_SUSTAIN_PITCHES: frozenset[int] = frozenset({49, 51, 46})  # CR, RD, OH
+_SUSTAIN_TAIL_TICKS = 4 * TICKS_PER_BEAT  # ring-out past the final strike
+
 
 # ---------------------------------------------------------------------------
 # MIDI binary primitives
@@ -127,6 +132,45 @@ def _velocity(modifiers: list[str]) -> int:
     if "ghost" in modifiers:
         return _VEL_GHOST
     return _VEL_DEFAULT
+
+
+def _extend_sustained(
+    events: list[tuple[int, bytes]], end_tick: int
+) -> list[tuple[int, bytes]]:
+    """Let cymbals ring: replace the short note-off on every sustained pitch
+    with one that lands just before the next strike of the same pitch (or a
+    full bar past the song's end if no further strike follows).
+    """
+    on_ticks: dict[int, list[int]] = {}
+    for tick, data in events:
+        if (
+            (data[0] & 0xF0) == 0x90
+            and data[2] > 0
+            and data[1] in _SUSTAIN_PITCHES
+        ):
+            on_ticks.setdefault(data[1], []).append(tick)
+    for ticks in on_ticks.values():
+        ticks.sort()
+
+    out: list[tuple[int, bytes]] = []
+    for tick, data in events:
+        is_off = (
+            (data[0] & 0xF0) == 0x80
+            or ((data[0] & 0xF0) == 0x90 and data[2] == 0)
+        )
+        if is_off and data[1] in _SUSTAIN_PITCHES:
+            continue
+        out.append((tick, data))
+
+    for pitch, ticks in on_ticks.items():
+        for i, t in enumerate(ticks):
+            if i + 1 < len(ticks):
+                off_tick = max(t + 1, ticks[i + 1] - 1)
+            else:
+                off_tick = max(t + 1, end_tick + _SUSTAIN_TAIL_TICKS)
+            out.append((off_tick, _note_off(pitch)))
+
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -220,6 +264,7 @@ def _midi_from_song(song: IRSong) -> bytes:
             tempo_track.append((tick, _tempo_event(cur_bpm)))
 
     drum_track = _bars_to_drum_events(song.bars, bar_starts, default_ts)
+    drum_track = _extend_sustained(drum_track, cur_tick)
 
     header = b"MThd" + _u32(6) + _u16(1) + _u16(2) + _u16(TICKS_PER_BEAT)
     return header + _build_track(tempo_track) + _build_track(drum_track)
@@ -322,6 +367,8 @@ def _midi_from_groove(groove: IRGroove) -> bytes:
             continue
 
         _add_hit(drum_track, ev, note, tick)
+
+    drum_track = _extend_sustained(drum_track, groove.bars * bticks)
 
     header = b"MThd" + _u32(6) + _u16(1) + _u16(2) + _u16(TICKS_PER_BEAT)
     return header + _build_track(tempo_track) + _build_track(drum_track)

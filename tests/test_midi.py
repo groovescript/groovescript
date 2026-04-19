@@ -9,6 +9,7 @@ from groovescript.ast_nodes import Groove, Metadata, PatternLine, Section, Song,
 from groovescript.compiler import IRBar, IRGroove, IRSong, compile_groove, compile_song, Event
 from groovescript.midi import (
     TICKS_PER_BEAT,
+    _VEL_DEFAULT,
     _bar_ticks,
     _build_track,
     _timesig_event,
@@ -95,6 +96,52 @@ def _collect_note_on(track_body: bytes) -> list[tuple[int, int, int]]:
             # Other channel message (skip 2 data bytes for most)
             pos += 3
     return notes
+
+
+def _collect_note_off(track_body: bytes) -> list[tuple[int, int]]:
+    """Return (absolute_tick, pitch) for every Note Off event.
+
+    Zero-velocity Note Ons are also treated as Note Offs per MIDI convention.
+    """
+    offs = []
+    pos = 0
+    abs_tick = 0
+    while pos < len(track_body):
+        delta = 0
+        while True:
+            b = track_body[pos]
+            pos += 1
+            delta = (delta << 7) | (b & 0x7F)
+            if not (b & 0x80):
+                break
+        abs_tick += delta
+        if pos >= len(track_body):
+            break
+        status = track_body[pos]
+        if status == 0xFF:
+            pos += 1
+            pos += 1  # meta type
+            meta_len = 0
+            while True:
+                b = track_body[pos]; pos += 1
+                meta_len = (meta_len << 7) | (b & 0x7F)
+                if not (b & 0x80):
+                    break
+            pos += meta_len
+        elif (status & 0xF0) == 0x80:
+            pos += 1
+            pitch = track_body[pos]; pos += 1
+            pos += 1  # velocity
+            offs.append((abs_tick, pitch))
+        elif (status & 0xF0) == 0x90:
+            pos += 1
+            pitch = track_body[pos]; pos += 1
+            vel = track_body[pos]; pos += 1
+            if vel == 0:
+                offs.append((abs_tick, pitch))
+        else:
+            pos += 3
+    return offs
 
 
 # ---------------------------------------------------------------------------
@@ -516,6 +563,189 @@ section "intro":
     # No note-on events should fall in bar 2 (ticks bar_len .. 2*bar_len)
     bar2_notes = [t for t, p, v in notes if bar_len <= t < 2 * bar_len]
     assert bar2_notes == []
+
+
+# ---------------------------------------------------------------------------
+# Modifier: drag (two grace notes before main hit)
+# ---------------------------------------------------------------------------
+
+def test_drag_produces_three_sn_events():
+    """Drag on SN produces 3 note-on events: two grace strokes + the main hit.
+
+    Regression: prior to coverage being added, drag was implemented in the
+    exporter but never exercised by tests, so a regression in the grace-note
+    spacing or velocity could have slipped through.
+    """
+    src = """\
+groove "g":
+  SN: 2 drag
+"""
+    ir = compile_groove(parse(src).grooves[0])
+    data = emit_midi(ir)
+    tracks = _parse_tracks(data)
+    notes = _collect_note_on(tracks[1])
+    sn = sorted((t, v) for t, p, v in notes if p == 38)
+    assert len(sn) == 3
+    ticks = [t for t, v in sn]
+    # Two grace strokes precede the main hit, evenly spaced
+    assert ticks[0] < ticks[1] < ticks[2]
+    # Grace strokes use the lower grace velocity, main uses default
+    assert sn[0][1] < _VEL_DEFAULT
+    assert sn[1][1] < _VEL_DEFAULT
+    assert sn[2][1] == _VEL_DEFAULT
+
+
+# ---------------------------------------------------------------------------
+# Modifier: buzz roll (sustained note over a span)
+# ---------------------------------------------------------------------------
+
+def test_buzz_roll_emits_one_note_on_and_one_note_off():
+    """A half-note buzz on SN at beat 1 produces a single note-on at tick 0
+    and a single note-off two beats later — not a stream of restrikes.
+    """
+    src = """\
+groove "g":
+  SN: 1 buzz:2
+"""
+    ir = compile_groove(parse(src).grooves[0])
+    data = emit_midi(ir)
+    tracks = _parse_tracks(data)
+    sn_ons = [(t, v) for t, p, v in _collect_note_on(tracks[1]) if p == 38]
+    sn_offs = [t for t, p in _collect_note_off(tracks[1]) if p == 38]
+    assert len(sn_ons) == 1
+    assert sn_ons[0][0] == 0
+    assert len(sn_offs) == 1
+    # Half-note span = 2 beats = 2 * TICKS_PER_BEAT
+    assert sn_offs[0] == 2 * TICKS_PER_BEAT
+
+
+def test_buzz_roll_ties_across_bars():
+    """A buzz roll that starts in bar 1 and ties into bar 2 should produce one
+    note-on in bar 1 and one note-off in bar 2 — never an extra restrike at
+    the bar line.
+    """
+    src = """\
+metadata:
+  tempo: 120
+  time_signature: 4/4
+
+groove "buzz across":
+  bar 1:
+    SN: 4 buzz:2
+  bar 2:
+    SN: 2, 4
+
+section "A":
+  bars: 2
+  groove: "buzz across"
+"""
+    ir = compile_song(parse(src))
+    data = emit_midi(ir)
+    tracks = _parse_tracks(data)
+    bar_len = _bar_ticks("4/4")
+    sn_ons = sorted(t for t, p, v in _collect_note_on(tracks[1]) if p == 38)
+    sn_offs = sorted(t for t, p in _collect_note_off(tracks[1]) if p == 38)
+    # Note-ons: buzz start (beat 4 of bar 1), then beat 2 and beat 4 of bar 2.
+    # The cross-bar buzz must NOT add a second buzz note-on at bar 2 beat 1.
+    assert sn_ons[0] == 3 * TICKS_PER_BEAT
+    assert bar_len + TICKS_PER_BEAT in sn_ons
+    assert bar_len + 3 * TICKS_PER_BEAT in sn_ons
+    # The buzz note-off lands one beat into bar 2 (start tick + 2 beats)
+    assert (3 * TICKS_PER_BEAT + 2 * TICKS_PER_BEAT) in sn_offs
+
+
+# ---------------------------------------------------------------------------
+# Cymbal sustain: rides, crashes, open hi-hats ring until next strike
+# ---------------------------------------------------------------------------
+
+def test_crash_rings_to_next_strike():
+    """Two crashes in a 2-bar arrangement: the first crash's note-off lands
+    just before the second crash, not 30 ticks after the first.
+    """
+    src = """\
+metadata:
+  tempo: 120
+  time_signature: 4/4
+
+groove "g":
+  CR: 1
+  BD: 1, 3
+  SN: 2, 4
+
+section "A":
+  bars: 2
+  groove: "g"
+"""
+    ir = compile_song(parse(src))
+    data = emit_midi(ir)
+    tracks = _parse_tracks(data)
+    bar_len = _bar_ticks("4/4")
+    cr_ons = sorted(t for t, p, v in _collect_note_on(tracks[1]) if p == 49)
+    cr_offs = sorted(t for t, p in _collect_note_off(tracks[1]) if p == 49)
+    assert cr_ons == [0, bar_len]
+    # Two strikes → two note-offs. First off is just before second strike,
+    # second off rings out past the song's end.
+    assert len(cr_offs) == 2
+    assert bar_len - 32 < cr_offs[0] < bar_len, (
+        f"first crash should ring nearly until tick {bar_len}, got {cr_offs[0]}"
+    )
+    # Tail must extend past song end (2 bars = 2 * bar_len)
+    assert cr_offs[1] >= 2 * bar_len
+
+
+def test_single_crash_rings_past_song_end():
+    """A lone crash with no follow-up gets a tail extension past song end."""
+    src = """\
+groove "g":
+  CR: 1
+  BD: 1
+"""
+    ir = compile_groove(parse(src).grooves[0])
+    data = emit_midi(ir)
+    tracks = _parse_tracks(data)
+    bar_len = _bar_ticks("4/4")
+    cr_offs = [t for t, p in _collect_note_off(tracks[1]) if p == 49]
+    assert len(cr_offs) == 1
+    assert cr_offs[0] > bar_len, "crash should ring past the bar's end"
+
+
+def test_ride_and_open_hat_also_sustain():
+    """Ride (51) and open hi-hat (46) follow the same sustain rule as crash."""
+    for instrument, pitch in (("RD", 51), ("OH", 46)):
+        src = f"""\
+groove "g":
+  {instrument}: 1, 3
+  BD: 1
+"""
+        ir = compile_groove(parse(src).grooves[0])
+        data = emit_midi(ir)
+        tracks = _parse_tracks(data)
+        offs = sorted(t for t, p in _collect_note_off(tracks[1]) if p == pitch)
+        ons = sorted(t for t, p, v in _collect_note_on(tracks[1]) if p == pitch)
+        assert len(ons) == 2
+        assert len(offs) == 2
+        # First off is right before second strike, not 30 ticks after first
+        assert offs[0] > ons[0] + 30, (
+            f"{instrument}: expected sustain past 30 ticks, got off at {offs[0]}"
+        )
+
+
+def test_closed_hat_does_not_sustain():
+    """Closed hi-hat (42) is percussive and keeps its short note-off."""
+    src = """\
+groove "g":
+  HH: *4
+"""
+    ir = compile_groove(parse(src).grooves[0])
+    data = emit_midi(ir)
+    tracks = _parse_tracks(data)
+    ons = sorted(t for t, p, v in _collect_note_on(tracks[1]) if p == 42)
+    offs = sorted(t for t, p in _collect_note_off(tracks[1]) if p == 42)
+    assert len(ons) == 4
+    assert len(offs) == 4
+    # Each off lands exactly _HIT_DURATION after its on
+    for on, off in zip(ons, offs):
+        assert off - on == 30
 
 
 # ---------------------------------------------------------------------------

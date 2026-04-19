@@ -495,7 +495,10 @@ groove "beat":
     assert len(accent_notes) == 1
 
 
-def test_ghost_modifier_adds_soft_accent():
+def test_ghost_modifier_renders_as_parenthesized_notehead():
+    """Ghost notes are rendered as parenthesized noteheads — the standard
+    drum-notation convention — not as a <soft-accent> articulation.
+    """
     src = """\
 groove "beat":
     SN: 2 ghost
@@ -507,9 +510,15 @@ groove "beat":
     ghost_notes = [
         n for m in _measures(root)
         for n in m.findall("note")
-        if n.find(".//soft-accent") is not None
+        if n.find("notehead") is not None
+        and n.find("notehead").get("parentheses") == "yes"
     ]
     assert len(ghost_notes) == 1
+    # The legacy soft-accent articulation should no longer appear.
+    soft_accents = [
+        sa for m in _measures(root) for sa in m.findall(".//soft-accent")
+    ]
+    assert soft_accents == []
 
 
 def test_6_8_measure_duration():
@@ -539,3 +548,193 @@ section "A":
     ir2 = compile_song(song2)
     root = _parse_xml(emit_musicxml(ir2))
     assert _measure_duration(_measures(root)[0]) == _bar_total_divs("6/8")
+
+
+# ---------------------------------------------------------------------------
+# Regression: every <note>'s <duration> and <type> must agree
+# ---------------------------------------------------------------------------
+
+# (divs, type) entries the emitter is allowed to produce.  Anything else is a
+# bug: MusicXML consumers will render the visual type but allocate the
+# numeric duration, leading to barred-but-mismatched output.
+_VALID_DUR_TYPE = {
+    (96, "whole"),
+    (72, "half"),    # dotted half (with <dot/>)
+    (48, "half"),
+    (36, "quarter"), # dotted quarter
+    (32, "half"),    # triplet half
+    (24, "quarter"),
+    (18, "eighth"),  # dotted eighth
+    (16, "quarter"), # triplet quarter
+    (12, "eighth"),
+    ( 9, "16th"),    # dotted 16th
+    ( 8, "eighth"),  # triplet eighth
+    ( 6, "16th"),
+    ( 4, "16th"),    # triplet 16th
+    ( 3, "32nd"),
+    ( 2, "32nd"),    # triplet 32nd
+}
+
+
+def test_duration_and_type_always_agree():
+    """Regression: a slot duration that doesn't match a single MusicXML note
+    type (e.g. 60 = half + eighth) must be split into a tied chain rather
+    than emitting one note with mismatched <duration> and <type>.
+
+    Before the fix, a hit on beat 1 followed by a hit on beat 2& produced a
+    second note with duration=60 and type='half' — the engraver would honor
+    'half' visually (48 divs) and silently lose 12 divs of measure time.
+    """
+    src = """\
+groove "split":
+    BD: 1
+    SN: 2&
+"""
+    song = parse(src)
+    ir = compile_groove(song.grooves[0])
+    root = _parse_xml(emit_musicxml(ir))
+    for measure in _measures(root):
+        for note in measure.findall("note"):
+            dur_el = note.find("duration")
+            type_el = note.find("type")
+            if dur_el is None or type_el is None:
+                continue  # grace notes have no duration
+            dur = int(dur_el.text)
+            type_name = type_el.text
+            assert (dur, type_name) in _VALID_DUR_TYPE, (
+                f"<duration>{dur}</duration> with <type>{type_name}</type> "
+                f"is not a valid MusicXML pairing"
+            )
+
+
+def test_split_slot_emits_tied_chain():
+    """A 60-div slot (half + eighth) emits two notes joined by a tie."""
+    src = """\
+groove "split":
+    SN: 1, 2&
+"""
+    song = parse(src)
+    ir = compile_groove(song.grooves[0])
+    root = _parse_xml(emit_musicxml(ir))
+    notes = _measures(root)[0].findall("note")
+    # Find the SN note at beat 2& (3/8 through the bar) — it is the second
+    # SN onset; with the split it's now two notes joined by a tie.
+    tie_starts = [n for n in notes if n.find("tie[@type='start']") is not None]
+    tie_stops = [n for n in notes if n.find("tie[@type='stop']") is not None]
+    assert tie_starts, "expected at least one <tie type='start'/>"
+    assert tie_stops, "expected at least one <tie type='stop'/>"
+    # And measure duration must still sum correctly
+    assert _measure_duration(_measures(root)[0]) == _bar_total_divs("4/4")
+
+
+# ---------------------------------------------------------------------------
+# Flam / drag grace notes
+# ---------------------------------------------------------------------------
+
+def test_flam_emits_one_grace_note_before_main_hit():
+    """A flam on SN produces one <grace/> note immediately before the main
+    SN note, with the snare's display position.
+    """
+    src = """\
+groove "g":
+    SN: 2 flam
+"""
+    song = parse(src)
+    ir = compile_groove(song.grooves[0])
+    root = _parse_xml(emit_musicxml(ir))
+    notes = _measures(root)[0].findall("note")
+    grace_notes = [n for n in notes if n.find("grace") is not None]
+    assert len(grace_notes) == 1
+    # Grace note should display on the SN line (C5)
+    g = grace_notes[0]
+    assert g.find("unpitched/display-step").text == "C"
+    assert g.find("unpitched/display-octave").text == "5"
+    # Grace note has a slash through the flag (open grace, flam convention)
+    assert g.find("grace").get("slash") == "yes"
+    # Grace must come before the main SN note in document order
+    grace_idx = list(notes).index(g)
+    sn_main = next(
+        n for n in notes
+        if n.find("grace") is None
+        and n.find("unpitched") is not None
+        and n.find("unpitched/display-step").text == "C"
+        and n.find("duration") is not None
+    )
+    assert list(notes).index(sn_main) > grace_idx
+
+
+def test_drag_emits_two_grace_notes():
+    """A drag on SN produces two <grace/> notes before the main hit."""
+    src = """\
+groove "g":
+    SN: 2 drag
+"""
+    song = parse(src)
+    ir = compile_groove(song.grooves[0])
+    root = _parse_xml(emit_musicxml(ir))
+    notes = _measures(root)[0].findall("note")
+    grace_notes = [n for n in notes if n.find("grace") is not None]
+    assert len(grace_notes) == 2
+
+
+def test_grace_notes_have_no_duration():
+    """Grace notes must omit <duration> per the MusicXML spec."""
+    src = """\
+groove "g":
+    SN: 2 flam
+"""
+    song = parse(src)
+    ir = compile_groove(song.grooves[0])
+    root = _parse_xml(emit_musicxml(ir))
+    for n in _measures(root)[0].findall("note"):
+        if n.find("grace") is not None:
+            assert n.find("duration") is None
+
+
+# ---------------------------------------------------------------------------
+# Articulations only on the first split-part of a tied chain
+# ---------------------------------------------------------------------------
+
+def test_accent_appears_only_on_first_part_of_split():
+    """When a slot is split into multiple tied notes, the accent
+    articulation is attached only to the first note (the attack), not
+    duplicated on every tied continuation.
+    """
+    src = """\
+groove "g":
+    BD: 1
+    SN: 2& accent
+"""
+    song = parse(src)
+    ir = compile_groove(song.grooves[0])
+    root = _parse_xml(emit_musicxml(ir))
+    accents = [a for n in _measures(root)[0].findall("note") for a in n.findall(".//accent")]
+    assert len(accents) == 1
+
+
+# ---------------------------------------------------------------------------
+# Cymbal sustain comparison for MusicXML: ghost note carries parens across ties
+# ---------------------------------------------------------------------------
+
+def test_ghost_parens_carry_across_split_parts():
+    """If a ghost note's slot has to be split with ties, the parenthesized
+    notehead appears on every part so the visual cue isn't lost on the tail.
+    """
+    src = """\
+groove "g":
+    SN: 1 ghost, 2&
+"""
+    song = parse(src)
+    ir = compile_groove(song.grooves[0])
+    root = _parse_xml(emit_musicxml(ir))
+    notes = _measures(root)[0].findall("note")
+    # The ghost note at beat 1 spans 36 divs (single note, no split). Choose
+    # a more aggressive split scenario:
+    sn_paren = [
+        n for n in notes
+        if n.find("unpitched/display-step") is not None
+        and n.find("unpitched/display-step").text == "C"
+        and n.find("notehead") is not None
+        and n.find("notehead").get("parentheses") == "yes"
+    ]
+    assert len(sn_paren) >= 1
