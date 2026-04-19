@@ -220,7 +220,13 @@ def _musicxml_from_groove(groove: IRGroove) -> bytes:
 # ---------------------------------------------------------------------------
 
 def _add_notes(parent: Element, events: list[Event], bar_divs: int) -> None:
-    """Append <note> elements covering the full measure duration."""
+    """Append <note> elements covering the full measure duration.
+
+    Slot durations that cannot be expressed by a single MusicXML note type
+    are split into a tied chain so that <duration> and <type> always agree
+    (e.g. a 60-division gap becomes a half tied to an eighth, not a single
+    note with duration=60 and type='half').
+    """
     # Skip tied-from-prev events (buzz continuations started in the prior bar)
     active = [ev for ev in events if not ev.tied_from_prev]
 
@@ -245,9 +251,26 @@ def _add_notes(parent: Element, events: list[Event], bar_divs: int) -> None:
 
         next_onset = onsets[idx + 1] if idx + 1 < len(onsets) else bar_divs
         slot_dur = max(next_onset - onset, 1)
+        parts = _split_duration(slot_dur)
+        n_parts = len(parts)
+        chord_evs = by_onset[onset]
 
-        for chord_idx, ev in enumerate(by_onset[onset]):
-            _append_note(parent, ev, slot_dur, chord=(chord_idx > 0))
+        # Grace notes (flam/drag) appear once before the chord, on the
+        # first split-part only.
+        for ev in chord_evs:
+            _append_grace_notes(parent, ev)
+
+        for part_idx, part_dur in enumerate(parts):
+            is_first_part = part_idx == 0
+            is_last_part = part_idx == n_parts - 1
+            for chord_idx, ev in enumerate(chord_evs):
+                _append_note(
+                    parent, ev, part_dur,
+                    chord=(chord_idx > 0),
+                    split_tie_start=not is_last_part,
+                    split_tie_stop=not is_first_part,
+                    show_articulation=is_first_part,
+                )
 
         pos = next_onset
 
@@ -257,7 +280,42 @@ def _add_notes(parent: Element, events: list[Event], bar_divs: int) -> None:
             _append_rest(parent, rest_divs)
 
 
-def _append_note(parent: Element, ev: Event, dur: int, chord: bool) -> None:
+def _append_grace_notes(parent: Element, ev: Event) -> None:
+    """Emit grace notes for a flam (1) or drag (2) modifier before the chord."""
+    disp = _DISPLAY.get(ev.instrument)
+    if disp is None:
+        return
+
+    if "flam" in ev.modifiers:
+        n_graces = 1
+    elif "drag" in ev.modifiers:
+        n_graces = 2
+    else:
+        return
+
+    step, octave, notehead, stem_dir = disp
+    for _ in range(n_graces):
+        g = SubElement(parent, "note")
+        SubElement(g, "grace", slash="yes")
+        unp = SubElement(g, "unpitched")
+        SubElement(unp, "display-step").text = step
+        SubElement(unp, "display-octave").text = str(octave)
+        SubElement(g, "voice").text = "1"
+        SubElement(g, "type").text = "16th"
+        SubElement(g, "stem").text = stem_dir
+        SubElement(g, "notehead").text = notehead
+
+
+def _append_note(
+    parent: Element,
+    ev: Event,
+    dur: int,
+    *,
+    chord: bool,
+    split_tie_start: bool = False,
+    split_tie_stop: bool = False,
+    show_articulation: bool = True,
+) -> None:
     """Append a single <note> element for one drum hit."""
     disp = _DISPLAY.get(ev.instrument)
     if disp is None:
@@ -276,10 +334,12 @@ def _append_note(parent: Element, ev: Event, dur: int, chord: bool) -> None:
     SubElement(note, "duration").text = str(dur)
 
     # Tie elements (must come before <type> per MusicXML schema)
-    if ev.tied_to_next:
-        SubElement(note, "tie", type="start")
-    if ev.tied_from_prev:
+    tie_stop = ev.tied_from_prev or split_tie_stop
+    tie_start = ev.tied_to_next or split_tie_start
+    if tie_stop:
         SubElement(note, "tie", type="stop")
+    if tie_start:
+        SubElement(note, "tie", type="start")
 
     type_name, dots, actual, normal = _duration_attrs(dur)
     SubElement(note, "type").text = type_name
@@ -292,9 +352,16 @@ def _append_note(parent: Element, ev: Event, dur: int, chord: bool) -> None:
         SubElement(tm, "normal-notes").text = str(normal)
 
     SubElement(note, "stem").text = stem_dir
-    SubElement(note, "notehead").text = notehead
 
-    # Notations block (ties, articulations)
+    notehead_el = SubElement(note, "notehead")
+    notehead_el.text = notehead
+    # Ghost notes render as parenthesized noteheads on every tied part of
+    # the chain so the visual cue carries across the tie.
+    if "ghost" in ev.modifiers:
+        notehead_el.set("parentheses", "yes")
+
+    # Notations block (ties, accents). Articulations only attach to the
+    # first split-part (the attack); ties attach to every part involved.
     notations: Element | None = None
 
     def _notations() -> Element:
@@ -303,19 +370,16 @@ def _append_note(parent: Element, ev: Event, dur: int, chord: bool) -> None:
             notations = SubElement(note, "notations")
         return notations
 
-    if ev.tied_to_next or ev.tied_from_prev:
+    if tie_stop or tie_start:
         n = _notations()
-        if ev.tied_to_next:
-            SubElement(n, "tied", type="start")
-        if ev.tied_from_prev:
+        if tie_stop:
             SubElement(n, "tied", type="stop")
+        if tie_start:
+            SubElement(n, "tied", type="start")
 
-    if "accent" in ev.modifiers or "ghost" in ev.modifiers:
+    if show_articulation and "accent" in ev.modifiers:
         artic = SubElement(_notations(), "articulations")
-        if "accent" in ev.modifiers:
-            SubElement(artic, "accent")
-        if "ghost" in ev.modifiers:
-            SubElement(artic, "soft-accent")
+        SubElement(artic, "accent")
 
 
 def _append_rest(parent: Element, dur: int) -> None:
