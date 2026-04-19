@@ -396,3 +396,29 @@ def test_buzz_overlap_with_hand_played_reports_line() -> None:
     # line 3, not line 2.
     assert err.line == 3, f"expected line 3 (the HH line), got {err.line}"
     assert "overlap" in err.message
+
+
+def test_fill_internal_cresc_out_of_range_reports_line() -> None:
+    """Regression: a ``cresc`` declared inside a fill must use fill-internal
+    bar numbers (1..len(fill.bars)). Previously a user who wrote a
+    section-bar number (e.g. ``bar 10`` because the fill is placed at bar
+    10) got a silent no-op — the shifted span ended up past the section
+    end and was dropped. Compile-time error must cite the span's line.
+    """
+    src = (
+        'groove "g":\n'
+        "  BD: 1\n"
+        "\n"
+        'section "s":\n'
+        "  bars: 4\n"
+        '  groove: "g"\n'
+        "  fill at bar 4:\n"
+        '    count "1 and 2 and":\n'
+        "      BD: 1\n"
+        "      SN: 1 and 2 and\n"
+        "    cresc from bar 4 to bar 4\n"
+    )
+    err = _compile_err(src)
+    assert err.line == 11, f"expected line 11 (the cresc), got {err.line}"
+    assert "cresc" in err.message
+    assert "fill-internal" in err.hint
