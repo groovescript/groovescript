@@ -502,9 +502,10 @@ section "s":
 
 # ── Modify actions: add/remove modifiers on existing events ────────────────
 #
-# DSL addition: `modify add <mod> at <target>` and
-# `modify remove <mod> at <target>` adjust modifiers on events that already
-# exist at the target beat positions, without touching the instruments.
+# DSL addition: `modify add <mod> to <instrument> at <target>` and
+# `modify remove <mod> from <instrument> at <target>` adjust modifiers on
+# events that already exist at the target beat positions for the named
+# instrument, without adding or removing the instrument itself.
 
 def test_parse_modify_add_flam_action():
     src = """\
@@ -516,11 +517,12 @@ section "s":
   bars: 2
   groove: "beat"
   variation at bar 2:
-    modify add flam at 2
+    modify add flam to snare at 2
 """
     song = parse(src)
     action = song.sections[0].variations[0].actions[0]
     assert action.action == "modify_add"
+    assert action.instrument == "SN"
     assert action.modifiers == ["flam"]
     assert action.beats == ["2"]
 
@@ -534,11 +536,12 @@ section "s":
   bars: 2
   groove: "beat"
   variation at bar 2:
-    modify remove accent at 1
+    modify remove accent from snare at 1
 """
     song = parse(src)
     action = song.sections[0].variations[0].actions[0]
     assert action.action == "modify_remove"
+    assert action.instrument == "SN"
     assert action.modifiers == ["accent"]
     assert action.beats == ["1"]
 
@@ -553,11 +556,12 @@ section "s":
   bars: 2
   groove: "beat"
   variation at bar 2:
-    modify add flam accent at 2, 4
+    modify add flam accent to snare at 2, 4
 """
     song = parse(src)
     action = song.sections[0].variations[0].actions[0]
     assert action.action == "modify_add"
+    assert action.instrument == "SN"
     assert action.modifiers == ["flam", "accent"]
     assert action.beats == ["2", "4"]
 
@@ -572,9 +576,10 @@ section "s":
   bars: 2
   groove: "beat"
   variation at bar 2:
-    modify add ghost at *
+    modify add ghost to hihat at *
 """
     song = parse(src)
     action = song.sections[0].variations[0].actions[0]
     assert action.action == "modify_add"
+    assert action.instrument == "HH"
     assert action.beats == "*"

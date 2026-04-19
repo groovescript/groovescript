@@ -672,10 +672,9 @@ def test_compile_variation_at_multiple_bars():
 
 
 def test_compile_variation_modify_add_flam_attaches_to_existing_hits():
-    """``modify add flam at 2`` stamps ``flam`` on all events at beat 2,
-    leaving events on other beats and modifiers on other events untouched.
-
-    Uses a groove with only SN at beat 2 (flam is restricted to SN and toms).
+    """``modify add flam to snare at 2`` stamps ``flam`` on the snare hit at
+    beat 2, leaving events on other beats and modifiers on other events
+    untouched.
     """
     snare_groove = Groove(
         name="snare groove",
@@ -688,7 +687,12 @@ def test_compile_variation_modify_add_flam_attaches_to_existing_hits():
         name="flam 2",
         bars=[1],
         actions=[
-            VariationAction(action="modify_add", modifiers=["flam"], beats=["2"]),
+            VariationAction(
+                action="modify_add",
+                instrument="SN",
+                modifiers=["flam"],
+                beats=["2"],
+            ),
         ],
     )
     song = Song(
@@ -710,8 +714,9 @@ def test_compile_variation_modify_add_flam_attaches_to_existing_hits():
 
 
 def test_compile_variation_modify_remove_strips_modifier_from_existing_hits():
-    """``modify remove accent at 1`` drops only the named modifier, leaving
-    the event itself (and any other modifiers it carries) in place."""
+    """``modify remove accent from bass at 1`` drops only the named modifier
+    from the named instrument's hit, leaving the event itself (and any other
+    modifiers it carries) in place."""
     from groovescript.ast_nodes import BeatHit as _BeatHit
 
     # Custom groove with an accented bass on beat 1.
@@ -728,7 +733,12 @@ def test_compile_variation_modify_remove_strips_modifier_from_existing_hits():
         name="calm",
         bars=[1],
         actions=[
-            VariationAction(action="modify_remove", modifiers=["accent"], beats=["1"]),
+            VariationAction(
+                action="modify_remove",
+                instrument="BD",
+                modifiers=["accent"],
+                beats=["1"],
+            ),
         ],
     )
     song = Song(

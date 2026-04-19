@@ -816,8 +816,8 @@ are equivalent for a single bar.
 | `add`           | `add INSTRUMENT [mods] [INSTRUMENT [mods]]… at <beats>`      |
 | `remove`        | `remove INSTRUMENT [INSTRUMENT]… at <beats>`                 |
 | `replace`       | `replace INSTRUMENT [INSTRUMENT]… with INSTRUMENT [mods] [INSTRUMENT [mods]]… at <beats>` |
-| `modify add`    | `modify add MODIFIER [MODIFIER]… at <beats>` (decorate existing hits) |
-| `modify remove` | `modify remove MODIFIER [MODIFIER]… at <beats>` (strip modifiers from existing hits) |
+| `modify add`    | `modify add MODIFIER [MODIFIER]… to INSTRUMENT at <beats>` (decorate an existing hit on that instrument) |
+| `modify remove` | `modify remove MODIFIER [MODIFIER]… from INSTRUMENT at <beats>` (strip modifiers from an existing hit on that instrument) |
 | `substitute`    | `count: <…>` + `notes: <…>` (wipes the bar and replaces it with the count+notes body) |
 
 `add`, `remove`, and `replace` accept multiple instruments in a single
@@ -844,20 +844,20 @@ variation "shot" at bar 8:
 Simultaneous-hit groups inside `notes:` may use either commas
 (`(bass, crash)`) or whitespace (`(bass crash)`) between instruments.
 
-`modify add` / `modify remove` decorate hits that are already there —
-handy when the variation is "play the same pattern but flam beat 2" and
-you don't want to re-state the instruments:
+`modify add` / `modify remove` decorate a hit that's already there —
+handy when the variation is "play the same pattern but flam the snare on
+beat 2" and you don't want to re-state the beat positions:
 
 ```
 variation at bar 4:
-  modify add flam at 2        # flam every hit on beat 2
-  modify remove accent at 1   # strip the accent from every hit on beat 1
+  modify add flam to snare at 2        # flam the snare on beat 2
+  modify remove accent from bass at 1  # strip the accent from the bass on beat 1
 ```
 
-Both forms accept multiple modifiers (`modify add flam accent at 2`) and
-either a comma-separated beat list, `*` for every beat in the bar, or a
-bare `at *`. `modify remove` silently ignores modifiers that aren't on an
-event, so sweeping removals are safe.
+Both forms accept multiple modifiers (`modify add flam accent to snare at
+2`) and either a comma-separated beat list, `*` for every beat in the bar,
+or a bare `at *`. `modify remove` silently ignores modifiers that aren't
+on the named instrument's event, so sweeping removals are safe.
 
 Bar lists in `variation at bars …:` may be comma- or space-separated —
 `variation at bars 1 5:` parses the same as `variation at bars 1, 5:`.

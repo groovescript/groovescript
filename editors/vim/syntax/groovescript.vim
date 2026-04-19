@@ -58,7 +58,7 @@ syn keyword gsPlacement at bar bars beat placeholder rest from to except
 
 " -- Variation action keywords ----------------------------------------------
 " `add BD at 1`, `remove HH at *`, `replace SN with SN accent at 2`,
-" `modify add flam at 2`, `modify remove accent at 1`.
+" `modify add flam to snare at 2`, `modify remove accent from bass at 1`.
 syn keyword gsAction add remove replace with modify
 
 " -- Hit modifiers ----------------------------------------------------------

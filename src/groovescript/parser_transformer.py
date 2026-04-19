@@ -830,24 +830,28 @@ class _GrooveScriptTransformer(Transformer):
         return VariationAction(action="substitute", count_notes=(count_str, notes_str))
 
     def modify_add_action(self, items):
-        # items: [MODIFIER+, variation_target]
+        # items: [MODIFIER+, INSTRUMENT, variation_target]
         beats = items[-1]
-        raw_mods = [str(m) for m in items[:-1]]
+        instrument = _normalize_instrument(str(items[-2]))
+        raw_mods = [str(m) for m in items[:-2]]
         modifiers, buzz_dur = _extract_buzz_duration(raw_mods)
         return VariationAction(
             action="modify_add",
+            instrument=instrument,
             beats=beats,
             modifiers=list(modifiers),
             buzz_duration=buzz_dur,
         )
 
     def modify_remove_action(self, items):
-        # items: [MODIFIER+, variation_target]
+        # items: [MODIFIER+, INSTRUMENT, variation_target]
         beats = items[-1]
-        raw_mods = [str(m) for m in items[:-1]]
+        instrument = _normalize_instrument(str(items[-2]))
+        raw_mods = [str(m) for m in items[:-2]]
         modifiers, buzz_dur = _extract_buzz_duration(raw_mods)
         return VariationAction(
             action="modify_remove",
+            instrument=instrument,
             beats=beats,
             modifiers=list(modifiers),
             buzz_duration=buzz_dur,

@@ -127,8 +127,8 @@ remove_action: "remove" INSTRUMENT+ "at" variation_target
 replace_action: "replace" INSTRUMENT+ "with" replace_instr_spec+ "at" variation_target
 replace_instr_spec: INSTRUMENT MODIFIER*
 substitute_action: "count" ":" ESCAPED_STRING "notes" ":" ESCAPED_STRING
-modify_action: "modify" "add" MODIFIER+ "at" variation_target     -> modify_add_action
-             | "modify" "remove" MODIFIER+ "at" variation_target  -> modify_remove_action
+modify_action: "modify" "add" MODIFIER+ "to" INSTRUMENT "at" variation_target       -> modify_add_action
+             | "modify" "remove" MODIFIER+ "from" INSTRUMENT "at" variation_target  -> modify_remove_action
 
 ?pattern_value: STAR_VALUE "except" beat_list -> star_except
               | STAR_VALUE -> star

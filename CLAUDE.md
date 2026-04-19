@@ -39,7 +39,7 @@ charts/               # Real (non-test) charts: .gs source + compiled .ly + .pdf
 - IR beat positions use `fractions.Fraction` -- not float, not int grid
 - Per-bar subdivision is inferred from bar content, not declared; one of `{1,2,3,4}` slots-per-beat; mixing straight 16ths with triplets in one bar is rejected
 - Fill bars have independent subdivision from surrounding groove bars
-- Variation actions are `add`, `remove`, `replace`, `substitute` -- no `modify`
+- Variation actions are `add`, `remove`, `replace`, `substitute`, `modify add`, `modify remove`. `modify add <mod> to <instrument> at <beats>` / `modify remove <mod> from <instrument> at <beats>` target existing hits on the named instrument without re-stating beat positions
 - File order = arrangement order
 - A section is either classic (`bars:` + `groove:`) or play-list (`play:`) -- mutually exclusive
 - Section `like "parent"` inherits the basic arrangement only (scalars, inline grooves, section-level dynamic spans, crash-in flag). `like "parent" with fills|variations|cues` opts into additional categories. Categories are order-insensitive, commas optional, duplicates rejected. Scalar fields use inheritor's value when set, list fields concatenate. Dynamic spans defined inside a groove or fill travel with that groove/fill wherever it's referenced

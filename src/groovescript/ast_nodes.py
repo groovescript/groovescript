@@ -194,10 +194,10 @@ class FillPlaceholder:
 
 @dataclass
 class VariationAction:
-    """A single add/remove/replace/substitute action within a variation block."""
+    """A single add/remove/replace/substitute/modify action within a variation block."""
 
-    action: str  # "add", "remove", "replace", or "substitute"
-    instrument: str = ""  # instrument to add/remove/replace (unused for "substitute")
+    action: str  # "add", "remove", "replace", "substitute", "modify_add", or "modify_remove"
+    instrument: str = ""  # instrument to add/remove/replace/modify (unused for "substitute")
     beats: str | list[str] = field(default_factory=list)  # "*" or list of beat labels
     target_instrument: str | None = None  # for "replace": the replacement instrument
     modifiers: list[str] = field(default_factory=list)  # "ghost", "accent"
