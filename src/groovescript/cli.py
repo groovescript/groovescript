@@ -86,8 +86,13 @@ def _run_lint(input_path: str, with_style: bool) -> int:
             )
             return 1
     notation_warnings = check_notation(ir) if ir is not None else []
-    for w in notation_warnings:
-        print(w.render(filename=input_path), file=sys.stderr)
+    if notation_warnings:
+        notation_source = Path(input_path).read_text()
+        for w in notation_warnings:
+            print(
+                w.render(filename=input_path, source=notation_source),
+                file=sys.stderr,
+            )
     if style_warnings:
         noun = "warning" if len(style_warnings) == 1 else "warnings"
         print(f"{len(style_warnings)} style {noun} in {input_path}")
@@ -221,8 +226,13 @@ def _run_compile(input_path: str, output_path: str) -> int:
     Path(output_path).write_text(ly_source)
     print(f"Wrote {output_path}")
     notation_warnings = check_notation(ir)
-    for w in notation_warnings:
-        print(w.render(filename=input_path), file=sys.stderr)
+    if notation_warnings:
+        notation_source = Path(input_path).read_text()
+        for w in notation_warnings:
+            print(
+                w.render(filename=input_path, source=notation_source),
+                file=sys.stderr,
+            )
     return 0
 
 

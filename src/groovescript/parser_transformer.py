@@ -9,7 +9,7 @@ import ast as _ast
 import re
 from pathlib import Path
 
-from lark import Lark, Transformer
+from lark import Lark, Transformer, v_args
 
 from .ast_nodes import (
     INHERIT_CATEGORIES,
@@ -45,6 +45,17 @@ from .parser_notation import (
 )
 
 _GRAMMAR_PATH = Path(__file__).parent / "grammar.lark"
+
+
+def _meta_line(meta) -> int | None:
+    """Extract the 1-indexed source line from a Lark tree's propagated meta.
+
+    Returns ``None`` when the tree is empty (no tokens) so callers can treat
+    missing location info uniformly.
+    """
+    if getattr(meta, "empty", False):
+        return None
+    return getattr(meta, "line", None)
 
 
 class _GrooveScriptTransformer(Transformer):
@@ -254,15 +265,22 @@ class _GrooveScriptTransformer(Transformer):
     def pattern_bar_text(self, items):
         return ("bar_text", _ast.literal_eval(str(items[0])))
 
-    def pattern_line(self, items):
-        return PatternLine(instrument=_normalize_instrument(str(items[0])), beats=items[1])
+    @v_args(meta=True)
+    def pattern_line(self, meta, items):
+        return PatternLine(
+            instrument=_normalize_instrument(str(items[0])),
+            beats=items[1],
+            line=_meta_line(meta),
+        )
 
-    def groove_pos_line(self, items):
+    @v_args(meta=True)
+    def groove_pos_line(self, meta, items):
         """Position→instruments line in groove pattern: '1: BD, HH'
         Normalizes to a list of PatternLines, one per instrument hit."""
         beat_label = _normalize_beat_label(str(items[0]))
 
         instr_hits = items[1]  # list of InstrumentHit from fill_instruments
+        source_line = _meta_line(meta)
         result = []
         for instr_hit in instr_hits:
             modifiers = getattr(instr_hit, "modifiers", [])
@@ -272,7 +290,11 @@ class _GrooveScriptTransformer(Transformer):
                 modifiers if modifiers else None,
                 buzz_duration=buzz_dur,
             )
-            result.append(PatternLine(instrument=str(instr_hit), beats=[b]))
+            result.append(
+                PatternLine(
+                    instrument=str(instr_hit), beats=[b], line=source_line
+                )
+            )
         return result
 
     def fill_def(self, items):
@@ -344,13 +366,14 @@ class _GrooveScriptTransformer(Transformer):
         instruments = items[1]
         return FillLine(beat=beat, instruments=instruments)
 
-    def fill_instr_line(self, items):
+    @v_args(meta=True)
+    def fill_instr_line(self, meta, items):
         """Instrument→positions line in fill count block: 'BD: 1, 3' or 'BD: *8 except 4&'
         Normalizes to a list of FillLines (one per beat) or a PatternLine (for star specs)."""
         instrument = _normalize_instrument(str(items[0]))
         value = items[1]  # list of BeatHit from beat_list, or StarSpec from star/star_except
         if isinstance(value, StarSpec):
-            return PatternLine(instrument=instrument, beats=value)
+            return PatternLine(instrument=instrument, beats=value, line=_meta_line(meta))
         result = []
         for beat_hit in value:
             modifiers = getattr(beat_hit, "modifiers", [])
@@ -771,10 +794,12 @@ class _GrooveScriptTransformer(Transformer):
         modifiers, buzz_dur = _extract_buzz_duration(raw_mods)
         return (instrument, modifiers, buzz_dur)
 
-    def add_action(self, items):
+    @v_args(meta=True)
+    def add_action(self, meta, items):
         # items: [(instrument, modifiers, buzz_duration)+, pattern_value]
         beats = items[-1]
         specs = items[:-1]
+        source_line = _meta_line(meta)
         return [
             VariationAction(
                 action="add",
@@ -782,20 +807,26 @@ class _GrooveScriptTransformer(Transformer):
                 beats=beats,
                 modifiers=list(modifiers),
                 buzz_duration=buzz_duration,
+                line=source_line,
             )
             for instrument, modifiers, buzz_duration in specs
         ]
 
-    def remove_action(self, items):
+    @v_args(meta=True)
+    def remove_action(self, meta, items):
         # items: [INSTRUMENT+, pattern_value]
         beats = items[-1]
         instruments = [_normalize_instrument(str(tok)) for tok in items[:-1]]
+        source_line = _meta_line(meta)
         return [
-            VariationAction(action="remove", instrument=instrument, beats=beats)
+            VariationAction(
+                action="remove", instrument=instrument, beats=beats, line=source_line
+            )
             for instrument in instruments
         ]
 
-    def replace_action(self, items):
+    @v_args(meta=True)
+    def replace_action(self, meta, items):
         # items: [INSTRUMENT+ (from), (INSTRUMENT, modifiers, buzz_duration)+ (to), pattern_value]
         beats = items[-1]
         middle = items[:-1]
@@ -811,6 +842,7 @@ class _GrooveScriptTransformer(Transformer):
                 f"replace: number of source instruments ({len(sources)}) must "
                 f"match number of target instruments ({len(targets)})"
             )
+        source_line = _meta_line(meta)
         return [
             VariationAction(
                 action="replace",
@@ -819,17 +851,24 @@ class _GrooveScriptTransformer(Transformer):
                 beats=beats,
                 modifiers=list(target_mods),
                 buzz_duration=target_buzz,
+                line=source_line,
             )
             for source, (target, target_mods, target_buzz) in zip(sources, targets)
         ]
 
-    def substitute_action(self, items):
+    @v_args(meta=True)
+    def substitute_action(self, meta, items):
         # items: [ESCAPED_STRING count, ESCAPED_STRING notes]
         count_str = _ast.literal_eval(str(items[0]))
         notes_str = _ast.literal_eval(str(items[1]))
-        return VariationAction(action="substitute", count_notes=(count_str, notes_str))
+        return VariationAction(
+            action="substitute",
+            count_notes=(count_str, notes_str),
+            line=_meta_line(meta),
+        )
 
-    def modify_add_action(self, items):
+    @v_args(meta=True)
+    def modify_add_action(self, meta, items):
         # items: [MODIFIER+, INSTRUMENT, variation_target]
         beats = items[-1]
         instrument = _normalize_instrument(str(items[-2]))
@@ -841,9 +880,11 @@ class _GrooveScriptTransformer(Transformer):
             beats=beats,
             modifiers=list(modifiers),
             buzz_duration=buzz_dur,
+            line=_meta_line(meta),
         )
 
-    def modify_remove_action(self, items):
+    @v_args(meta=True)
+    def modify_remove_action(self, meta, items):
         # items: [MODIFIER+, INSTRUMENT, variation_target]
         beats = items[-1]
         instrument = _normalize_instrument(str(items[-2]))
@@ -855,6 +896,7 @@ class _GrooveScriptTransformer(Transformer):
             beats=beats,
             modifiers=list(modifiers),
             buzz_duration=buzz_dur,
+            line=_meta_line(meta),
         )
 
     def star(self, items):

@@ -315,17 +315,29 @@ def _check_bar_hands(events: list, bar_context: str) -> list[StyleWarning]:
     """
     from .compiler import _HAND_INSTRUMENTS
 
-    by_pos: dict[Fraction, list[tuple[str, list[str]]]] = defaultdict(list)
+    by_pos: dict[Fraction, list] = defaultdict(list)
     for event in events:
         if event.instrument in _HAND_INSTRUMENTS:
-            by_pos[event.beat_position].append((event.instrument, event.modifiers))
+            by_pos[event.beat_position].append(event)
     warnings: list[StyleWarning] = []
-    for pos, instrument_mods in sorted(by_pos.items()):
-        instruments = [inst for inst, _ in instrument_mods]
-        flam_instruments = [inst for inst, mods in instrument_mods if "flam" in mods]
+    for pos, hand_events in sorted(by_pos.items()):
+        instruments = [e.instrument for e in hand_events]
+        flam_events = [e for e in hand_events if "flam" in e.modifiers]
+        flam_instruments = [e.instrument for e in flam_events]
         if flam_instruments and len(instruments) >= 2:
             names = ", ".join(instruments)
             flam_names = ", ".join(flam_instruments)
+            # Prefer the flam's source line: that's the "one hit too many"
+            # that typically triggers the conflict.
+            line = next(
+                (e.source_line for e in flam_events if e.source_line is not None),
+                None,
+            )
+            if line is None:
+                line = next(
+                    (e.source_line for e in hand_events if e.source_line is not None),
+                    None,
+                )
             warnings.append(StyleWarning(
                 message=(
                     f"{bar_context}: flam on {flam_names} uses both hands but "
@@ -333,15 +345,21 @@ def _check_bar_hands(events: list, bar_context: str) -> list[StyleWarning]:
                     f"also sound at beat position {pos} ({names})"
                 ),
                 hint="a flam uses both hands; remove or revoice the simultaneous parts",
+                line=line,
             ))
         elif len(instruments) > 2:
             names = ", ".join(instruments)
+            line = next(
+                (e.source_line for e in hand_events if e.source_line is not None),
+                None,
+            )
             warnings.append(StyleWarning(
                 message=(
                     f"{bar_context}: {len(instruments)} hand-played instruments "
                     f"sound simultaneously at beat position {pos} ({names})"
                 ),
                 hint="a drummer only has 2 hands; remove or revoice one of the simultaneous parts",
+                line=line,
             ))
     return warnings
 
