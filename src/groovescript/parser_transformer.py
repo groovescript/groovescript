@@ -719,6 +719,36 @@ class _GrooveScriptTransformer(Transformer):
             return ("inline_fill", (fill_def, placements[0]))
         return ("inline_fill_many", (fill_def, placements))
 
+    def section_inline_fill_bare(self, items):
+        """Inline fill with no `count "..."` header — a single implicit bar
+        whose beats are fully specified by the lines themselves.
+
+        Layout: [bar_nums, (BEAT_LABEL)?, fill_count_item*, DynamicSpan*]."""
+        bar_nums = items[0]
+        idx = 1
+        beat: str | None = None
+        if idx < len(items) and hasattr(items[idx], "type") and items[idx].type == "BEAT_LABEL":
+            beat = _normalize_beat_label(str(items[idx]))
+            idx += 1
+        bar_items: list = []
+        dynamic_spans: list[DynamicSpan] = []
+        for item in items[idx:]:
+            if isinstance(item, DynamicSpan):
+                dynamic_spans.append(item)
+            else:
+                bar_items.append(item)
+        bar = _build_fill_bar(label=None, items=bar_items)
+        self._inline_fill_counter += 1
+        synthetic_name = f"__inline_fill_{self._inline_fill_counter}"
+        fill_def = Fill(name=synthetic_name, bars=[bar], dynamic_spans=dynamic_spans)
+        placements = [
+            FillPlacement(fill_name=synthetic_name, bar=n, beat=beat)
+            for n in bar_nums
+        ]
+        if len(placements) == 1:
+            return ("inline_fill", (fill_def, placements[0]))
+        return ("inline_fill_many", (fill_def, placements))
+
     def section_fill_placeholder_line(self, items):
         # Four alternatives depending on whether label and/or beat are present:
         #   fill placeholder at bar N              → items = [INT]

@@ -613,9 +613,27 @@ section "name":
 ```
 
 Inline fills accept the same `count …:` and `count:`/`notes:` block
-forms as top-level `fill` definitions. The fill attaches to its section at
-the bar (and optional beat) given on the `fill at bar N …:` line — exactly
-like a named `fill "name" at bar N` placement.
+forms as top-level `fill` definitions, and — as with top-level fills —
+the `count "…"` header is optional whenever the lines pin each hit to a
+specific beat:
+
+```groovescript
+section "verse":
+  bars: 4
+  groove: "money beat"
+  fill at bar 4:                # bare single-bar inline fill
+    BD: 1, 3
+    SN: 2, 4
+    CR: 1
+  fill at bar 4 beat 3:         # bare, starting mid-bar
+    SN: 3, 3e, 3a
+    4: BD, CR
+```
+
+Multi-bar inline fills without a count label use `bar N:` delimiters,
+exactly like top-level fills. The fill attaches to its section at the bar
+(and optional beat) given on the `fill at bar N …:` line — exactly like a
+named `fill "name" at bar N` placement.
 
 Inherit from another section:
 

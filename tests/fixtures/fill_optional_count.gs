@@ -47,3 +47,27 @@ section "outro":
     bars: 8
     groove: "basic"
     fill "two bar bare" at bar 7
+
+// Inline fills drop the count prefix too — positions are fully specified
+// by the lines themselves.
+section "bridge":
+    bars: 4
+    groove: "basic"
+    fill at bar 4:
+        BD: 1, 3
+        SN: 2, 4
+        CR: 1
+
+section "double drop":
+    bars: 4
+    groove: "basic"
+    fill at bars 2, 4:
+        1: BD, CR
+        2: SN
+
+section "half bar":
+    bars: 4
+    groove: "basic"
+    fill at bar 4 beat 3:
+        SN: 3, 3e, 3a
+        4: BD, CR

@@ -100,9 +100,13 @@ section_fill_line: "fill" ESCAPED_STRING "at" "bar" bar_number_list
                  | "fill" ESCAPED_STRING "at" "bars" bar_number_list
                  | "fill" ESCAPED_STRING "at" "bars" bar_number_list "beat" BEAT_LABEL
                  | "fill" "at" "bar" bar_number_list ":" fill_bar_block+ fill_dynamic_line*
+                 | "fill" "at" "bar" bar_number_list ":" fill_count_item+ fill_dynamic_line*              -> section_inline_fill_bare
                  | "fill" "at" "bar" bar_number_list "beat" BEAT_LABEL ":" fill_bar_block+ fill_dynamic_line*
+                 | "fill" "at" "bar" bar_number_list "beat" BEAT_LABEL ":" fill_count_item+ fill_dynamic_line* -> section_inline_fill_bare
                  | "fill" "at" "bars" bar_number_list ":" fill_bar_block+ fill_dynamic_line*
+                 | "fill" "at" "bars" bar_number_list ":" fill_count_item+ fill_dynamic_line*            -> section_inline_fill_bare
                  | "fill" "at" "bars" bar_number_list "beat" BEAT_LABEL ":" fill_bar_block+ fill_dynamic_line*
+                 | "fill" "at" "bars" bar_number_list "beat" BEAT_LABEL ":" fill_count_item+ fill_dynamic_line* -> section_inline_fill_bare
 section_fill_placeholder_line: "fill" "placeholder" "at" "bar" INT
                               | "fill" "placeholder" ESCAPED_STRING "at" "bar" INT
                               | "fill" "placeholder" "at" "bar" INT "beat" BEAT_LABEL

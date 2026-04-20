@@ -1356,7 +1356,90 @@ def test_parse_file_fixture_fill_optional_count():
     two_bar = next(f for f in song.fills if f.name == "two bar bare")
     assert len(two_bar.bars) == 2
     assert all(b.label is None for f in song.fills for b in f.bars)
+    # Inline bare fills in later sections should each define one synthetic fill.
+    inline_sections = [s for s in song.sections if s.inline_fills]
+    assert {s.name for s in inline_sections} == {"bridge", "double drop", "half bar"}
+    for sec in inline_sections:
+        for f in sec.inline_fills:
+            assert all(b.label is None for b in f.bars)
+    # "double drop" places one inline fill at two bars.
+    double_drop = next(s for s in song.sections if s.name == "double drop")
+    assert len(double_drop.inline_fills) == 1
+    assert [fp.bar for fp in double_drop.fills] == [2, 4]
+    # "half bar" places the fill at a mid-bar beat.
+    half_bar = next(s for s in song.sections if s.name == "half bar")
+    assert half_bar.fills[0].beat == "3"
     # Whole-song compilation + emission succeeds.
     ir = compile_song(song)
     ly = emit_lilypond(ir)
     assert "drummode" in ly
+
+
+def test_parse_inline_bare_fill_single_bar():
+    """Inline fill at `bar N:` with bare instrument lines (no count prefix)."""
+    src = """\
+groove "beat":
+    BD: 1, 3
+    SN: 2, 4
+    HH: *8
+
+section "verse":
+  bars: 4
+  groove: "beat"
+  fill at bar 4:
+    BD: 1, 3
+    SN: 2, 4
+    CR: 1
+"""
+    song = parse(src)
+    sec = song.sections[0]
+    assert len(sec.inline_fills) == 1
+    assert len(sec.fills) == 1
+    assert sec.fills[0].bar == 4
+    assert sec.fills[0].beat is None
+    fill = sec.inline_fills[0]
+    assert len(fill.bars) == 1
+    assert fill.bars[0].label is None
+    assert len(fill.bars[0].lines) == 5  # BD:1,3 + SN:2,4 + CR:1
+
+
+def test_parse_inline_bare_fill_with_beat():
+    """Inline bare fill with a `beat` mid-bar placement."""
+    src = """\
+groove "beat":
+    HH: *8
+
+section "verse":
+  bars: 4
+  groove: "beat"
+  fill at bar 4 beat 3:
+    SN: 3, 3e, 3a
+    4: BD, CR
+"""
+    song = parse(src)
+    sec = song.sections[0]
+    assert sec.fills[0].beat == "3"
+    assert sec.inline_fills[0].bars[0].label is None
+    beats = sorted(l.beat for l in sec.inline_fills[0].bars[0].lines)
+    assert beats == ["3", "3a", "3e", "4"]
+
+
+def test_parse_inline_bare_fill_multiple_bars():
+    """A single inline bare fill placed across multiple bars with `bars N, M`."""
+    src = """\
+groove "beat":
+    HH: *8
+
+section "verse":
+  bars: 4
+  groove: "beat"
+  fill at bars 2, 4:
+    1: BD, CR
+    2: SN
+"""
+    song = parse(src)
+    sec = song.sections[0]
+    # One inline fill definition shared by two placements.
+    assert len(sec.inline_fills) == 1
+    assert [fp.bar for fp in sec.fills] == [2, 4]
+    assert sec.inline_fills[0].bars[0].label is None
