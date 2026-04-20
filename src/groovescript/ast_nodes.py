@@ -220,10 +220,29 @@ class VariationAction:
 
 @dataclass
 class Variation:
-    """An inline variation block applied to one or more bars within a section."""
+    """An inline variation block applied to one or more bars within a section.
+
+    When ``actions`` is empty and ``name`` is set, this is a reference to a
+    reusable variation (top-level ``variation "name":`` definition, or
+    built-in variation library entry) that the compiler resolves by name.
+    """
 
     name: str | None  # optional human-readable label for the variation
     bars: list[int]  # 1-indexed within the section (was singular ``bar``)
+    actions: list[VariationAction]
+
+
+@dataclass
+class VariationDef:
+    """A top-level reusable variation definition.
+
+    A ``VariationDef`` captures a named bundle of variation actions that can
+    be applied to any bar in any section via ``variation "name" at bar N``
+    (no trailing body). Parallel to :class:`Groove` and :class:`Fill` as a
+    reusable, library-friendly artefact.
+    """
+
+    name: str
     actions: list[VariationAction]
 
 
@@ -308,3 +327,4 @@ class Song:
     grooves: list[Groove] = field(default_factory=list)
     fills: list[Fill] = field(default_factory=list)
     sections: list[Section] = field(default_factory=list)
+    variations: list[VariationDef] = field(default_factory=list)

@@ -434,7 +434,7 @@ groove "rock + crash on 1":
   CR: 1
 ```
 
-The canonical source for every built-in is `src/groovescript/library.gs`
+The canonical source for every built-in is `src/groovescript/groove_library.gs`
 in the repository — the table above mirrors it, so any new or updated
 grooves added there should also be reflected here.
 
@@ -1056,6 +1056,63 @@ on the named instrument's event, so sweeping removals are safe.
 
 Bar lists in `variation at bars …:` may be comma- or space-separated —
 `variation at bars 1 5:` parses the same as `variation at bars 1, 5:`.
+
+### Reusable named variations
+
+Define a variation once at the top level and reference it from any
+section — the same pattern as grooves and fills:
+
+```groovescript
+variation "crash-on-one":
+  add CR at 1
+
+section "chorus":
+  bars: 8
+  groove: "rock"
+  variation "crash-on-one" at bars 1, 5   # reference, no body
+
+section "outro":
+  bars: 4
+  groove: "rock"
+  variation "crash-on-one" at bar 1       # reused in another section
+```
+
+A top-level `variation "name":` captures a bundle of actions without
+binding them to specific bars. A section then points bars at that
+bundle with the no-body form `variation "name" at bar N` (or
+`at bars N, M`). Multiple references to the same name are independent —
+the actions are re-applied on each referenced bar.
+
+Inline variations (`variation ... at bar N:` with a trailing body) still
+work the same way as before, and may coexist with named-reference
+variations in the same section.
+
+### Library of variations
+
+GrooveScript ships a built-in library of reusable variations that any
+section can reference without defining them locally:
+
+| Name             | Actions                                          |
+|------------------|--------------------------------------------------|
+| `open-hat-4`     | `replace HH with OH at 4`                        |
+| `open-hat-4&`    | `replace HH with OH at 4&`                       |
+| `open-hat-2&`    | `replace HH with OH at 2&`                       |
+| `ride-instead`   | `replace HH with RD at *`                        |
+| `hat-instead`    | `replace RD with HH at *`                        |
+| `crash-1`        | `add CR at 1`                                    |
+| `crash-4&`       | `add CR at 4&`                                   |
+| `drop-kick`      | `remove BD at *`                                 |
+| `drop-snare`     | `remove SN at *`                                 |
+| `drop-hats`      | `remove HH at *`                                 |
+| `accent-2-4`     | `modify add accent to SN at 2, 4`                |
+| `ghost-snare`    | `modify add ghost to SN at *`                    |
+| `flam-backbeat`  | `modify add flam to SN at 2, 4`                  |
+| `fill-prep`      | `add SN at 4e, 4&, 4a`                           |
+| `busier-kick`    | `add BD at 3&, 4&`                               |
+
+If you define a top-level `variation "name":` with the same name as a
+library entry, your definition takes precedence. The canonical source
+for every built-in is `src/groovescript/variation_library.gs`.
 
 ## Modifiers
 

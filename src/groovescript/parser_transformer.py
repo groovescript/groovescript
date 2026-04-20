@@ -34,6 +34,7 @@ from .ast_nodes import (
     StarSpec,
     Variation,
     VariationAction,
+    VariationDef,
 )
 from .parser_notation import (
     _extract_buzz_duration,
@@ -103,6 +104,7 @@ class _GrooveScriptTransformer(Transformer):
         grooves: list[Groove] = []
         fills: list[Fill] = []
         sections: list[Section] = []
+        variations: list[VariationDef] = []
 
         for item in items:
             if isinstance(item, Metadata):
@@ -113,8 +115,16 @@ class _GrooveScriptTransformer(Transformer):
                 fills.append(item)
             elif isinstance(item, Section):
                 sections.append(item)
+            elif isinstance(item, VariationDef):
+                variations.append(item)
 
-        return Song(metadata=metadata, grooves=grooves, fills=fills, sections=sections)
+        return Song(
+            metadata=metadata,
+            grooves=grooves,
+            fills=fills,
+            sections=sections,
+            variations=variations,
+        )
 
     def statement(self, items):
         return items[0]
@@ -846,6 +856,24 @@ class _GrooveScriptTransformer(Transformer):
 
     def bar_number_list(self, items):
         return [int(i) for i in items]
+
+    def variation_def(self, items):
+        name = _ast.literal_eval(str(items[0]))
+        raw_actions = list(items[1:])
+        actions: list[VariationAction] = []
+        for item in raw_actions:
+            if isinstance(item, list) and item and isinstance(item[0], VariationAction):
+                actions.extend(item)
+            elif isinstance(item, VariationAction):
+                actions.append(item)
+        return VariationDef(name=name, actions=actions)
+
+    def section_variation_ref(self, items):
+        # variation "name" at bar N, M  —  no body. Resolved to actions by
+        # the compiler from the top-level variation defs plus library.
+        name = _ast.literal_eval(str(items[0]))
+        bar_nums = items[1]  # list[int] from bar_number_list
+        return ("variation", Variation(name=name, bars=bar_nums, actions=[]))
 
     def section_variation_block(self, items):
         # Four alternatives (with/without name × bar/bars):

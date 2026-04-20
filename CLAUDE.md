@@ -18,9 +18,10 @@ src/groovescript/
   midi.py             # IR -> MIDI file bytes (Format 1, GM drums on channel 10)
   lilypond_template.ly # Static LilyPond boilerplate (loaded by lilypond.py)
   grammar.lark        # Lark EBNF grammar
-  library.gs          # Built-in groove library (parsed at runtime)
-  fill_library.gs     # Built-in fill library (parsed at runtime)
-  library.py          # Loader for library.gs and fill_library.gs
+  groove_library.gs    # Built-in groove library (parsed at runtime)
+  fill_library.gs      # Built-in fill library (parsed at runtime)
+  variation_library.gs # Built-in variation library (parsed at runtime)
+  library.py           # Loader for groove / fill / variation libraries
   lint.py             # Style checker used by `lint --style`
 tests/
   fixtures/           # .gs / .ly / .pdf reference files
