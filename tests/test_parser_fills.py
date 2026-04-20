@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from groovescript.ast_nodes import Fill, FillPlaceholder, FillPlacement, StarSpec
+from groovescript.ast_nodes import Fill, FillPlaceholder, FillPlacement, InstrumentHit, StarSpec
 from groovescript.compiler import compile_song
 from groovescript.lilypond import emit_lilypond
 from groovescript.parser import parse, parse_file
@@ -983,6 +983,95 @@ fill "roll":
 """
     song = parse(src)
     assert len(song.fills[0].bars[0].lines) == 4
+
+
+def test_fill_count_without_notes_defaults_to_snare():
+    """Regression: a count+notes fill bar with the ``notes:`` line omitted
+    fills every count slot with a single snare hit. Snare-on-every-slot is
+    the default starting point for a fill, so the user shouldn't have to
+    repeat ``SN`` for each count token."""
+    src = """\
+fill "snare roll":
+  count: "3 e and a 4 e and a"
+
+groove "beat":
+    HH: *8
+
+section "v":
+  bars: 1
+  groove: "beat"
+  fill "snare roll" at bar 1 beat 3
+"""
+    song = parse(src)
+    bar = song.fills[0].bars[0]
+    assert [line.beat for line in bar.lines] == [
+        "3", "3e", "3&", "3a", "4", "4e", "4&", "4a"
+    ]
+    assert all(line.instruments == [InstrumentHit("SN")] for line in bar.lines)
+
+
+def test_fill_count_without_notes_unquoted_form():
+    """Regression: the unquoted-value form of ``count:`` also defaults to
+    snare hits when ``notes:`` is omitted."""
+    src = """\
+fill "roll":
+  count: 1 e and a
+
+groove "beat":
+    HH: *8
+
+section "s":
+  bars: 1
+  groove: "beat"
+  fill "roll" at bar 1
+"""
+    song = parse(src)
+    bar = song.fills[0].bars[0]
+    assert [line.beat for line in bar.lines] == ["1", "1e", "1&", "1a"]
+    assert all(line.instruments == [InstrumentHit("SN")] for line in bar.lines)
+
+
+def test_inline_fill_count_without_notes_defaults_to_snare():
+    """Regression: an inline fill body using count+notes form with notes
+    omitted defaults each slot to a snare hit, just like a top-level fill."""
+    src = """\
+groove "beat":
+    HH: *8
+
+section "v":
+  bars: 4
+  groove: "beat"
+  fill at bar 4 beat 3:
+    count: "3 e and a 4"
+"""
+    song = parse(src)
+    bar = song.sections[0].inline_fills[0].bars[0]
+    assert [line.beat for line in bar.lines] == ["3", "3e", "3&", "3a", "4"]
+    assert all(line.instruments == [InstrumentHit("SN")] for line in bar.lines)
+
+
+def test_multi_bar_fill_mixes_default_and_explicit_notes():
+    """Regression: in a multi-bar count+notes fill, individual bars may omit
+    ``notes:`` (defaulting to snare) while other bars supply explicit notes."""
+    src = """\
+fill "two bar build":
+  count: "3 e and a 4 e and a"
+  count: "1 e and a 2 e and a 3 e and a 4"
+  notes: "SN, SN, SN, SN, SN, SN, SN, SN, SN, SN, SN, SN, (BD, CR)"
+
+groove "beat":
+    HH: *8
+
+section "v":
+  bars: 2
+  groove: "beat"
+  fill "two bar build" at bar 1
+"""
+    song = parse(src)
+    bars = song.fills[0].bars
+    assert len(bars) == 2
+    assert all(line.instruments == [InstrumentHit("SN")] for line in bars[0].lines)
+    assert bars[1].lines[-1].instruments == [InstrumentHit("BD"), InstrumentHit("CR")]
 
 
 def test_parse_multiple_inline_fills_have_distinct_names():
