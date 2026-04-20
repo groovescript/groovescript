@@ -101,7 +101,7 @@
       \repeat volta 2 {
         <hh bd>8 hh8 <hh sn>8 hh8 <hh bd>8 hh8 <hh sn>8 hh8 |
       }
-      <hh bd>8 hh8 <hh sn>8 hh8 <hh bd>8 hh8 <hh sn>16 sn16 <hh sn>16 sn16 |
+      <hh bd>8 hh8 <hh sn>8-> hh8 <hh bd>8 hh8 <hh sn>8-> hh8 |
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
       \once \override Score.RehearsalMark.padding = #2

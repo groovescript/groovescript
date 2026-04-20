@@ -22,7 +22,7 @@ section "chorus":
   bars: 4
   groove: "rock"
   variation "ride-and-crash" at bar 1     // reuse a user-defined variation
-  variation "fill-prep" at bar 4          // library lead-in
+  variation "accent-2-4" at bar 4         // library dynamic
 
 section "outro":
   bars: 2

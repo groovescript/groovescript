@@ -1096,19 +1096,10 @@ section can reference without defining them locally:
 |------------------|--------------------------------------------------|
 | `open-hat-4`     | `replace HH with OH at 4`                        |
 | `open-hat-4&`    | `replace HH with OH at 4&`                       |
-| `open-hat-2&`    | `replace HH with OH at 2&`                       |
-| `ride-instead`   | `replace HH with RD at *`                        |
-| `hat-instead`    | `replace RD with HH at *`                        |
 | `crash-1`        | `add CR at 1`                                    |
-| `crash-4&`       | `add CR at 4&`                                   |
 | `drop-kick`      | `remove BD at *`                                 |
-| `drop-snare`     | `remove SN at *`                                 |
-| `drop-hats`      | `remove HH at *`                                 |
 | `accent-2-4`     | `modify add accent to SN at 2, 4`                |
-| `ghost-snare`    | `modify add ghost to SN at *`                    |
 | `flam-backbeat`  | `modify add flam to SN at 2, 4`                  |
-| `fill-prep`      | `add SN at 4e, 4&, 4a`                           |
-| `busier-kick`    | `add BD at 3&, 4&`                               |
 
 If you define a top-level `variation "name":` with the same name as a
 library entry, your definition takes precedence. The canonical source
