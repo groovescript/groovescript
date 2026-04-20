@@ -1247,3 +1247,116 @@ section "s":
     # A single inline fill definition is shared by both placements.
     assert len(section.inline_fills) == 1
     assert fills[0].fill_name == fills[1].fill_name == section.inline_fills[0].name
+
+
+# --- Optional `count` prefix ------------------------------------------------
+
+BARE_FILL_SRC = """\
+groove "beat":
+    BD: 1, 3
+    SN: 2, 4
+    HH: *8
+
+fill "bare":
+    BD: 1, 3
+    SN: 2, 4
+    CR: 1
+
+section "verse":
+  bars: 2
+  groove: "beat"
+  fill "bare" at bar 2
+"""
+
+
+def test_parse_bare_fill_no_count_prefix():
+    """A fill whose bar is fully specified by instrument->positions lines does
+    not require the `count "..."` header — positions are already unambiguous."""
+    song = parse(BARE_FILL_SRC)
+    assert len(song.fills) == 1
+    fill = song.fills[0]
+    assert fill.name == "bare"
+    assert len(fill.bars) == 1
+    assert fill.bars[0].label is None
+    # BD:1,3 + SN:2,4 + CR:1 = 5 beat-lines after fill_instr_line expansion.
+    beats = sorted(l.beat for l in fill.bars[0].lines)
+    assert beats == ["1", "1", "2", "3", "4"]
+
+
+def test_bare_fill_matches_labeled_fill_semantics():
+    """Bare and explicit `count "..."` forms compile to identical IR events."""
+    labeled_src = BARE_FILL_SRC.replace(
+        'fill "bare":\n    BD: 1, 3\n    SN: 2, 4\n    CR: 1',
+        'fill "bare":\n  count "1 2 3 4":\n    BD: 1, 3\n    SN: 2, 4\n    CR: 1',
+    )
+    bare_ir = compile_song(parse(BARE_FILL_SRC))
+    labeled_ir = compile_song(parse(labeled_src))
+    def flatten(ir):
+        out = []
+        for bar in ir.bars:
+            for e in bar.events:
+                out.append((e.beat_position, e.instrument, tuple(e.modifiers)))
+        return sorted(out)
+    assert flatten(bare_ir) == flatten(labeled_ir)
+
+
+def test_parse_bar_numbered_fill_delimiter():
+    """Multi-bar fills without count labels use `bar N:` as the bar delimiter."""
+    src = """\
+groove "beat":
+    HH: *8
+
+fill "two bar":
+    bar 1:
+      SN: 3, 3e, 3a, 4, 4e, 4a
+    bar 2:
+      1: BD, CR
+      BD: 2, 3, 4
+
+section "verse":
+  bars: 4
+  groove: "beat"
+  fill "two bar" at bar 3
+"""
+    song = parse(src)
+    fill = song.fills[0]
+    assert len(fill.bars) == 2
+    assert fill.bars[0].label is None
+    assert fill.bars[1].label is None
+    assert len(fill.bars[0].lines) == 6
+    assert len(fill.bars[1].lines) == 4
+
+
+def test_parse_bare_fill_position_notation():
+    """Bare fill also accepts position->instruments lines (1: BD, CR etc.)."""
+    src = """\
+groove "beat":
+    HH: *8
+
+fill "crash":
+    1: BD, CR
+    2: SN
+
+section "v":
+  bars: 1
+  groove: "beat"
+"""
+    song = parse(src)
+    lines = song.fills[0].bars[0].lines
+    assert song.fills[0].bars[0].label is None
+    assert lines[0].beat == "1"
+    assert set(lines[0].instruments) == {"BD", "CR"}
+
+
+def test_parse_file_fixture_fill_optional_count():
+    """End-to-end fixture covers bare fills and `bar N:` delimiters."""
+    song = parse_file(str(FIXTURES / "fill_optional_count.gs"))
+    names = {f.name for f in song.fills}
+    assert names == {"bare verbose", "bare positions", "two bar bare"}
+    two_bar = next(f for f in song.fills if f.name == "two bar bare")
+    assert len(two_bar.bars) == 2
+    assert all(b.label is None for f in song.fills for b in f.bars)
+    # Whole-song compilation + emission succeeds.
+    ir = compile_song(song)
+    ly = emit_lilypond(ir)
+    assert "drummode" in ly

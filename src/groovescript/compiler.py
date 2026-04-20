@@ -855,12 +855,13 @@ def compile_fill_bar(fill_bar: FillBar, beats_per_bar: int = 4, beat_unit: int =
     # Expand star-spec pattern lines (e.g. BD: *8 except 4&).
     for pline in fill_bar.pattern_lines:
         events.extend(_expand_pattern_line(pline, subdivision, 1, beats_per_bar, beat_unit))
+    fill_bar_desc = f"fill bar {fill_bar.label!r}" if fill_bar.label else "fill bar"
     if any("double" in e.modifiers for e in events):
-        _validate_double_subdivision(subdivision, beats_per_bar, f"fill bar {fill_bar.label!r}")
+        _validate_double_subdivision(subdivision, beats_per_bar, fill_bar_desc)
     # Validate buzz event positions and hand-played overlap.
     for event in events:
-        _validate_buzz_event(event, beats_per_bar, f"fill bar {fill_bar.label!r}")
-    _validate_buzz_overlap(events, f"fill bar {fill_bar.label!r}")
+        _validate_buzz_event(event, beats_per_bar, fill_bar_desc)
+    _validate_buzz_overlap(events, fill_bar_desc)
     events.sort(key=lambda e: e.beat_position)
     return IRFillBar(events=events, subdivision=subdivision)
 

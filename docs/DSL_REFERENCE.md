@@ -450,6 +450,33 @@ fill "name":
     4:  BD, CR            # position→instruments style (comma = simultaneous hits)
 ```
 
+The `count "…":` header is **optional** when every line already pins each
+hit to a specific beat — i.e. pure instrument→positions or
+position→instruments notation. The header then serves only as
+documentation, so it can be dropped:
+
+```groovescript
+fill "crash landing":
+    BD: 1, 3
+    SN: 2, 4
+    CR: 1
+```
+
+This bare form implies a single bar. For multi-bar fills without count
+labels, separate the bars with `bar N:` (mirroring the groove syntax):
+
+```groovescript
+fill "two bar buildup":
+  bar 1:
+    SN: 3, 3e, 3&, 3a, 4, 4e, 4&, 4a
+  bar 2:
+    1: BD, CR
+    BD: 2, 3, 4
+```
+
+The `bar N:` numbers are visual markers — file order determines the
+playback order, same as with `count "…":` blocks.
+
 **Count+notes syntax** — positional 1-1 alignment between count tokens and notes:
 
 ```groovescript
