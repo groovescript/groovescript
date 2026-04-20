@@ -44,8 +44,11 @@ pattern_bar_text: "text" ":" ESCAPED_STRING
 pattern_line: INSTRUMENT ":" pattern_value      // instrument→positions: BD: 1, 3
 groove_pos_line: BEAT_LABEL ":" fill_instruments // position→instruments: 1: BD, HH
 
-fill_def: "fill" ESCAPED_STRING ":" fill_bar_block+ fill_dynamic_line*
+fill_def: "fill" ESCAPED_STRING ":" fill_extend_clause fill_bar_block* fill_dynamic_line*
+        | "fill" ESCAPED_STRING ":" fill_bar_block+ fill_dynamic_line*
+        | "fill" ESCAPED_STRING ":" fill_extend_clause fill_count_item+ fill_dynamic_line* -> fill_def_extend_bare
         | "fill" ESCAPED_STRING ":" fill_count_item+ fill_dynamic_line* -> fill_def_bare
+fill_extend_clause: "extend" ":" ESCAPED_STRING
 fill_dynamic_line: section_dynamic_line
 ?fill_bar_block: fill_count_block | fill_cn_bar | fill_bar_numbered
 fill_count_block: "count" ESCAPED_STRING ":" fill_count_item+

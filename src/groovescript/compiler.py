@@ -1552,6 +1552,101 @@ def _resolve_groove_extends(
         _resolve(gname)
 
 
+def _resolve_fill_extends(fill_map: dict[str, Fill]) -> None:
+    """Resolve ``extend:`` references on fills in-place.
+
+    Fill extension is purely additive: the base fill's bars are used as
+    a starting point and the extension's lines are appended on top. No
+    override or subtraction semantics, so overlap (same instrument at
+    the same beat) is the author's responsibility.
+
+    Bar-alignment rules:
+    - Extension with 0 bars: use base bars unchanged (extend-only alias).
+    - Extension with 1 bar and base with >1 bars: broadcast the
+      extension's lines to every base bar.
+    - Extension with N bars (N <= base bars): merge bar-by-bar; any
+      uncovered base bars are kept as-is.
+    - Extension with more bars than the base: error — the extension
+      cannot lengthen the fill.
+    """
+    resolved: set[str] = set()
+    resolving: set[str] = set()
+
+    def _resolve(name: str) -> None:
+        if name in resolved:
+            return
+        fill = fill_map.get(name)
+        if fill is None or fill.extend is None:
+            resolved.add(name)
+            return
+        if name in resolving:
+            raise ValueError(f"Circular extend: reference involving fill {name!r}")
+        resolving.add(name)
+
+        base_name = fill.extend
+        if base_name not in fill_map:
+            raise ValueError(
+                f"Fill {name!r} extends unknown fill {base_name!r}"
+            )
+        _resolve(base_name)
+
+        base = fill_map[base_name]
+
+        # Select per-base-bar extension contribution (lines and pattern_lines).
+        def _empty() -> tuple[list, list]:
+            return ([], [])
+
+        if not fill.bars:
+            extension_for_bar = [_empty() for _ in base.bars]
+        elif len(fill.bars) == 1 and len(base.bars) > 1:
+            broadcast = (
+                list(fill.bars[0].lines),
+                list(fill.bars[0].pattern_lines),
+            )
+            extension_for_bar = [broadcast for _ in base.bars]
+        else:
+            if len(fill.bars) > len(base.bars):
+                raise ValueError(
+                    f"Fill {name!r}: extend body has "
+                    f"{len(fill.bars)} bar(s) but base fill {base_name!r} "
+                    f"has only {len(base.bars)}; extension cannot lengthen "
+                    "the fill"
+                )
+            extension_for_bar = [
+                (list(fill.bars[i].lines), list(fill.bars[i].pattern_lines))
+                if i < len(fill.bars)
+                else _empty()
+                for i in range(len(base.bars))
+            ]
+
+        merged_bars: list[FillBar] = []
+        for base_bar, (extra_lines, extra_pattern_lines) in zip(
+            base.bars, extension_for_bar
+        ):
+            merged_bars.append(
+                FillBar(
+                    label=base_bar.label,
+                    lines=list(base_bar.lines) + extra_lines,
+                    pattern_lines=list(base_bar.pattern_lines) + extra_pattern_lines,
+                )
+            )
+
+        merged_spans = list(base.dynamic_spans) + list(fill.dynamic_spans)
+
+        fill_map[name] = Fill(
+            name=name,
+            bars=merged_bars,
+            dynamic_spans=merged_spans,
+            extend=None,  # mark as resolved
+        )
+
+        resolving.discard(name)
+        resolved.add(name)
+
+    for fname in list(fill_map):
+        _resolve(fname)
+
+
 def _build_coverage_maps(
     section: Section,
     fill_map: dict[str, Fill],
@@ -1693,16 +1788,23 @@ def compile_song(song: Song) -> IRSong:
             fill_map[inline_fill.name] = inline_fill
 
     # Pull any referenced fills not defined locally (and not inline) from
-    # the built-in fill library. User definitions take precedence.
+    # the built-in fill library. User definitions take precedence. This
+    # also has to account for fills referenced only as extend bases, so
+    # that an extending fill can inherit from a library fill.
     referenced_fills: set[str] = set()
     for section in sections:
         for placement in section.fills:
             referenced_fills.add(placement.fill_name)
+    for fill in list(fill_map.values()):
+        if fill.extend is not None:
+            referenced_fills.add(fill.extend)
     from .library import get_library_fills
     library_fills = get_library_fills()
     for name in referenced_fills:
         if name not in fill_map and name in library_fills:
             fill_map[name] = library_fills[name]
+
+    _resolve_fill_extends(fill_map)
 
     # Count occurrences of base section names
     name_counts = Counter(s.name.lower() for s in sections)

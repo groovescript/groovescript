@@ -234,6 +234,12 @@ def _collect_referenced_fill_names(song: Song) -> set[str]:
     for section in song.sections:
         for placement in section.fills:
             referenced.add(placement.fill_name)
+    # ``extend:`` inside a fill also counts — an extending fill pulls in
+    # its base, so the base is not "unused" even if no section names it
+    # directly.
+    for fill in song.fills:
+        if fill.extend is not None:
+            referenced.add(fill.extend)
     return referenced
 
 

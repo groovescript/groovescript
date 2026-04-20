@@ -170,6 +170,11 @@ class Fill:
     # within the fill; the compiler translates them to section-bar
     # offsets at placement time.
     dynamic_spans: list["DynamicSpan"] = field(default_factory=list)
+    # Fill extension: name of the base fill to inherit from. The extending
+    # fill starts with a copy of the base fill's bars; the extension's
+    # pattern lines are appended (purely additive layering). Only the
+    # instrument->positions syntax is accepted in extension bodies.
+    extend: str | None = None
 
 
 @dataclass

@@ -333,14 +333,22 @@ class _GrooveScriptTransformer(Transformer):
 
     def fill_def(self, items):
         name = _ast.literal_eval(str(items[0]))
+        extend: str | None = None
         bars: list[FillBar] = []
         dynamic_spans: list[DynamicSpan] = []
         for item in items[1:]:
-            if isinstance(item, DynamicSpan):
+            if isinstance(item, dict) and "fill_extend" in item:
+                extend = item["fill_extend"]
+            elif isinstance(item, DynamicSpan):
                 dynamic_spans.append(item)
             else:
                 bars.append(item)
-        return Fill(name=name, bars=bars, dynamic_spans=dynamic_spans)
+        return Fill(
+            name=name, bars=bars, dynamic_spans=dynamic_spans, extend=extend
+        )
+
+    def fill_extend_clause(self, items):
+        return {"fill_extend": _ast.literal_eval(str(items[0]))}
 
     def fill_def_bare(self, items):
         """Fill with no count/bar delimiters — a single implicit bar."""
@@ -354,6 +362,27 @@ class _GrooveScriptTransformer(Transformer):
                 bar_items.append(item)
         bar = _build_fill_bar(label=None, items=bar_items)
         return Fill(name=name, bars=[bar], dynamic_spans=dynamic_spans)
+
+    def fill_def_extend_bare(self, items):
+        """``extend: "base"`` followed by a bare single-bar body (no ``count``)."""
+        name = _ast.literal_eval(str(items[0]))
+        extend_clause = items[1]
+        if not (isinstance(extend_clause, dict) and "fill_extend" in extend_clause):
+            raise ValueError(
+                f"fill {name!r}: expected extend clause before bare body"
+            )
+        extend = extend_clause["fill_extend"]
+        bar_items: list = []
+        dynamic_spans: list[DynamicSpan] = []
+        for item in items[2:]:
+            if isinstance(item, DynamicSpan):
+                dynamic_spans.append(item)
+            else:
+                bar_items.append(item)
+        bar = _build_fill_bar(label=None, items=bar_items)
+        return Fill(
+            name=name, bars=[bar], dynamic_spans=dynamic_spans, extend=extend
+        )
 
     def fill_dynamic_line(self, items):
         return items[0][1]

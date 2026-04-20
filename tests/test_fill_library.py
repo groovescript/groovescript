@@ -284,3 +284,261 @@ def test_library_fill_unknown_still_errors():
     song = parse(source)
     with pytest.raises(ValueError, match="unknown fill"):
         compile_song(song)
+
+
+# ----- Fill extension tests -----
+
+
+def test_fill_extend_bare_body_no_count_block():
+    """The bare-count form (no ``count "..."`` wrapper) also accepts
+    ``extend:`` — convenient for the common case of layering one voice
+    onto a library fill."""
+    source = """
+    fill "snare-roll+kick":
+      extend: "snare-roll"
+      BD: 1, 2, 3, 4
+
+    section "s":
+        bars: 1
+        groove: "rock"
+        fill "snare-roll+kick" at bar 1
+    """
+    ir = compile_song(parse(source))
+    bar = ir.bars[0]
+    bd = sorted(e.beat_position for e in bar.events if e.instrument == "BD")
+    assert bd == [Fraction(i, 4) for i in range(4)]
+    sn = [e for e in bar.events if e.instrument == "SN"]
+    assert len(sn) == 16  # snare-roll preserved
+
+
+def test_fill_extend_library_adds_bass_drum_layer():
+    """Extending a library fill adds the extension's events without
+    removing any of the base's events — the core layering use case."""
+    source = """
+    fill "snare-roll+kick":
+      extend: "snare-roll"
+      count "1 2 3 4":
+        BD: 1, 2, 3, 4
+
+    section "s":
+        bars: 1
+        groove: "rock"
+        fill "snare-roll+kick" at bar 1
+    """
+    ir = compile_song(parse(source))
+    bar = ir.bars[0]
+    # Base snare-roll contributes 16 SN events; none should be lost.
+    sn = [e for e in bar.events if e.instrument == "SN"]
+    assert len(sn) == 16
+    # Extension adds BD on beats 1-4.
+    bd_positions = sorted(
+        e.beat_position for e in bar.events if e.instrument == "BD"
+    )
+    assert bd_positions == [Fraction(i, 4) for i in range(4)]
+
+
+def test_fill_extend_only_alias():
+    """`extend: "base"` with no body is a pure alias — the extending fill
+    compiles to exactly the base fill's events."""
+    source = """
+    fill "big hit":
+      extend: "crash"
+
+    section "s":
+        bars: 1
+        groove: "rock"
+        fill "big hit" at bar 1
+    """
+    ir = compile_song(parse(source))
+    on_beat_one = sorted(
+        e.instrument for e in ir.bars[0].events if e.beat_position == 0
+    )
+    # Library "crash" is BD + CR on beat 1.
+    assert "BD" in on_beat_one and "CR" in on_beat_one
+
+
+def test_fill_extend_broadcast_over_multi_bar_base():
+    """A single-bar extension broadcasts to every bar of a multi-bar base
+    (same semantics as groove `extend:`)."""
+    source = """
+    fill "two bar base":
+      count "3 e & a 4 e & a":
+        SN: 3, 3e, 3&, 3a, 4, 4e, 4&, 4a
+      count "1 2 3 4":
+        1: BD, CR
+        2: BD
+        3: BD
+        4: BD
+
+    fill "two bar + hat":
+      extend: "two bar base"
+      count "1 2 3 4":
+        HH: *4
+
+    section "s":
+        bars: 2
+        groove: "rock"
+        fill "two bar + hat" at bar 1
+    """
+    ir = compile_song(parse(source))
+    # Both bars should have four HH hits from the broadcast extension.
+    for i, bar in enumerate(ir.bars):
+        hh = [e for e in bar.events if e.instrument == "HH"]
+        assert len(hh) == 4, f"bar {i+1} should have 4 HH from broadcast"
+
+
+def test_fill_extend_per_bar_targeting():
+    """When the extension has N bars matching the base's N, merges bar-by-bar
+    (not broadcast)."""
+    source = """
+    fill "two-bar base":
+      count "3 e & a 4 e & a":
+        SN: 3, 3e, 3&, 3a, 4, 4e, 4&, 4a
+      count "1 2 3 4":
+        1: BD
+
+    fill "per-bar extend":
+      extend: "two-bar base"
+      count "3 4":
+        HH: 3, 4
+      count "1 2 3 4":
+        CR: 1
+
+    section "s":
+        bars: 2
+        groove: "rock"
+        fill "per-bar extend" at bar 1
+    """
+    ir = compile_song(parse(source))
+    # Bar 1 has HH additions; bar 2 has CR.
+    bar1_insts = {e.instrument for e in ir.bars[0].events}
+    bar2_insts = {e.instrument for e in ir.bars[1].events}
+    assert "HH" in bar1_insts
+    assert "CR" in bar2_insts
+    assert "CR" not in bar1_insts
+    assert "HH" not in {e.instrument for e in ir.bars[1].events if e.beat_position > 0}
+
+
+def test_fill_extend_transitive_chain():
+    """An extension can chain: C extends B extends A resolves all three."""
+    source = """
+    fill "a":
+      count "1 2 3 4":
+        SN: *16
+
+    fill "b":
+      extend: "a"
+      count "1 2 3 4":
+        BD: 1, 3
+
+    fill "c":
+      extend: "b"
+      count "1 2 3 4":
+        CR: 1
+
+    section "s":
+        bars: 1
+        groove: "rock"
+        fill "c" at bar 1
+    """
+    ir = compile_song(parse(source))
+    insts = {e.instrument for e in ir.bars[0].events}
+    assert {"SN", "BD", "CR"}.issubset(insts)
+
+
+def test_fill_extend_unknown_base_raises():
+    import pytest
+
+    source = """
+    fill "x":
+      extend: "no-such-fill"
+      count "1":
+        1: BD
+
+    section "s":
+        bars: 1
+        groove: "rock"
+        fill "x" at bar 1
+    """
+    with pytest.raises(ValueError, match="unknown fill 'no-such-fill'"):
+        compile_song(parse(source))
+
+
+def test_fill_extend_cycle_raises():
+    import pytest
+
+    source = """
+    fill "a":
+      extend: "b"
+
+    fill "b":
+      extend: "a"
+
+    section "s":
+        bars: 1
+        groove: "rock"
+        fill "a" at bar 1
+    """
+    with pytest.raises(ValueError, match="Circular extend"):
+        compile_song(parse(source))
+
+
+def test_fill_extend_cannot_lengthen_base():
+    """An extension with more bars than the base is rejected — extension is
+    layering, not fill-lengthening."""
+    import pytest
+
+    source = """
+    fill "single":
+      count "1":
+        1: SN
+
+    fill "too long":
+      extend: "single"
+      count "1":
+        BD: 1
+      count "2":
+        BD: 2
+
+    section "s":
+        bars: 1
+        groove: "rock"
+        fill "too long" at bar 1
+    """
+    with pytest.raises(ValueError, match="cannot lengthen"):
+        compile_song(parse(source))
+
+
+def test_fill_extend_base_preserved_unchanged():
+    """Extending a fill must not mutate the base — referencing the base
+    elsewhere still gives the original events."""
+    source = """
+    fill "base":
+      count "1 2 3 4":
+        SN: *16
+
+    fill "derived":
+      extend: "base"
+      count "1 2 3 4":
+        BD: 1, 3
+
+    section "base-only":
+        bars: 1
+        groove: "rock"
+        fill "base" at bar 1
+
+    section "derived":
+        bars: 1
+        groove: "rock"
+        fill "derived" at bar 1
+    """
+    ir = compile_song(parse(source))
+    # Bar 1 uses the base fill (SN roll), replacing the whole rock bar.
+    # Base has no BD, so no BD should appear in bar 1.
+    bar1_bd = [e for e in ir.bars[0].events if e.instrument == "BD"]
+    assert bar1_bd == []
+    # Bar 2 uses the derived fill — extension adds BD on 1 and 3.
+    bar2_bd = sorted(
+        e.beat_position for e in ir.bars[1].events if e.instrument == "BD"
+    )
+    assert bar2_bd == [Fraction(0), Fraction(1, 2)]
