@@ -21,6 +21,11 @@ fill "crash landing":
   count: "4"
   notes: "(BD, CR)"
 
+// Omitting the ``notes:`` line defaults every count slot to a single snare
+// hit — the most common starting point for a fill.
+fill "snare roll":
+  count: "3 e & a 4 e & a"
+
 section "intro":
   bars: 4
   groove: "money beat"
@@ -30,3 +35,8 @@ section "verse":
   bars: 4
   groove: "money beat"
   fill "snare run" at bar 4 beat 3
+
+section "bridge":
+  bars: 4
+  groove: "money beat"
+  fill "snare roll" at bar 4 beat 3

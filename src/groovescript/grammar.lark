@@ -48,7 +48,7 @@ fill_def: "fill" ESCAPED_STRING ":" fill_bar_block+ fill_dynamic_line*
 fill_dynamic_line: section_dynamic_line
 ?fill_bar_block: fill_count_block | fill_cn_bar
 fill_count_block: "count" ESCAPED_STRING ":" fill_count_item+
-fill_cn_bar: "count" ":" ESCAPED_STRING "notes" ":" ESCAPED_STRING
+fill_cn_bar: "count" ":" ESCAPED_STRING ("notes" ":" ESCAPED_STRING)?
 ?fill_count_item: fill_line | fill_instr_line
 fill_line: BEAT_LABEL ":" fill_instruments       // position→instruments: 3: SN, BD
 fill_instr_line: INSTRUMENT ":" pattern_value     // instrument→positions: BD: 1, 3 or BD: *8 except 4&

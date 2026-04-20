@@ -469,6 +469,22 @@ The legacy **space-delimited** form (`"snare snare snare snare (bass,
 crash)"`) is still accepted when the `notes:` string contains no top-level
 commas — useful for the simplest case where every hit is a bare instrument.
 
+Omit the `notes:` line entirely to default every count slot to a single
+snare hit — convenient for the common snare-roll case:
+
+```groovescript
+fill "snare roll":
+  count: "3 e & a 4 e & a"
+```
+
+is equivalent to:
+
+```groovescript
+fill "snare roll":
+  count: "3 e & a 4 e & a"
+  notes: "SN, SN, SN, SN, SN, SN, SN, SN"
+```
+
 Instrument names in `notes` follow the same alias rules as everywhere else
 (see the Instruments table above). In addition, `hi-hat` (with a hyphen) is
 accepted here.

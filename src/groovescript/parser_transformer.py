@@ -346,15 +346,22 @@ class _GrooveScriptTransformer(Transformer):
         return FillBar(label=label, lines=lines, pattern_lines=pattern_lines)
 
     def fill_cn_bar(self, items):
-        """Count+notes fill bar: positional 1-1 mapping of count tokens to notes."""
+        """Count+notes fill bar: positional 1-1 mapping of count tokens to notes.
+
+        When the ``notes:`` line is omitted, every count slot defaults to a
+        single snare hit — the most common starting point for a fill.
+        """
         count_str = _ast.literal_eval(str(items[0]))
-        notes_str = _ast.literal_eval(str(items[1]))
         beat_labels = _parse_count_tokens(count_str)
-        note_groups = _parse_notes_tokens(notes_str)
-        if len(beat_labels) != len(note_groups):
-            raise ValueError(
-                _format_count_notes_mismatch("fill block", count_str, notes_str)
-            )
+        if len(items) == 1:
+            note_groups = [[InstrumentHit("SN")] for _ in beat_labels]
+        else:
+            notes_str = _ast.literal_eval(str(items[1]))
+            note_groups = _parse_notes_tokens(notes_str)
+            if len(beat_labels) != len(note_groups):
+                raise ValueError(
+                    _format_count_notes_mismatch("fill block", count_str, notes_str)
+                )
         lines = [
             FillLine(beat=beat, instruments=instruments)
             for beat, instruments in zip(beat_labels, note_groups)
