@@ -83,7 +83,7 @@
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \column { \fontsize #-1 \concat { \note { 4 } #1 " = 120" } \vspace #0.3 \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "ROCK: 4" } }
+      \mark \markup \column { \fontsize #-1 \concat { \note { 4 } #1 " = 120" } \vspace #0.3 \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "ACCENTS: 4" } }
       <bd cymc>4 r4 r4 r4 |
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
@@ -93,31 +93,61 @@
       \repeat volta 2 {
         <hh bd>8 hh8 <hh sn>8 hh8 <hh bd>8 hh8 <hh sn>8 hh8 |
       }
-      <hh bd>8 hh8 <hh sn>8 hh8 sn16 sn16 sn16 sn16 sn16 sn16 sn16 sn16 |
+      r4 r4 r4 <bd cymc>4 |
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
-      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "16TH ROCK: 4" } \vspace #0.3 \italic \fontsize #-1 "Play 3x" }
-      \repeat volta 3 {
-        <hh bd>16 hh16 hh16 hh16 <hh sn>16 hh16 hh16 hh16 <hh bd>16 hh16 hh16 hh16 <hh sn>16 hh16 hh16 hh16 |
-      }
+      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "SNARE ROLLS: 4" }
+      <hh bd>8 hh8 <hh sn>8 hh8 <hh bd>8 hh8 sn16 sn16 sn16 sn16 |
+      <hh bd>8 hh8 <hh sn>8 hh8 sn16 sn16 sn16 sn16 sn16 sn16 sn16 sn16 |
+      <hh bd>8 hh8 <hh sn>8 hh8 <hh bd>8 hh8 <hh sn>8 hh8 |
       sn16 sn16 sn16 sn16 sn16 sn16 sn16 sn16 sn16 sn16 sn16 sn16 sn16 sn16 sn16 sn16 |
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
-      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "FUNK: 4" } \vspace #0.3 \italic \fontsize #-1 "Play 3x" }
-      \repeat volta 3 {
-        <hh bd>16 hh16 hh16 hh16 <hh sn>16 hh16 <hh bd>16 <hh sn>16 hh16 <hh bd>16 hh16 hh16 <hh sn>16 hh16 hh16 <hh sn>16 |
-      }
-      <hh bd>16 hh16 hh16 hh16 <hh sn>16 hh16 <hh bd>16 <hh sn>16 tommh16 tommh16 tommh16 tommh16 tomfh16 tomfh16 tomfh16 tomfh16 |
+      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "SNARE ROLL TRIPLETS: 4" }
+      <hh bd>8 hh8 <hh sn>8 hh8 <hh bd>8 hh8 <hh sn>8 hh8 |
+      <hh bd>8 hh8 <hh sn>8 hh8 \tuplet 3/2 { sn8 sn8 sn8 } \tuplet 3/2 { sn8 sn8 sn8 } |
+      <hh bd>8 hh8 <hh sn>8 hh8 <hh bd>8 hh8 <hh sn>8 hh8 |
+      \tuplet 3/2 { sn8 sn8 sn8 } \tuplet 3/2 { sn8 sn8 sn8 } \tuplet 3/2 { sn8 sn8 sn8 } \tuplet 3/2 { sn8 sn8 sn8 } |
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
-      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "SHUFFLE: 4" } \vspace #0.3 \italic \fontsize #-1 "Play 3x" }
-      \repeat volta 3 {
-        \tuplet 3/2 { <hh bd>8 r8 hh8 } \tuplet 3/2 { <hh sn>8 r8 hh8 } \tuplet 3/2 { <hh bd>8 r8 hh8 } \tuplet 3/2 { <hh sn>8 r8 hh8 } |
-      }
+      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "BUZZ ROLLS: 4" }
+      <hh bd>8 hh8 <hh sn>8 hh8 <hh bd>8 hh8 sn4:32 |
+      <hh bd>8 hh8 <hh sn>8 hh8 sn2:32 |
+      <hh bd>8 hh8 <hh sn>8 hh8 <hh bd>8 hh8 <hh sn>8 hh8 |
+      sn1:32 |
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
+      \once \override Score.RehearsalMark.padding = #2
+      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "TOM ROLLS: 4" }
+      <hh bd>16 hh16 hh16 hh16 <hh sn>16 hh16 hh16 hh16 <hh bd>16 hh16 hh16 hh16 <hh sn>16 hh16 hh16 hh16 |
+      <hh bd>16 hh16 hh16 hh16 <hh sn>16 hh16 hh16 hh16 tommh16 tommh16 tommh16 tommh16 tomfh16 tomfh16 tomfh16 tomfh16 |
+      tomfh16 tomfh16 tomfh16 tomfh16 tommh16 tommh16 tommh16 tommh16 tomh16 tomh16 tomh16 tomh16 tomh16 tomh16 tomh16 tomh16 |
       tomh16 tomh16 tomh16 tomh16 tommh16 tommh16 tommh16 tommh16 tomfh16 tomfh16 tomfh16 tomfh16 tomfh16 tomfh16 tomfh16 tomfh16 |
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
+      \once \override Score.RehearsalMark.padding = #2
+      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "TOM TRIPLETS: 2" }
+      \tuplet 3/2 { <hh bd>8 r8 hh8 } \tuplet 3/2 { <hh sn>8 r8 hh8 } \tuplet 3/2 { <hh bd>8 r8 hh8 } \tuplet 3/2 { <hh sn>8 r8 hh8 } |
+      \tuplet 3/2 { tomh8 tomh8 tomh8 } \tuplet 3/2 { tommh8 tommh8 tommh8 } \tuplet 3/2 { tomfh8 tomfh8 tomfh8 } \tuplet 3/2 { tomfh8 tomfh8 tomfh8 } |
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
+      \once \override Score.RehearsalMark.padding = #2
+      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "AROUND THE KIT: 4" }
+      <hh bd>8 hh8 <hh sn>8 hh8 <hh bd>8 hh8 <hh sn>8 hh8 |
+      sn4 tomh4 tommh4 tomfh4 |
+      <hh bd>8 hh8 <hh sn>8 hh8 sn16 sn16 sn16 sn16 tomh16 tomh16 tomfh16 tomfh16 |
+      sn16 sn16 sn16 sn16 tomh16 tomh16 tomh16 tomh16 tommh16 tommh16 tommh16 tommh16 tomfh16 tomfh16 tomfh16 tomfh16 |
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
+      \once \override Score.RehearsalMark.padding = #2
+      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "RUDIMENTAL: 4" }
+      <hh bd>16 hh16 hh16 hh16 <hh sn>16 hh16 <hh bd>16 <hh sn>16 hh16 <hh bd>16 hh16 hh16 <hh sn>16 hh16 hh16 <hh sn>16 |
+      <hh bd>16 hh16 hh16 hh16 <hh sn>16 hh16 <hh bd>16 <hh sn>16 sn16 bd16 sn16 bd16 tomh16 bd16 tommh16 tomfh16 |
+      <hh bd>16 hh16 hh16 hh16 <hh sn>16 hh16 <hh bd>16 <hh sn>16 hh16 <hh bd>16 hh16 hh16 <hh sn>16 hh16 hh16 <hh sn>16 |
+      <hh bd>16 hh16 hh16 hh16 <hh sn>16 hh16 <hh bd>16 <hh sn>16 \slashedGrace sn16 sn16 sn16 sn16 sn16 \slashedGrace sn16 sn16 sn16 sn16 sn16 |
       \label #'lastPage
     }
   }

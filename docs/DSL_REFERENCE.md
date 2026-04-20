@@ -580,9 +580,9 @@ section.
 
 ## Library of fills
 
-GrooveScript ships with a small library of stock drum fills you can drop
-into any section without defining them in your file. Each entry is one
-bar of 4/4 and is referenced exactly like a user-defined fill:
+GrooveScript ships with a library of stock drum fills you can drop into
+any section without defining them in your file. Each entry is one bar
+of 4/4 and is referenced exactly like a user-defined fill:
 
 ```groovescript
 section "verse":
@@ -591,23 +591,72 @@ section "verse":
   fill "snare-roll-half" at bar 8 beat 3
 ```
 
-| Name                | Grid  | Description                                                       |
-|---------------------|-------|-------------------------------------------------------------------|
-| `crash`             | beat  | Bass drum + crash on beat 1 — bar-start accent / section opener   |
-| `snare-roll`        | 16ths | Full bar of 16th-note snares                                      |
-| `snare-roll-half`   | 16ths | 16th-note snare roll across beats 3 and 4                         |
-| `snare-roll-beat`   | 16ths | One-beat 16th-note snare roll on beat 4                           |
-| `snare-roll-trip`   | trip  | Full bar of 8th-note triplet snares                               |
-| `tom-roll`          | 16ths | Descending 16th-note tom roll: HT (beat 1) → MT (beat 2) → FT (3-4) |
-| `tom-roll-half`     | 16ths | Half-bar descending tom roll on beats 3-4 (MT → FT)               |
+**Naming convention**: base name = whole bar; `-half` = beats 3-4
+(place with `at bar N beat 3`); `-beat` = beat 4 only (place with
+`at bar N beat 4`); `-trip` = 8th-note triplet grid; `-up` = ascending
+pitch variant (tom rolls only). Default grid is 16ths.
 
-Defining a fill with the same name in your file **overrides** the library
-fill for the rest of that file. Library fills sit alongside the built-in
-[groove library](#library-of-grooves) — both are resolved at compile
-time; nothing needs to be imported.
+### Accents
+
+| Name      | Description                                                  |
+|-----------|--------------------------------------------------------------|
+| `crash`   | Bass drum + crash on beat 1 — section opener / big accent    |
+| `crash-4` | Bass drum + crash on beat 4 — anticipation into next section |
+
+### Snare rolls (straight)
+
+| Name                | Grid  | Description                                  |
+|---------------------|-------|----------------------------------------------|
+| `snare-roll`        | 16ths | Full bar of 16th-note snares                 |
+| `snare-roll-half`   | 16ths | 16th-note snare roll across beats 3 and 4   |
+| `snare-roll-beat`   | 16ths | One-beat 16th-note snare roll on beat 4     |
+
+### Snare rolls (triplets)
+
+| Name                    | Grid  | Description                               |
+|-------------------------|-------|-------------------------------------------|
+| `snare-roll-trip`       | trip  | Full bar of 8th-note triplet snares      |
+| `snare-roll-trip-half`  | trip  | 8th-note triplet snare roll on beats 3-4 |
+
+### Buzz rolls
+
+| Name               | Length                 | Description                                      |
+|--------------------|------------------------|--------------------------------------------------|
+| `buzz-roll`        | whole note             | Full-bar buzz roll on snare                      |
+| `buzz-roll-half`   | half note              | Half-note buzz roll starting on beat 3           |
+| `buzz-roll-beat`   | quarter note           | Quarter-note buzz roll on beat 4                 |
+
+### Tom rolls
+
+| Name            | Grid  | Description                                                              |
+|-----------------|-------|--------------------------------------------------------------------------|
+| `tom-roll`      | 16ths | Descending 16th-note tom roll: HT (beat 1) → MT (beat 2) → FT (beats 3-4) |
+| `tom-roll-half` | 16ths | Half-bar descending tom roll on beats 3-4 (MT → FT)                     |
+| `tom-roll-up`   | 16ths | Ascending 16th-note tom roll: FT → MT → HT                              |
+| `tom-roll-trip` | trip  | Descending 8th-note triplet tom roll: HT → MT → FT                      |
+
+### Snare + tom mixes
+
+| Name                | Grid    | Description                                                 |
+|---------------------|---------|-------------------------------------------------------------|
+| `snare-tom-half`    | 16ths   | Classic rock fill: 16th snares on beat 3, tom tour on beat 4 |
+| `around-kit`        | 1/4s    | Quarter-note tour: SN → HT → MT → FT                         |
+| `around-kit-16ths`  | 16ths   | 16th-note tour: four snares, four HT, four MT, four FT      |
+
+### Rudimental
+
+| Name          | Grid  | Description                                                        |
+|---------------|-------|--------------------------------------------------------------------|
+| `flam-fill`   | 16ths | Half-bar 16th-snare roll with flams on the downbeats of 3 and 4    |
+| `linear-half` | 16ths | Gadd-style half-bar linear fill (no two hits at once)               |
+
+Defining a fill with the same name in your file **overrides** the
+library fill for the rest of that file. Library fills sit alongside the
+built-in [groove library](#library-of-grooves) — both are resolved at
+compile time; nothing needs to be imported.
 
 The canonical source for every built-in is `src/groovescript/fill_library.gs`
-in the repository — the table above mirrors it, so any new or updated
+in the repository — the tables above mirror it, so any new or updated
 fills added there should also be reflected here.
 
 ## Section
