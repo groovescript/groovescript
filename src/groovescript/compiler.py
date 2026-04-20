@@ -1692,6 +1692,18 @@ def compile_song(song: Song) -> IRSong:
         for inline_fill in section.inline_fills:
             fill_map[inline_fill.name] = inline_fill
 
+    # Pull any referenced fills not defined locally (and not inline) from
+    # the built-in fill library. User definitions take precedence.
+    referenced_fills: set[str] = set()
+    for section in sections:
+        for placement in section.fills:
+            referenced_fills.add(placement.fill_name)
+    from .library import get_library_fills
+    library_fills = get_library_fills()
+    for name in referenced_fills:
+        if name not in fill_map and name in library_fills:
+            fill_map[name] = library_fills[name]
+
     # Count occurrences of base section names
     name_counts = Counter(s.name.lower() for s in sections)
     current_counts = Counter()

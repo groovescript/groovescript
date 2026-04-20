@@ -34,6 +34,7 @@ the language, start with [`GETTING_STARTED.md`](GETTING_STARTED.md) or
   - [Simultaneous hits and trailing modifiers](#fill)
   - [Inline one-off fills inside a section](#section)
   - [Fill placeholders](#fill-placeholders)
+- [Library of fills](#library-of-fills)
 - [Section](#section)
   - [Classic form (`bars:` / `groove:`)](#classic-form--single-groove)
   - [`like` inheritance](#classic-form--single-groove)
@@ -576,6 +577,38 @@ fill placeholder at bar 4 beat 3    # placeholder starting at a specific beat
 A placeholder draws a boxed annotation above the staff without altering
 groove events. Swap for a real fill later without touching the surrounding
 section.
+
+## Library of fills
+
+GrooveScript ships with a small library of stock drum fills you can drop
+into any section without defining them in your file. Each entry is one
+bar of 4/4 and is referenced exactly like a user-defined fill:
+
+```groovescript
+section "verse":
+  bars: 8
+  groove: "rock"
+  fill "snare-roll-half" at bar 8 beat 3
+```
+
+| Name                | Grid  | Description                                                       |
+|---------------------|-------|-------------------------------------------------------------------|
+| `crash`             | beat  | Bass drum + crash on beat 1 — bar-start accent / section opener   |
+| `snare-roll`        | 16ths | Full bar of 16th-note snares                                      |
+| `snare-roll-half`   | 16ths | 16th-note snare roll across beats 3 and 4                         |
+| `snare-roll-beat`   | 16ths | One-beat 16th-note snare roll on beat 4                           |
+| `snare-roll-trip`   | trip  | Full bar of 8th-note triplet snares                               |
+| `tom-roll`          | 16ths | Descending 16th-note tom roll: HT (beat 1) → MT (beat 2) → FT (3-4) |
+| `tom-roll-half`     | 16ths | Half-bar descending tom roll on beats 3-4 (MT → FT)               |
+
+Defining a fill with the same name in your file **overrides** the library
+fill for the rest of that file. Library fills sit alongside the built-in
+[groove library](#library-of-grooves) — both are resolved at compile
+time; nothing needs to be imported.
+
+The canonical source for every built-in is `src/groovescript/fill_library.gs`
+in the repository — the table above mirrors it, so any new or updated
+fills added there should also be reflected here.
 
 ## Section
 

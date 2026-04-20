@@ -19,7 +19,8 @@ src/groovescript/
   lilypond_template.ly # Static LilyPond boilerplate (loaded by lilypond.py)
   grammar.lark        # Lark EBNF grammar
   library.gs          # Built-in groove library (parsed at runtime)
-  library.py          # Loader for library.gs
+  fill_library.gs     # Built-in fill library (parsed at runtime)
+  library.py          # Loader for library.gs and fill_library.gs
   lint.py             # Style checker used by `lint --style`
 tests/
   fixtures/           # .gs / .ly / .pdf reference files
