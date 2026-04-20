@@ -140,6 +140,29 @@ def test_extend_target_groove_is_not_reported_as_unused() -> None:
     assert not any("'base'" in m for m in messages)
 
 
+def test_extend_target_fill_is_not_reported_as_unused() -> None:
+    """A fill referenced only via another fill's ``extend:`` should still
+    count as "used" — removing it would break the extension.
+    """
+    src = (
+        'groove "g":\n'
+        "    BD: 1\n"
+        'fill "base":\n'
+        '  count "1 2 3 4":\n'
+        "    SN: *16\n"
+        'fill "derived":\n'
+        '  extend: "base"\n'
+        '  count "1 2 3 4":\n'
+        "    BD: 1, 3\n"
+        'section "s":\n'
+        "  bars: 1\n"
+        '  groove: "g"\n'
+        '  fill "derived" at bar 1\n'
+    )
+    messages = _lint(src)
+    assert not any("'base' is defined but never used" in m for m in messages)
+
+
 # ── `like` references to missing sections ────────────────────────────────
 
 

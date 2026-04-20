@@ -34,6 +34,7 @@ the language, start with [`GETTING_STARTED.md`](GETTING_STARTED.md) or
   - [Simultaneous hits and trailing modifiers](#fill)
   - [Inline one-off fills inside a section](#section)
   - [Fill placeholders](#fill-placeholders)
+  - [Fill extension (`extend:`)](#fill-extension-extend)
 - [Library of fills](#library-of-fills)
 - [Section](#section)
   - [Classic form (`bars:` / `groove:`)](#classic-form--single-groove)
@@ -577,6 +578,57 @@ fill placeholder at bar 4 beat 3    # placeholder starting at a specific beat
 A placeholder draws a boxed annotation above the staff without altering
 groove events. Swap for a real fill later without touching the surrounding
 section.
+
+### Fill extension (`extend:`)
+
+A fill can inherit from another named fill (user-defined or from the
+built-in [fill library](#library-of-fills)) and layer extra events on
+top. Extension is **purely additive** — the base fill's events are
+preserved and the extension body's events are appended.
+
+```groovescript
+// Layer a driving kick pulse onto a library snare roll. The bare form
+// (no count "…": wrapper) works for single-bar extensions.
+fill "snare-roll+kick":
+  extend: "snare-roll"
+  BD: *4
+
+// Equivalent with an explicit count block — also valid, and required
+// when the extension needs to target a specific bar of a multi-bar base.
+fill "snare-roll+kick v2":
+  extend: "snare-roll"
+  count "1 2 3 4":
+    BD: *4
+
+// Pure alias — no body, just a rename.
+fill "big hit":
+  extend: "crash"
+```
+
+**Preferred layering style** is `instrument: positions`
+(`BD: 1, 3`) rather than `position: instruments` (`1: BD` +
+`3: BD`). Both parse identically, but the `instrument: positions`
+form reads more naturally when you're adding an independent voice on
+top of a base pattern.
+
+**Bar alignment** (for multi-bar base fills):
+
+- A 1-bar extension applied to an N-bar base is **broadcast** to every
+  base bar — handy for adding the same voice across a whole multi-bar fill.
+- An N-bar extension targets base bars 1..N in order; later base bars
+  are inherited unchanged.
+- An extension with more bars than the base is an error — extension is
+  for layering, not lengthening.
+
+**No override semantics**: if the extension adds an event at the same
+(instrument, position) as a base event, both fire (purely additive). If
+that is not what you want, either omit the colliding voice from the
+extension or replace the base entirely by defining a new fill from
+scratch.
+
+**Chaining is supported**: `C extend: "B"` where `B extend: "A"` is
+fine; cycles are rejected. Extending a fill does **not** mutate the
+base — the base still compiles to its original events elsewhere.
 
 ## Library of fills
 
