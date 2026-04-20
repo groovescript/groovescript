@@ -114,6 +114,30 @@
       }
       r4 r4 sn16 sn16 sn16 sn16 sn16 sn16 sn16 sn16 |
       <bd cymc>4 bd4 bd4 bd4 |
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.padding = #2
+      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "BRIDGE: 4" } \vspace #0.3 \italic \fontsize #-1 "Play 3x" }
+      \repeat volta 3 {
+        <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      }
+      <bd cymc>4 sn4 bd4 sn4 |
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
+      \once \override Score.RehearsalMark.padding = #2
+      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "DOUBLE DROP: 4" }
+      <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      <bd cymc>4 sn4 r4 r4 |
+      <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      <bd cymc>4 sn4 r4 r4 |
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.padding = #2
+      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "HALF BAR: 4" } \vspace #0.3 \italic \fontsize #-1 "Play 3x" }
+      \repeat volta 3 {
+        <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      }
+      <bd hh>8 hh8 <sn hh>8 hh8 sn16 sn16 r16 sn16 <bd cymc>4 |
       \label #'lastPage
     }
   }
