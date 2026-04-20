@@ -58,6 +58,40 @@ def _meta_line(meta) -> int | None:
     return getattr(meta, "line", None)
 
 
+def _build_fill_bar(label: str | None, items) -> "FillBar":
+    """Assemble a FillBar from fill_count_item results, resolving bare ``trip``/
+    ``let``/``and`` beat labels against the most recently seen numeric beat."""
+    lines: list = []
+    pattern_lines: list = []
+    current_beat = "1"
+
+    def _resolve(beat: str) -> str:
+        nonlocal current_beat
+        if beat == "trip":
+            return current_beat + "t"
+        if beat == "let":
+            return current_beat + "l"
+        if beat == "and":
+            return current_beat + "&"
+        if beat and beat[0].isdigit():
+            m = re.match(r"\d+", beat)
+            if m:
+                current_beat = m.group(0)
+        return beat
+
+    for item in items:
+        if isinstance(item, FillLine):
+            item.beat = _resolve(item.beat)
+            lines.append(item)
+        elif isinstance(item, PatternLine):
+            pattern_lines.append(item)
+        elif isinstance(item, list):
+            for line in item:
+                line.beat = _resolve(line.beat)
+            lines.extend(item)
+    return FillBar(label=label, lines=lines, pattern_lines=pattern_lines)
+
+
 class _GrooveScriptTransformer(Transformer):
     def __init__(self):
         super().__init__()
@@ -308,42 +342,31 @@ class _GrooveScriptTransformer(Transformer):
                 bars.append(item)
         return Fill(name=name, bars=bars, dynamic_spans=dynamic_spans)
 
+    def fill_def_bare(self, items):
+        """Fill with no count/bar delimiters — a single implicit bar."""
+        name = _ast.literal_eval(str(items[0]))
+        bar_items: list = []
+        dynamic_spans: list[DynamicSpan] = []
+        for item in items[1:]:
+            if isinstance(item, DynamicSpan):
+                dynamic_spans.append(item)
+            else:
+                bar_items.append(item)
+        bar = _build_fill_bar(label=None, items=bar_items)
+        return Fill(name=name, bars=[bar], dynamic_spans=dynamic_spans)
+
     def fill_dynamic_line(self, items):
         return items[0][1]
 
     def fill_count_block(self, items):
         label = _ast.literal_eval(str(items[0]))
-        lines = []
-        current_beat = "1"
+        return _build_fill_bar(label=label, items=items[1:])
 
-        def _resolve(beat: str) -> str:
-            nonlocal current_beat
-            if beat == "trip":
-                return current_beat + "t"
-            if beat == "let":
-                return current_beat + "l"
-            if beat == "and":
-                return current_beat + "&"
-            if beat and beat[0].isdigit():
-                m = re.match(r"\d+", beat)
-                if m:
-                    current_beat = m.group(0)
-            return beat
-
-        pattern_lines = []
-        for item in items[1:]:
-            if isinstance(item, FillLine):
-                item.beat = _resolve(item.beat)
-                lines.append(item)
-            elif isinstance(item, PatternLine):
-                # star-spec instrument line (e.g. BD: *8 except 4&)
-                pattern_lines.append(item)
-            elif isinstance(item, list):
-                # result of fill_instr_line: list of FillLine
-                for line in item:
-                    line.beat = _resolve(line.beat)
-                lines.extend(item)
-        return FillBar(label=label, lines=lines, pattern_lines=pattern_lines)
+    def fill_bar_numbered(self, items):
+        """Fill bar delimited by 'bar N:' — beats fully specified, no count label."""
+        # items[0] is the bar number INT; we don't retain it (file order = bar order),
+        # but it acts as a visual delimiter and lets the grammar split bars.
+        return _build_fill_bar(label=None, items=items[1:])
 
     def fill_cn_bar(self, items):
         """Count+notes fill bar: positional 1-1 mapping of count tokens to notes.

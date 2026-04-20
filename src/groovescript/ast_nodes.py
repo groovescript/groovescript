@@ -155,7 +155,7 @@ class FillLine:
 class FillBar:
     """One bar of fill events, from a 'count' block."""
 
-    label: str  # human-readable count label e.g. "3 e & a 4"
+    label: str | None  # human-readable count label e.g. "3 e & a 4"; None when omitted
     lines: list[FillLine]
     pattern_lines: list[PatternLine] = field(default_factory=list)  # star-spec instrument lines (e.g. BD: *8 except 4&)
 
