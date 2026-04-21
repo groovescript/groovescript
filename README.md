@@ -4,10 +4,49 @@ A Python CLI that compiles GrooveScript (`.gs`) drum notation files into
 [LilyPond](https://lilypond.org/) source, then renders them to print-ready
 PDF sheet music.
 
-GrooveScript is a text-based DSL optimised for fast transcription of drum
+GrooveScript is a text-based DSL optimized for fast transcription of drum
 charts: reusable grooves and fills, section-based song structure,
 time-anchored variations, placeholder fills for incremental chart-building,
 and full support for changing meters.
+
+## Core concepts
+
+- **Sections** — the top-level song-structure units (intro, verse, chorus, bridge, …). Each section declares how many bars it runs, which groove it uses, and any fills or variations that occur inside it.
+- **Grooves** — named, reusable drum patterns that repeat for the duration of a section. Define once, reference everywhere.
+- **Fills** — short departures from the groove, placed at a specific bar and beat within a section (e.g., a bar-4 snare roll before the chorus).
+- **Variations** — time-anchored tweaks applied on top of the groove at a particular bar: add, remove, replace, or substitute individual notes without rewriting the whole pattern.
+
+## Quick taste
+
+```groovescript
+title: "Simple Rock"
+tempo: 120
+
+groove "money beat":
+  kick:  1, 3
+  snare: 2, 4
+  hihat: *8
+
+fill "bar 4 fill":
+  count "3 e & a 4":
+    3:  snare
+    3e: snare
+    3&: snare
+    3a: snare
+    4:  kick, crash
+
+section "intro":
+  bars: 4
+  groove: "money beat"
+  fill "bar 4 fill" at bar 4 beat 3
+
+section "chorus":
+  bars: 8
+  groove: "money beat"
+```
+
+More complete fixtures live under `tests/fixtures/`, each with its compiled
+`.ly` and rendered `.pdf` committed alongside the `.gs` source.
 
 ## Get started
 
@@ -19,13 +58,6 @@ and full support for changing meters.
 The template repo includes step-by-step instructions for the full iPhone workflow.
 
 ---
-
-## Core concepts
-
-- **Grooves** — named, reusable drum patterns that repeat for the duration of a section. Define once, reference everywhere.
-- **Fills** — short departures from the groove, placed at a specific bar and beat within a section (e.g., a bar-4 snare roll before the chorus).
-- **Variations** — time-anchored tweaks applied on top of the groove at a particular bar: add, remove, replace, or substitute individual notes without rewriting the whole pattern.
-- **Sections** — the top-level song-structure units (intro, verse, chorus, bridge, …). Each section declares how many bars it runs, which groove it uses, and any fills or variations that occur inside it.
 
 ## Documentation
 
@@ -39,67 +71,6 @@ The template repo includes step-by-step instructions for the full iPhone workflo
   you're writing a chart.
 
 See [GitHub Issues](https://github.com/groovescript/groovescript/issues) for bugs and roadmap.
-
-## Quick taste
-
-```groovescript
-title: "Simple Rock"
-tempo: 120
-
-groove "money beat":
-  BD: 1, 3
-  SN: 2, 4
-  HH: *8
-
-fill "bar 4 fill":
-  count "3 e & a 4":
-    3:  SN
-    3e: SN
-    3&: SN
-    3a: SN
-    4:  BD, CR
-
-section "intro":
-  bars: 4
-  groove: "money beat"
-  fill "bar 4 fill" at bar 4 beat 3
-
-section "chorus":
-  bars: 8
-  groove: "money beat"
-  variation "chorus lift" at bar 8:
-    replace HH with CR at 1
-    add SN ghost at 2&
-    replace SN with SN accent at 4
-  variation "open-hat-4&" at bar 4   // built-in library variation
-```
-
-Named variations can also be defined once at the top level and reused
-across any number of sections and bars:
-
-```groovescript
-variation "crash-on-one":
-  add CR at 1
-
-section "chorus":
-  bars: 8
-  groove: "money beat"
-  variation "crash-on-one" at bars 1, 5   // reuse the same variation twice
-
-section "outro":
-  bars: 4
-  groove: "money beat"
-  variation "crash-on-one" at bar 1       // …and again in another section
-```
-
-GrooveScript also ships a built-in variation library (e.g. `open-hat-4`,
-`flam-backbeat`, `drop-kick`, `ride-instead`) — see
-[`src/groovescript/variation_library.gs`](src/groovescript/variation_library.gs)
-for the full catalogue. User-defined variations with the same name take
-precedence over library entries.
-
-More complete fixtures live under `tests/fixtures/`, each with its compiled
-`.ly` and rendered `.pdf` committed alongside the `.gs` source.
 
 ## Security
 

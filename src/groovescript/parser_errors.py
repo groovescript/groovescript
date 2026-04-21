@@ -123,7 +123,7 @@ def _hint_for_unexpected_characters(
     col_offset = 0
 
     # Case A: adjacent previous-token + current word suggest something the
-    # lexer split at the longest prefix it recognised. Try:
+    # lexer split at the longest prefix it recognized. Try:
     #   * misspelled instrument (prev was INSTRUMENT)
     #   * misspelled keyword (prev was any keyword-ish terminal whose value
     #     starts the combined text)
@@ -225,7 +225,7 @@ def _hint_for_unexpected_token(exc: UnexpectedToken) -> str | None:
         if suggestion:
             return f"unknown instrument '{tok_value}' — did you mean '{suggestion}'?"
 
-    # Case 3: the token is a recognised instrument but the grammar expected
+    # Case 3: the token is a recognized instrument but the grammar expected
     # a specific keyword at this point. Suggest a close keyword match.
     if tok_type == "INSTRUMENT" and tok_value:
         suggestion = suggest_from_choices(tok_value, _KEYWORD_CANDIDATES)

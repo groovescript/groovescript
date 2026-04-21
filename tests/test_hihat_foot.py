@@ -25,7 +25,7 @@ def test_parse_file_fixture_hihat_foot():
 
 
 def test_parse_hf_canonical():
-    """``HF`` is recognised as an instrument on a pattern line."""
+    """``HF`` is recognized as an instrument on a pattern line."""
     src = """\
 groove "g":
     HF: 2, 4

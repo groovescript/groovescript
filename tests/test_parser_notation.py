@@ -128,7 +128,7 @@ def test_parse_triplet_beat_labels():
 
 def test_parse_file_fixture_triplets():
     """triplets.gs covers short (`3t`/`3l`), verbose positional (`1trip`/`1let`),
-    and bare count-token (`trip`/`let`) forms — all should normalise to the
+    and bare count-token (`trip`/`let`) forms — all should normalize to the
     canonical `Nt`/`Nl` short form and land on 1/12 / 2/12 triplet positions."""
     from fractions import Fraction
     from groovescript.compiler import compile_song
@@ -143,7 +143,7 @@ def test_parse_file_fixture_triplets():
     assert "3t" in short_beats and "3l" in short_beats
 
     # Bare-token fill: "1 trip let 2" with `trip` / `let` bare keys that
-    # should normalise to `1t` / `1l`.
+    # should normalize to `1t` / `1l`.
     bare_fill = next(f for f in song.fills if f.name == "bare trip let")
     bare_beats = [line.beat for line in bare_fill.bars[0].lines]
     assert bare_beats == ["1", "1t", "1l", "2"]

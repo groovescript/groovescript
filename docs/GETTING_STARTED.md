@@ -82,7 +82,7 @@ directly.
   introducing metadata, form, grooves, placeholder fills, variations, and
   real fills in order.
 - **Looking up a specific feature?** Search [`DSL_REFERENCE.md`](DSL_REFERENCE.md).
-  It's organised by topic (metadata, instruments, beat labels, grooves,
+  It's organized by topic (metadata, instruments, beat labels, grooves,
   fills, sections, variations, modifiers) and is the authoritative reference
   for the DSL.
 - **Editor integration.** A Vim / Neovim syntax-highlighting plugin lives in

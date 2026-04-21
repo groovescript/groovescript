@@ -230,21 +230,21 @@ groove "alias beat":
 """
 
 
-def test_alias_groove_kick_normalises_to_bd():
+def test_alias_groove_kick_normalizes_to_bd():
     song = parse(ALIAS_GROOVE_SRC)
     instruments = {l.instrument for l in song.grooves[0].bars[0]}
     assert "BD" in instruments
     assert "kick" not in instruments
 
 
-def test_alias_groove_snare_normalises_to_sn():
+def test_alias_groove_snare_normalizes_to_sn():
     song = parse(ALIAS_GROOVE_SRC)
     instruments = {l.instrument for l in song.grooves[0].bars[0]}
     assert "SN" in instruments
     assert "snare" not in instruments
 
 
-def test_alias_groove_hat_normalises_to_hh():
+def test_alias_groove_hat_normalizes_to_hh():
     song = parse(ALIAS_GROOVE_SRC)
     instruments = {l.instrument for l in song.grooves[0].bars[0]}
     assert "HH" in instruments
@@ -252,7 +252,7 @@ def test_alias_groove_hat_normalises_to_hh():
 
 
 def test_lowercase_abbreviations_in_groove():
-    """Lowercase abbreviations (sn, hh, bd) normalise to canonical forms."""
+    """Lowercase abbreviations (sn, hh, bd) normalize to canonical forms."""
     src = """\
 groove "lower":
     bd: 1, 3
@@ -281,7 +281,7 @@ groove "lower":
     ("hh", "HH"), ("oh", "OH"), ("rd", "RD"), ("cr", "CR"),
     ("ft", "FT"), ("ht", "HT"), ("mt", "MT"),
 ])
-def test_instrument_alias_normalises_to_canonical(alias, canonical):
+def test_instrument_alias_normalizes_to_canonical(alias, canonical):
     """Every verbose and lowercase alias resolves to its canonical abbreviation."""
     from groovescript.parser import _normalize_instrument
     assert _normalize_instrument(alias) == canonical

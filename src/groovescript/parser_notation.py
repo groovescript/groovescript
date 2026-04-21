@@ -118,7 +118,7 @@ def _parse_count_tokens(count_str: str) -> list[str]:
             # Positional forms: 1e, 1and, 1trip, 12&, 10trip, etc.
             match = _POSITIONAL_BEAT_RE.match(token)
             if not match:
-                raise ValueError(f"Unrecognised count token {token!r} in: {count_str!r}")
+                raise ValueError(f"Unrecognized count token {token!r} in: {count_str!r}")
             digits = match.group(1)
             suffix = match.group(2) or ""
             current_beat = digits
@@ -449,7 +449,7 @@ def _extract_buzz_duration(raw_modifiers: list[str]) -> tuple[list[str], str | N
     Returns ``(canonical_modifiers, buzz_duration_or_None)``. ``buzz`` tokens
     (with or without a duration suffix) are collapsed into a single ``"buzz"``
     entry in the canonical list; the duration string (default ``"4"``) is
-    returned separately. A non-buzz token is normalised via
+    returned separately. A non-buzz token is normalized via
     ``_normalize_modifier``.
     """
     canonical: list[str] = []

@@ -28,8 +28,8 @@ groove "g":
     assert beats[2] == "2" and getattr(beats[2], "modifiers", []) == []
 
 
-def test_parse_32nd_alias_normalised_to_double():
-    """'32nd' is normalised to 'double' at parse time."""
+def test_parse_32nd_alias_normalized_to_double():
+    """'32nd' is normalized to 'double' at parse time."""
     src = """\
 groove "g":
     HH: 1, 1e 32nd, 2
@@ -73,7 +73,7 @@ section "s":
 
 
 def test_parse_double_in_count_notes_fill():
-    """'double' in a count+notes notes string is normalised and attached."""
+    """'double' in a count+notes notes string is normalized and attached."""
     src = """\
 fill "f":
   count "1 e & a":

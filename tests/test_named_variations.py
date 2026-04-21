@@ -165,7 +165,7 @@ def test_library_variation_resolves_without_local_def():
 
 def test_user_variation_def_overrides_library():
     """A top-level ``variation "name":`` with the same name as a library
-    entry takes precedence — mirrors the groove/fill override behaviour."""
+    entry takes precedence — mirrors the groove/fill override behavior."""
     song = parse(
         """
         variation "open-hat-4":

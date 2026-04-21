@@ -222,7 +222,7 @@ def emit_midi(ir: IRSong | IRGroove) -> bytes:
 
     For a standalone IRGroove (no arrangement), the groove is played once at
     120 BPM in 4/4.  For an IRSong, the full arrangement is emitted with all
-    tempo and time-signature changes honoured.
+    tempo and time-signature changes honored.
     """
     if isinstance(ir, IRGroove):
         return _midi_from_groove(ir)
