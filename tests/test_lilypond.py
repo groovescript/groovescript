@@ -109,6 +109,10 @@ def test_emit_hihat_at_correct_staff_position():
     ly = _emit_groove(MONEY_BEAT)
     assert "(hihat cross #f 5)" in ly
     assert "(openhihat xcircle #f 5)" in ly
+    # Ride cymbal: plain cross notehead on the top line of the staff
+    # (position 4), one position below hihat so the two are visually
+    # distinguishable when they share a bar.
+    assert "(ridecymbal cross #f 4)" in ly
     # Crash cymbal: plain cross notehead one ledger above the staff,
     # distinguished from hihat by staff position rather than notehead shape.
     assert "(crashcymbal cross #f 7)" in ly
