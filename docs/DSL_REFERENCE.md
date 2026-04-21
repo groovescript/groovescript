@@ -119,7 +119,7 @@ numerator from 1–99 are supported.
 ## Instruments
 
 Every instrument can be written as its canonical abbreviation, a lowercase
-abbreviation, or a verbose name — all normalise to the same canonical form in
+abbreviation, or a verbose name — all normalize to the same canonical form in
 the output.
 
 | Canonical | Lowercase | Verbose aliases          | Drum              |

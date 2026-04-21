@@ -34,7 +34,7 @@ from .parser_notation import (
 
 # Bare suffix tokens that refer to the last seen beat number instead of
 # starting a new beat. When seen on its own, the preprocessor resolves the
-# token to ``<last_beat><mapped_suffix>``. Only recognised in beat-list
+# token to ``<last_beat><mapped_suffix>``. Only recognized in beat-list
 # contexts (pattern lines and variation actions), not in
 # position→instrument lines.
 _BARE_SUFFIX_TOKENS: dict[str, str] = {
@@ -46,7 +46,7 @@ _BARE_SUFFIX_TOKENS: dict[str, str] = {
     "let": "let",
 }
 
-# Instrument tokens recognised by the preprocessor. Must stay in sync with
+# Instrument tokens recognized by the preprocessor. Must stay in sync with
 # grammar.lark's INSTRUMENT terminal (minus the `hi-hat` variant which is
 # only accepted inside count+notes string bodies, not on DSL lines).
 _PP_INSTRUMENT_RE = (

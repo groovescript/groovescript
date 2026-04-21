@@ -3,7 +3,7 @@ tempo: 120
 time_signature: 4/4
 
 // Demonstrates that instruments can be written with verbose names or
-// lowercase abbreviations; they all normalise to canonical abbreviations
+// lowercase abbreviations; they all normalize to canonical abbreviations
 // in the IR.
 
 // Groove using a mix of canonical (HH), lowercase (sn), and verbose (kick)

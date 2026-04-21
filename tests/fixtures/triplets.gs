@@ -9,7 +9,7 @@ groove "money beat":
     HH: *8
 
 // Triplet groove using the VERBOSE positional labels `1trip` / `1let`.
-// `Ntrip` / `Nlet` normalise to the short forms `Nt` / `Nl` at parse time.
+// `Ntrip` / `Nlet` normalize to the short forms `Nt` / `Nl` at parse time.
 groove "triplet":
     1: BD
     1trip: SN

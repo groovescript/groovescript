@@ -98,7 +98,7 @@ groove "money beat":
 
 Instruments can be written as canonical abbreviations (`BD`, `SN`, `HH`),
 lowercase (`bd`, `sn`, `hh`), or verbose names (`kick`, `snare`, `hat`) —
-they all normalise to the same output. Full list in
+they all normalize to the same output. Full list in
 [DSL reference → Instruments](DSL_REFERENCE.md#instruments).
 
 GrooveScript also ships with a **library of common grooves** (`rock`,
