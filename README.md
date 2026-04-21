@@ -71,7 +71,32 @@ section "chorus":
     replace HH with CR at 1
     add SN ghost at 2&
     replace SN with SN accent at 4
+  variation "open-hat-4&" at bar 4   // built-in library variation
 ```
+
+Named variations can also be defined once at the top level and reused
+across any number of sections and bars:
+
+```groovescript
+variation "crash-on-one":
+  add CR at 1
+
+section "chorus":
+  bars: 8
+  groove: "money beat"
+  variation "crash-on-one" at bars 1, 5   // reuse the same variation twice
+
+section "outro":
+  bars: 4
+  groove: "money beat"
+  variation "crash-on-one" at bar 1       // …and again in another section
+```
+
+GrooveScript also ships a built-in variation library (e.g. `open-hat-4`,
+`flam-backbeat`, `drop-kick`, `ride-instead`) — see
+[`src/groovescript/variation_library.gs`](src/groovescript/variation_library.gs)
+for the full catalogue. User-defined variations with the same name take
+precedence over library entries.
 
 More complete fixtures live under `tests/fixtures/`, each with its compiled
 `.ly` and rendered `.pdf` committed alongside the `.gs` source.
@@ -160,9 +185,10 @@ src/groovescript/
   musicxml.py         # IR → MusicXML
   lint.py             # Style checker used by `lint --style`
   grammar.lark        # Lark EBNF grammar
-  library.gs          # Built-in groove library
-  fill_library.gs     # Built-in fill library
-  library.py          # Loader for library.gs and fill_library.gs
+  groove_library.gs     # Built-in groove library
+  fill_library.gs       # Built-in fill library
+  variation_library.gs  # Built-in variation library
+  library.py            # Loader for groove / fill / variation libraries
   lilypond_template.ly  # Static LilyPond boilerplate
 tests/
   fixtures/           # .gs / .ly / .pdf reference files

@@ -23,6 +23,7 @@ from .ast_nodes import (
     StarSpec,
     Variation,
     VariationAction,
+    VariationDef,
 )
 from .errors import GrooveScriptError
 
@@ -1653,12 +1654,16 @@ def _build_coverage_maps(
     total_bars: int,
     bpb: int,
     beat_unit: int,
+    variation_map: dict[str, VariationDef] | None = None,
 ) -> tuple[dict[int, tuple["IRFillBar", Fraction]], dict[int, Variation]]:
     """Build per-bar fill and variation coverage maps for a section.
 
     Returns ``(fill_coverage, variation_coverage)`` keyed by
     section-bar offset (0-indexed). ``total_bars`` bounds fill coverage
     so multi-bar fills that extend past the section are truncated.
+
+    ``variation_map`` is consulted to resolve named references
+    (``variation "name" at bar N`` with no body) to their action list.
     """
     fill_coverage: dict[int, tuple[IRFillBar, Fraction]] = {}
     for placement in section.fills:
@@ -1680,6 +1685,25 @@ def _build_coverage_maps(
 
     variation_coverage: dict[int, Variation] = {}
     for variation in section.variations:
+        # Resolve name-only references ("variation \"foo\" at bar N" with no
+        # body) against the shared variation_map. Inline blocks already carry
+        # their own actions and are used verbatim.
+        if not variation.actions and variation.name is not None:
+            if variation_map is None or variation.name not in variation_map:
+                raise GrooveScriptError(
+                    message=(
+                        f"Section {section.name!r} references unknown "
+                        f"variation {variation.name!r}. Define it with "
+                        f"`variation \"{variation.name}\":` at the top level, "
+                        f"or use a built-in variation from the library."
+                    ),
+                )
+            resolved = variation_map[variation.name]
+            variation = Variation(
+                name=variation.name,
+                bars=variation.bars,
+                actions=list(resolved.actions),
+            )
         for vbar in variation.bars:
             variation_coverage[vbar - 1] = variation
 
@@ -1806,6 +1830,23 @@ def compile_song(song: Song) -> IRSong:
 
     _resolve_fill_extends(fill_map)
 
+    # Build the variation lookup map for name-only references
+    # (``variation "foo" at bar N`` with no body). User-defined top-level
+    # variations take precedence over built-in library entries, and any
+    # referenced name not defined locally is pulled from the library.
+    variation_map: dict[str, VariationDef] = {v.name: v for v in song.variations}
+    referenced_variations: set[str] = set()
+    for section in sections:
+        for variation in section.variations:
+            if not variation.actions and variation.name is not None:
+                referenced_variations.add(variation.name)
+    if referenced_variations:
+        from .library import get_library_variations
+        library_variations = get_library_variations()
+        for name in referenced_variations:
+            if name not in variation_map and name in library_variations:
+                variation_map[name] = library_variations[name]
+
     # Count occurrences of base section names
     name_counts = Counter(s.name.lower() for s in sections)
     current_counts = Counter()
@@ -1842,7 +1883,7 @@ def compile_song(song: Song) -> IRSong:
             raise ValueError(f"Section {section.name!r}: play: block expanded to zero bars")
 
         ir_section = IRSection(name=section.name, start_bar=start_bar_number, bars=total_bars, tempo=effective_tempo)
-        fill_coverage, variation_coverage = _build_coverage_maps(section, fill_map, total_bars, bpb, beat_unit)
+        fill_coverage, variation_coverage = _build_coverage_maps(section, fill_map, total_bars, bpb, beat_unit, variation_map)
         all_spans = _collect_section_dynamic_spans(section, None, fill_map, total_bars)
         dyn_starts, dyn_stops = _resolve_dynamic_spans(all_spans, total_bars, bpb)
 
@@ -1924,7 +1965,7 @@ def compile_song(song: Song) -> IRSong:
         repeat_times = section.repeat
         phrase_length = (section.bars // repeat_times) if repeat_times else None
 
-        fill_coverage, variation_coverage = _build_coverage_maps(section, fill_map, section.bars, bpb, beat_unit)
+        fill_coverage, variation_coverage = _build_coverage_maps(section, fill_map, section.bars, bpb, beat_unit, variation_map)
 
         # Pre-bucket groove events by their groove-bar number. The tiling
         # loop below re-visits each groove bar ``section.bars / groove.bars``

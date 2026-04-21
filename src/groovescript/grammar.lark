@@ -10,6 +10,7 @@ start: statement*
           | groove_def
           | section_def
           | fill_def
+          | variation_def
 
 metadata_block: "metadata" ":" metadata_line+
 metadata_line: title_line
@@ -124,10 +125,17 @@ section_dynamic_line: DYNAMIC_KIND "from" "bar" INT "to" "bar" INT
 // Longer alternatives must precede their prefixes so Python regex takes the full token.
 DYNAMIC_KIND: "crescendo" | "decrescendo" | "cresc" | "decresc"
 
+// Top-level reusable variation definition. Referenced from a section via
+// `variation "name" at bar N` (no trailing body). User-defined names
+// override the built-in variation library.
+variation_def: "variation" ESCAPED_STRING ":" variation_action+
+
 section_variation_block: "variation" ESCAPED_STRING "at" "bar" bar_number_list ":" variation_action+
                        | "variation" "at" "bar" bar_number_list ":" variation_action+
                        | "variation" ESCAPED_STRING "at" "bars" bar_number_list ":" variation_action+
                        | "variation" "at" "bars" bar_number_list ":" variation_action+
+                       | "variation" ESCAPED_STRING "at" "bar" bar_number_list   -> section_variation_ref
+                       | "variation" ESCAPED_STRING "at" "bars" bar_number_list  -> section_variation_ref
 bar_number_list: INT ("," INT)*
 ?variation_action: add_action | remove_action | replace_action | substitute_action | modify_action
 add_action: "add" add_instr_spec+ "at" variation_target
