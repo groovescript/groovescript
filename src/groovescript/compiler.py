@@ -723,6 +723,41 @@ def compile_groove(
                 _expand_pattern_line(line, subdivision, bar_number, beats_per_bar, beat_unit)
             )
 
+    # Apply any variation actions declared via ``extend:`` one bar at a time.
+    # Actions with ``bars=None`` target every bar; otherwise only the listed
+    # bars are affected. This runs before 'double' / buzz validation so that
+    # events introduced by the actions go through the same checks as the
+    # pattern-line events.
+    if groove.extend_variations:
+        events_by_bar: dict[int, list[Event]] = {}
+        for event in events:
+            events_by_bar.setdefault(event.bar, []).append(event)
+        # Ensure every declared bar exists in the map so actions targeting
+        # an empty bar (e.g. ``add CR at 1`` on a bar that has no events
+        # yet) still run.
+        for bar_number in range(1, len(bars) + 1):
+            events_by_bar.setdefault(bar_number, [])
+
+        for bar_number in sorted(events_by_bar):
+            subdivision = per_bar_subdivisions[bar_number - 1]
+            bar_events = events_by_bar[bar_number]
+            for ev in groove.extend_variations:
+                if ev.bars is not None and bar_number not in ev.bars:
+                    continue
+                bar_events = _apply_variation_actions(
+                    bar_events,
+                    ev.actions,
+                    subdivision,
+                    bar_number,
+                    beats_per_bar,
+                    beat_unit,
+                )
+            events_by_bar[bar_number] = bar_events
+
+        events = []
+        for bar_number in sorted(events_by_bar):
+            events.extend(events_by_bar[bar_number])
+
     # Validate subdivision-level constraint for 'double' after all events are built.
     if any("double" in e.modifiers for e in events):
         # Every 'double' event must be at 16ths (slots_per_beat=4) in its own bar.
@@ -1538,11 +1573,33 @@ def _resolve_groove_extends(
         merged_texts = dict(base.bar_texts)
         merged_texts.update(groove.bar_texts)
 
+        # Chain extend_variations: the resolved base already has any of its
+        # own variations flattened into ``base.extend_variations``, so we
+        # apply those first, then this groove's own actions on top.
+        merged_extend_variations = (
+            list(base.extend_variations) + list(groove.extend_variations)
+        )
+
+        # Validate that every scoped block targets a bar that actually exists
+        # in the merged groove. Catching this at extend-resolution time gives
+        # a clear error before the groove is compiled to events.
+        max_bar = len(merged_bars)
+        for ev in merged_extend_variations:
+            if ev.bars is None:
+                continue
+            for bar_num in ev.bars:
+                if bar_num < 1 or bar_num > max_bar:
+                    raise ValueError(
+                        f"Groove {name!r}: variation targets bar {bar_num} "
+                        f"but the groove only has {max_bar} bar(s)"
+                    )
+
         groove_defs[name] = Groove(
             name=name,
             bars=merged_bars,
             bar_texts=merged_texts,
             extend=None,  # mark as resolved
+            extend_variations=merged_extend_variations,
         )
         groove_bar_texts_map[name] = merged_texts
 

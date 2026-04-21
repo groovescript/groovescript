@@ -324,6 +324,48 @@ groove "rock copy":
 Chains work: `C` can extend `B`, which extends `A`. The base groove can
 also be a built-in library groove (e.g. `extend: "rock"`).
 
+**Applying variation actions in `extend:`** — in addition to (or instead of)
+pattern-line overrides, the extend body accepts the same action syntax used
+by section variations (`add`, `remove`, `replace`, `substitute`, `modify add`,
+`modify remove`). This lets a derived groove be used everywhere a named
+groove is accepted, without re-stating the base groove plus a matching
+variation at every call site.
+
+```groovescript
+groove "rock on ride":
+  extend: "rock"
+  replace HH with RD at *      # every HH hit becomes an RD hit
+```
+
+Bare actions apply to every bar of the base. To scope actions to specific
+bars, wrap them in a `variation at bar N:` (or `variation at bars N, M:`)
+block. Bare bundles and scoped bundles can be mixed freely:
+
+```groovescript
+groove "two-bar rock":
+  bar 1:
+    HH: *8 / BD: 1, 3 / SN: 2, 4
+  bar 2:
+    HH: *8 / BD: 1, 3 / SN: 2, 4
+
+groove "two-bar with lift":
+  extend: "two-bar rock"
+  variation at bar 1:
+    replace HH with RD at *    # bar 1 only
+  variation at bar 2:
+    add CR at 1                # bar 2 only
+```
+
+When both pattern-line overrides and variation actions are given in the
+same `extend:` body, the pattern-line merge runs first, then the actions
+apply to the resulting events. `replace`, `add`, `remove`, and the
+`modify` family all behave the same as they do in a section variation —
+including the rule that any modifiers on the original events are *not*
+carried over to events produced by `replace` (the new hits start fresh).
+
+Scoping to a bar number that doesn't exist in the merged groove is an
+error, caught at compile time.
+
 ### Count+notes groove bodies
 
 A groove can also use the positional `count:` / `notes:` form — the same

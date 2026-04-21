@@ -136,11 +136,28 @@ class Groove:
     # within the groove; the compiler translates them to section-bar
     # offsets and repeats them per groove cycle.
     dynamic_spans: list["DynamicSpan"] = field(default_factory=list)
+    # Variation actions applied to a groove defined via ``extend:``. Each
+    # entry targets a set of 1-indexed bars (``None`` = every bar) and
+    # carries an ordered list of variation actions to apply to those bars
+    # once the base groove's events have been expanded.
+    extend_variations: list["GrooveExtendVariation"] = field(default_factory=list)
 
     @property
     def pattern(self) -> list[PatternLine]:
         """Compatibility accessor for single-bar grooves."""
         return self.bars[0]
+
+
+@dataclass
+class GrooveExtendVariation:
+    """A scoped bundle of variation actions declared inside ``extend:``.
+
+    ``bars`` is ``None`` to apply to every bar of the base groove, or a
+    1-indexed list of bar numbers to target only those bars.
+    """
+
+    bars: list[int] | None
+    actions: list["VariationAction"]
 
 
 @dataclass

@@ -22,6 +22,7 @@ from .ast_nodes import (
     FillPlaceholder,
     FillPlacement,
     Groove,
+    GrooveExtendVariation,
     InheritSpec,
     InstrumentHit,
     Metadata,
@@ -181,6 +182,7 @@ class _GrooveScriptTransformer(Transformer):
                 bar_texts=body.get("bar_texts", {}),
                 extend=body["extend"],
                 dynamic_spans=dynamic_spans,
+                extend_variations=body.get("extend_variations", []),
             )
         return Groove(
             name=name,
@@ -212,18 +214,74 @@ class _GrooveScriptTransformer(Transformer):
         return {"count_notes": (count_str, notes_str)}
 
     def extend_body(self, items):
-        """Parse ``extend: "base_groove"`` with optional pattern overrides."""
+        """Parse ``extend: "base_groove"`` with optional pattern overrides
+        and/or variation actions.
+
+        The body may contain, in order: zero-or-one ``pattern_content`` dict
+        (instrument/bar overrides), followed by zero-or-more variation-action
+        items. Bare actions apply to every bar of the base; items wrapped in
+        ``variation at bar/bars N:`` blocks apply only to the listed bars.
+        """
         base_name = _ast.literal_eval(str(items[0]))
-        if len(items) > 1:
-            # items[1] is the pattern_content result dict
-            content = items[1]
-            return {
-                "extend": base_name,
-                "bars": content["bars"],
-                "bar_texts": content["bar_texts"],
-                "dynamic_spans": content.get("dynamic_spans", []),
-            }
-        return {"extend": base_name, "bars": [], "bar_texts": {}, "dynamic_spans": []}
+        rest = list(items[1:])
+
+        bars: list = []
+        bar_texts: dict = {}
+        dynamic_spans: list = []
+        # A pattern_content result is a dict carrying a ``bars`` key.
+        if rest and isinstance(rest[0], dict) and "bars" in rest[0]:
+            content = rest[0]
+            bars = content["bars"]
+            bar_texts = content["bar_texts"]
+            dynamic_spans = list(content.get("dynamic_spans", []))
+            rest = rest[1:]
+
+        extend_variations: list[GrooveExtendVariation] = []
+        bare_actions: list[VariationAction] = []
+        for item in rest:
+            if isinstance(item, GrooveExtendVariation):
+                if bare_actions:
+                    extend_variations.append(
+                        GrooveExtendVariation(bars=None, actions=bare_actions)
+                    )
+                    bare_actions = []
+                extend_variations.append(item)
+            elif isinstance(item, list):
+                # add/remove/replace/modify actions produce a list of
+                # VariationAction (one per instrument in the multi-instrument
+                # form).
+                bare_actions.extend(item)
+            elif isinstance(item, VariationAction):
+                # substitute_action produces a single VariationAction.
+                bare_actions.append(item)
+            else:
+                raise ValueError(
+                    f"extend_body: unexpected item of type {type(item).__name__}"
+                )
+        if bare_actions:
+            extend_variations.append(
+                GrooveExtendVariation(bars=None, actions=bare_actions)
+            )
+
+        return {
+            "extend": base_name,
+            "bars": bars,
+            "bar_texts": bar_texts,
+            "dynamic_spans": dynamic_spans,
+            "extend_variations": extend_variations,
+        }
+
+    def extend_variation_block(self, items):
+        """Parse ``variation at bar/bars N: <actions>`` inside ``extend:``."""
+        bar_nums = items[0]  # list[int] from bar_number_list
+        raw_actions = items[1:]
+        actions: list[VariationAction] = []
+        for item in raw_actions:
+            if isinstance(item, list) and item and isinstance(item[0], VariationAction):
+                actions.extend(item)
+            elif isinstance(item, VariationAction):
+                actions.append(item)
+        return GrooveExtendVariation(bars=bar_nums, actions=actions)
 
     def pattern_content(self, items):
         # Each item is either:
