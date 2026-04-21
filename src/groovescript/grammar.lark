@@ -31,8 +31,14 @@ groove_def: "groove" ESCAPED_STRING ":" groove_body
 groove_body: pattern_content
            | groove_cn_body
            | extend_body
-extend_body: "extend" ":" ESCAPED_STRING pattern_content
-           | "extend" ":" ESCAPED_STRING
+extend_body: "extend" ":" ESCAPED_STRING
+           | "extend" ":" ESCAPED_STRING pattern_content
+           | "extend" ":" ESCAPED_STRING extend_body_item+
+           | "extend" ":" ESCAPED_STRING pattern_content extend_body_item+
+?extend_body_item: variation_action
+                 | extend_variation_block
+extend_variation_block: "variation" "at" "bar" bar_number_list ":" variation_action+
+                      | "variation" "at" "bars" bar_number_list ":" variation_action+
 groove_cn_body: "count" ":" ESCAPED_STRING "notes" ":" ESCAPED_STRING
 pattern_content: pattern_block_line+ groove_dynamic_line*
                | pattern_bar+ groove_dynamic_line*
