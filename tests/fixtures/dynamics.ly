@@ -3,6 +3,8 @@
 % Custom drum style overrides:
 %   hihat    → cross notehead at position 5 (space above staff, standard notation).
 %   openhihat → xcircle notehead at position 5 (same height as hihat, circle-x style).
+%   ridecymbal → cross notehead at position 4 (top line of the staff, one
+%     position below hihat — conventional ride placement).
 %   crashcymbal → plain cross (x) notehead at position 7, the conventional
 %     crash position one ledger above the staff. Distinguished from hihat
 %     (same notehead at position 5) by staff position, not shape.
@@ -11,8 +13,9 @@
      (append
        '((hihat cross #f 5)
          (openhihat xcircle #f 5)
+         (ridecymbal cross #f 4)
          (crashcymbal cross #f 7))
-       (filter (lambda (p) (not (memq (car p) '(hihat openhihat crashcymbal))))
+       (filter (lambda (p) (not (memq (car p) '(hihat openhihat ridecymbal crashcymbal))))
                (hash-table->alist drums-style)))))
 
 \header {
