@@ -437,6 +437,128 @@ section "intro":
     assert '"Play 3x"' in ly
 
 
+def test_emit_compact_collapses_across_phrase_boundary():
+    """compact=True collapses 12 identical bars into a single Play 12x block
+    instead of three Play 4x blocks split at the 4-bar phrase boundary."""
+    src = """\
+groove "money beat":
+    BD: 1, 3
+    SN: 2, 4
+    HH: *8
+
+section "verse":
+  bars: 12
+  groove: "money beat"
+"""
+    song = parse(src)
+    ir = compile_song(song)
+
+    default_ly = emit_lilypond(ir)
+    assert default_ly.count('\\repeat volta 4') == 3
+    assert '"Play 4x"' in default_ly
+    assert '\\repeat volta 12' not in default_ly
+
+    compact_ly = emit_lilypond(ir, compact=True)
+    assert '\\repeat volta 12' in compact_ly
+    assert '"Play 12x"' in compact_ly
+    assert '\\repeat volta 4' not in compact_ly
+    assert '"Play 4x"' not in compact_ly
+
+
+def test_emit_compact_respects_section_boundary():
+    """compact=True must not merge identical bars across a section boundary."""
+    src = """\
+groove "money beat":
+    BD: 1, 3
+    SN: 2, 4
+    HH: *8
+
+section "verse":
+  bars: 6
+  groove: "money beat"
+
+section "chorus":
+  bars: 6
+  groove: "money beat"
+"""
+    song = parse(src)
+    compact_ly = emit_lilypond(compile_song(song), compact=True)
+    assert '\\repeat volta 6' in compact_ly
+    assert '\\repeat volta 12' not in compact_ly
+    assert '"Play 6x"' in compact_ly
+
+
+def test_emit_compact_respects_fill_placement():
+    """compact=True must stop collapsing at a bar that carries a fill so the
+    fill is not swallowed into the repeat block."""
+    src = """\
+groove "money beat":
+    BD: 1, 3
+    SN: 2, 4
+    HH: *8
+
+fill "turnaround":
+  count "3 e & a 4":
+    3: SN
+    3e: SN
+    3&: SN
+    3a: SN
+    4: BD, CR
+
+section "intro":
+  bars: 12
+  groove: "money beat"
+  fill "turnaround" at bar 12 beat 3
+"""
+    song = parse(src)
+    compact_ly = emit_lilypond(compile_song(song), compact=True)
+    # Bars 1-11 collapse into one block; bar 12 stands alone with the fill.
+    assert '\\repeat volta 11' in compact_ly
+    assert '"Play 11x"' in compact_ly
+    assert '\\repeat volta 12' not in compact_ly
+
+
+def test_emit_compact_preserves_explicit_repeat_blocks():
+    """An author-specified `repeat: N` on a section must be preserved under
+    compact=True rather than flattened into one larger block."""
+    src = """\
+groove "money beat":
+    BD: 1, 3
+    SN: 2, 4
+    HH: *8
+
+section "verse":
+  bars: 12
+  groove: "money beat"
+  repeat: 3
+"""
+    song = parse(src)
+    compact_ly = emit_lilypond(compile_song(song), compact=True)
+    assert '\\repeat volta 3' in compact_ly
+    assert '"Play 3x"' in compact_ly
+    assert '\\repeat volta 12' not in compact_ly
+    assert '"Play 12x"' not in compact_ly
+
+
+def test_emit_compact_default_off_preserves_phrase_chunking():
+    """Regression: emit_lilypond without compact still splits a long identical
+    run at 4-bar phrase boundaries."""
+    src = """\
+groove "money beat":
+    BD: 1, 3
+    SN: 2, 4
+    HH: *8
+
+section "verse":
+  bars: 8
+  groove: "money beat"
+"""
+    song = parse(src)
+    ly = emit_lilypond(compile_song(song))
+    assert ly.count('\\repeat volta 4') == 2
+    assert '\\repeat volta 8' not in ly
+
+
 def test_forced_opening_repeat():
     # Case 1: Song starts with a repeat
     src = """groove "m":
