@@ -197,7 +197,7 @@ def _run_musicxml(input_path: str, output_path: str) -> int:
     return 0
 
 
-def _run_compile(input_path: str, output_path: str) -> int:
+def _run_compile(input_path: str, output_path: str, compact: bool = False) -> int:
     """Run the compile pipeline once. Returns the exit code (0 on success)."""
     rc = _check_output_not_input(input_path, output_path)
     if rc is not None:
@@ -231,7 +231,7 @@ def _run_compile(input_path: str, output_path: str) -> int:
             file=sys.stderr,
         )
         return 1
-    ly_source = emit_lilypond(ir)
+    ly_source = emit_lilypond(ir, compact=compact)
     Path(output_path).write_text(ly_source)
     print(f"Wrote {output_path}")
     notation_warnings = check_notation(ir)
@@ -294,6 +294,17 @@ def main() -> None:
         action="store_true",
         help="Re-compile on every save until Ctrl-C",
     )
+    compile_cmd.add_argument(
+        "--compact",
+        action="store_true",
+        help=(
+            "Collapse runs of identical bars into a single repeat block even "
+            "when they span implicit phrase boundaries (e.g. 12 identical "
+            "bars render as 'Play 12x' instead of three 'Play 4x' blocks). "
+            "Section boundaries, fills, variations, cues, bar text, dynamic "
+            "spans, and time-signature changes are still respected."
+        ),
+    )
 
     midi_cmd = subparsers.add_parser("midi", help="Export a .gs file to MIDI (.mid)")
     midi_cmd.add_argument("input", help="Input .gs file")
@@ -351,9 +362,9 @@ def main() -> None:
 
     if args.command == "compile":
         if args.watch:
-            _watch(args.input, lambda: _run_compile(args.input, args.output))
+            _watch(args.input, lambda: _run_compile(args.input, args.output, compact=args.compact))
             return
-        sys.exit(_run_compile(args.input, args.output))
+        sys.exit(_run_compile(args.input, args.output, compact=args.compact))
 
 
 if __name__ == "__main__":

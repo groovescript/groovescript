@@ -57,6 +57,7 @@ charts/               # Real (non-test) charts: .gs source + compiled .ly + .pdf
 uv run pytest                                          # Run tests
 uv run groovescript compile input.gs -o output.ly      # Compile .gs -> .ly
 uv run groovescript compile input.gs -o output.ly --watch  # Re-compile on save
+uv run groovescript compile input.gs -o output.ly --compact  # Collapse identical bars across implicit phrase boundaries
 uv run groovescript lint input.gs                      # Lint (parse+compile, no output)
 uv run groovescript lint --style input.gs              # Also report stylistic warnings
 uv run groovescript lint --watch input.gs              # Re-lint on save

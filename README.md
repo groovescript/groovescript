@@ -133,6 +133,12 @@ uv run groovescript compile tests/fixtures/full_song_example.gs \
   -o tests/fixtures/full_song_example.ly
 lilypond -o tests/fixtures/full_song_example tests/fixtures/full_song_example.ly
 
+# Compile with --compact to collapse long runs of identical bars into a
+# single repeat block (e.g. 12 identical bars become "Play 12x" rather than
+# three "Play 4x" blocks). Section boundaries, fills, variations, cues,
+# bar text, dynamic spans, and time-signature changes are still respected.
+uv run groovescript compile input.gs -o output.ly --compact
+
 # Lint a .gs file (parse + compile check, no LilyPond output)
 uv run groovescript lint input.gs
 

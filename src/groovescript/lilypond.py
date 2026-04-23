@@ -902,6 +902,7 @@ def _group_bars(
     global_tempo: int | None = None,
     global_time_signature: str = "4/4",
     forced_voice_split_ids: set | None = None,
+    compact: bool = False,
 ) -> list[str]:
     measures: list[str] = []
     i = 0
@@ -978,9 +979,16 @@ def _group_bars(
 
         # 3. Implicit/Post-hoc grouping — only group identical bars with no cues/bar_text
         current_bar_num = bars[i].number
-        remaining_in_phrase = state.current_bpb - ((current_bar_num - 1) % state.current_bpb)
-
-        max_lookahead = min(len(bars) - i, remaining_in_phrase)
+        if compact:
+            # In compact mode ignore phrase-boundary chunking so a long run of
+            # identical bars collapses into a single repeat block. All other
+            # boundaries (section, rest, subdivision, time signature, cues,
+            # fills, bar text, dynamics, event diffs) are still honoured by
+            # the per-step checks in the lookahead loop below.
+            max_lookahead = len(bars) - i
+        else:
+            remaining_in_phrase = state.current_bpb - ((current_bar_num - 1) % state.current_bpb)
+            max_lookahead = min(len(bars) - i, remaining_in_phrase)
 
         # Bars with cues, fill_placeholders, bar_text, or dynamic annotations cannot be implicitly merged into repeats
         has_annotations = bool(bar.cues or bar.fill_placeholders or bar.bar_text or bar.dynamic_starts or bar.dynamic_stops)
@@ -1048,8 +1056,14 @@ def _group_bars(
     return measures
 
 
-def emit_lilypond(ir: IRGroove | IRSong) -> str:
-    """Emit LilyPond source for either a groove or an arranged song."""
+def emit_lilypond(ir: IRGroove | IRSong, *, compact: bool = False) -> str:
+    """Emit LilyPond source for either a groove or an arranged song.
+
+    When ``compact`` is true, runs of identical bars collapse into one repeat
+    block even across implicit 4-bar phrase boundaries. Explicit section-level
+    ``repeat: N`` blocks, section boundaries, fills, variations, cues, bar
+    text, dynamic spans, and time-signature changes are still respected.
+    """
     if isinstance(ir, IRGroove):
         bars = [
             IRBar(
@@ -1085,6 +1099,7 @@ def emit_lilypond(ir: IRGroove | IRSong) -> str:
         global_tempo=tempo,
         global_time_signature=time_signature,
         forced_voice_split_ids=forced_voice_split_ids,
+        compact=compact,
     )
     body = "\n".join(measures)
 
