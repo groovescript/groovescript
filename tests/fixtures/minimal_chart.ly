@@ -19,7 +19,7 @@
                (hash-table->alist drums-style)))))
 
 \header {
-  title = "Placeholder Fills Demo"
+  title = "Minimal Chart"
   tagline = ##f
 }
 
@@ -84,23 +84,45 @@
       \omit Score.MetronomeMark
       \tempo 4 = 120
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
-      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \column { \fontsize #-1 \concat { \note { 4 } #1 " = 120" } \vspace #0.3 \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "VERSE: 4" } \vspace #0.3 \italic \fontsize #-1 "Play 3x" }
-      \bar ".|:"
-      \repeat volta 3 {
-        <bd hh>16 hh16 hh16 hh16 <sn hh>16 hh16 hh16 hh16 <bd hh>16 hh16 hh16 hh16 <sn hh>16 hh16 hh16 hh16 |
-      }
-      <bd hh>16^\markup { \bold \box \fontsize #-1 "Fill" } hh16 hh16 hh16 <sn hh>16 hh16 hh16 hh16 <bd hh>16 hh16 hh16 hh16 <sn hh>16 hh16 hh16 hh16 |
+      \mark \markup \column { \fontsize #-1 \concat { \note { 4 } #1 " = 120" } \vspace #0.3 \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "INTRO: 4" } }
+      s1^\markup { \bold \box \fontsize #-1 "Section groove" } |
+      s1 |
+      s1 |
+      s1 |
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
-      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "CHORUS: 4" } \vspace #0.3 \italic \fontsize #-1 "Play 2x" }
-      \repeat volta 2 {
-        <bd hh>16 hh16 hh16 hh16 <sn hh>16 hh16 hh16 hh16 <bd hh>16 hh16 hh16 hh16 <sn hh>16 hh16 hh16 hh16 |
-      }
-      <bd hh>16^\markup { \bold \box \fontsize #-1 "build" } hh16 hh16 hh16 <sn hh>16 hh16 hh16 hh16 <bd hh>16 hh16 hh16 hh16 <sn hh>16 hh16 hh16 hh16 |
-      <bd hh>16 hh16 hh16 hh16 <sn hh>16 hh16 hh16 hh16 <bd hh>16^\markup { \bold \box \fontsize #-1 "crash out" } hh16 hh16 hh16 <sn hh>16 hh16 hh16 hh16 |
+      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "VERSE: 8" }
+      s1^\markup { \bold \box \fontsize #-1 "Section groove" } |
+      s1 |
+      s1 |
+      s1 |
+      s1 |
+      s1 |
+      s1 |
+      s1^\markup { \bold \box \fontsize #-1 "Fill" } |
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
+      \once \override Score.RehearsalMark.padding = #2
+      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "CHORUS: 8" }
+      s1^\markup { \bold \box \fontsize #-1 "Section groove" } |
+      s1 |
+      s1 |
+      s1^\markup { \bold \box \fontsize #-1 "Fill" } |
+      s1 |
+      s1 |
+      s1 |
+      s1^\markup { \bold \box \fontsize #-1 "Fill" } |
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
+      \once \override Score.RehearsalMark.padding = #2
+      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "OUTRO: 4" }
+      s1^\markup { \bold \box \fontsize #-1 "Section groove" } |
+      s1 |
+      s1 |
+      s1 |
       \label #'lastPage
     }
   }

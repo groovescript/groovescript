@@ -117,10 +117,15 @@ section_fill_line: "fill" ESCAPED_STRING "at" "bar" bar_number_list
                  | "fill" "at" "bars" bar_number_list ":" fill_count_item+ fill_dynamic_line*            -> section_inline_fill_bare
                  | "fill" "at" "bars" bar_number_list "beat" BEAT_LABEL ":" fill_bar_block+ fill_dynamic_line*
                  | "fill" "at" "bars" bar_number_list "beat" BEAT_LABEL ":" fill_count_item+ fill_dynamic_line* -> section_inline_fill_bare
+// ``fill at bar N`` with no body or reference renders as a placeholder
+// labelled "Fill" — the minimal syntax for marking "something happens here"
+// while building a chart iteratively.
 section_fill_placeholder_line: "fill" "placeholder" "at" "bar" INT
                               | "fill" "placeholder" ESCAPED_STRING "at" "bar" INT
                               | "fill" "placeholder" "at" "bar" INT "beat" BEAT_LABEL
                               | "fill" "placeholder" ESCAPED_STRING "at" "bar" INT "beat" BEAT_LABEL
+                              | "fill" "at" "bar" bar_number_list                         -> section_empty_fill_placeholder
+                              | "fill" "at" "bar" bar_number_list "beat" BEAT_LABEL       -> section_empty_fill_placeholder
 section_cue_line: "cue" ESCAPED_STRING "at" "bar" INT
                 | "cue" ESCAPED_STRING "at" "bar" INT "beat" BEAT_LABEL
 section_dynamic_line: DYNAMIC_KIND "from" "bar" INT "to" "bar" INT

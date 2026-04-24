@@ -789,6 +789,28 @@ def _section_mark(
     )
 
 
+def _whole_bar_skip(beats_per_bar: int, beat_unit: int) -> str:
+    """Return the LilyPond token for a whole-bar invisible skip (``s``).
+
+    A skip occupies the same time as a rest but renders no glyph — used for
+    placeholder groove bars in minimal charts, where the section has a bar
+    count but no groove yet. The staff lines remain visible; the measure is
+    otherwise empty.
+    """
+    from fractions import Fraction as _Frac
+    bar_dur = _Frac(beats_per_bar, beat_unit)
+    _DUR_MAP = {
+        _Frac(1, 1): "1",
+        _Frac(3, 4): "2.",
+        _Frac(1, 2): "2",
+        _Frac(1, 4): "4",
+    }
+    dur_str = _DUR_MAP.get(bar_dur)
+    if dur_str is not None:
+        return f"s{dur_str}"
+    return f"s{beat_unit}*{beats_per_bar}"
+
+
 def _whole_bar_rest(beats_per_bar: int, beat_unit: int) -> str:
     """Return the LilyPond token for a whole-bar rest.
 
@@ -943,6 +965,28 @@ def _group_bars(
             inner_body = "\n".join(inner_measures)
             measures.append(f"{ts_change_cmd}{tempo_change_cmd}{mark}{forced_bar}      \\repeat volta {num_repeats} {{\n{inner_body}\n      }}")
             i += num_repeats * phrase_length
+            continue
+
+        # 2a. Placeholder groove bars (section has bars: but no groove:).
+        # Each bar renders as an invisible skip so the measure shows empty
+        # staff lines with no notes or rests; the first bar carries a boxed
+        # "Section groove" label, plus any user-declared fill placeholders
+        # for that bar (stacked above the skip).
+        if is_top_level and bar.is_placeholder_groove:
+            ts_change_cmd = state.compute_time_signature_change(bar)
+            cur_tempo_str, tempo_change_cmd = state.compute_tempo_info(bar)
+            skip_token = _whole_bar_skip(state.current_bpb, state.current_beat_unit)
+            for _, label in bar.fill_placeholders:
+                escaped = _ly_str(label)
+                skip_token = (
+                    f'{skip_token}^\\markup {{ \\bold \\box '
+                    f'\\fontsize #-1 "{escaped}" }}'
+                )
+            mark = _section_mark(bar, tempo_str=cur_tempo_str, bar_text=bar.bar_text)
+            measures.append(
+                f"{ts_change_cmd}{tempo_change_cmd}{mark}      {skip_token} |"
+            )
+            i += 1
             continue
 
         # 2. Whole-bar rest bars (play: rest items)

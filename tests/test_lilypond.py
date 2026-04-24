@@ -1279,6 +1279,52 @@ section "verse":
     assert "\\box" in ly
 
 
+# ── Placeholder groove (minimal-chart) emission ─────────────────────────────
+
+
+def test_placeholder_groove_emits_invisible_skips():
+    """A section with ``bars:`` but no ``groove:`` renders each bar as an
+    invisible skip (``s1`` in 4/4) so the staff shows empty measures with
+    no visible rests. Regression test for the minimal-chart feature.
+    """
+    from groovescript.parser import parse
+    ly = emit_lilypond(compile_song(parse('title: "m"\nsection "intro":\n  bars: 3\n')))
+    assert ly.count("s1 |") == 2  # bars 2 and 3 (bar 1 has the Section groove label)
+    assert "\"Section groove\"" in ly
+    # No visible whole-bar rests should appear for placeholder bars.
+    assert "R1" not in ly
+
+
+def test_placeholder_groove_label_only_on_first_bar():
+    """The 'Section groove' label appears once per section, attached to the
+    first placeholder bar — not repeated on every bar of the section.
+    """
+    from groovescript.parser import parse
+    ly = emit_lilypond(compile_song(parse('title: "m"\nsection "intro":\n  bars: 4\n')))
+    assert ly.count("\"Section groove\"") == 1
+
+
+def test_empty_fill_at_bar_renders_Fill_label():
+    """``fill at bar N`` (no body, no reference) renders a boxed 'Fill'
+    label above the bar.
+    """
+    from groovescript.parser import parse
+    src = """\
+groove "beat":
+    BD: 1, 3
+    SN: 2, 4
+    HH: *8
+
+section "verse":
+  bars: 4
+  groove: "beat"
+  fill at bar 4
+"""
+    ly = emit_lilypond(compile_song(parse(src)))
+    assert '"Fill"' in ly
+    assert "\\box" in ly
+
+
 # ── 12/8 emission ─────────────────────────────────────────────────────────
 
 

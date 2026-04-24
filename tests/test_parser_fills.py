@@ -374,7 +374,7 @@ def test_parse_fill_placeholder_anonymous():
     section = song.sections[0]
     ph = section.fill_placeholders[0]
     assert isinstance(ph, FillPlaceholder)
-    assert ph.label == "fill"
+    assert ph.label == "Fill"
     assert ph.bar == 4
     assert ph.beat is None
 
@@ -408,7 +408,7 @@ section "intro":
 """
     song = parse(src)
     ph = song.sections[0].fill_placeholders[0]
-    assert ph.label == "fill"
+    assert ph.label == "Fill"
     assert ph.bar == 1
     assert ph.beat is None
 
@@ -427,7 +427,7 @@ section "intro":
 """
     song = parse(src)
     ph = song.sections[0].fill_placeholders[0]
-    assert ph.label == "fill"
+    assert ph.label == "Fill"
     assert ph.bar == 1
     assert ph.beat == "3"
 
