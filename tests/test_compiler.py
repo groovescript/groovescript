@@ -1579,14 +1579,14 @@ def test_compile_section_with_only_bars_becomes_placeholder_groove():
         assert bar.events == []
 
 
-def test_compile_placeholder_groove_section_label_on_first_bar_only():
-    """The 'Section groove' label sits on the first bar of a placeholder
-    section only — subsequent bars are bare empty measures.
+def test_compile_placeholder_groove_section_label_uses_section_name():
+    """The placeholder label is ``"<Name> groove"`` (first-letter uppercased
+    section name + 'groove') and sits on the first bar of the section only.
     """
     from groovescript.parser import parse
     song = parse('title: "m"\nsection "intro":\n  bars: 3\n')
     ir = compile_song(song)
-    assert ir.bars[0].fill_placeholders == [(Fraction(0), "Section groove")]
+    assert ir.bars[0].fill_placeholders == [(Fraction(0), "Intro groove")]
     assert ir.bars[1].fill_placeholders == []
     assert ir.bars[2].fill_placeholders == []
 
@@ -1633,8 +1633,8 @@ section "verse":
 """
     song = parse(src)
     ir = compile_song(song)
-    # Bar 0: Section groove label. Bar 7 (last): Fill label.
-    assert ir.bars[0].fill_placeholders == [(Fraction(0), "Section groove")]
+    # Bar 0: "Verse groove" label. Bar 7 (last): "Fill" label.
+    assert ir.bars[0].fill_placeholders == [(Fraction(0), "Verse groove")]
     assert ir.bars[7].fill_placeholders == [(Fraction(0), "Fill")]
     assert all(bar.is_placeholder_groove for bar in ir.bars)
 

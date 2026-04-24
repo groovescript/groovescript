@@ -2016,8 +2016,9 @@ def compile_song(song: Song) -> IRSong:
         """Build IR for a section that declares ``bars:`` without a ``groove:``.
 
         Each bar is rendered as an invisible skip with no notes or rests.
-        A boxed "Section groove" label sits above the first bar so the
-        reader can tell the groove is intentionally left unspecified.
+        A boxed ``"<Name> groove"`` label (e.g. ``"Verse groove"``) sits
+        above the first bar so the reader can tell the groove is
+        intentionally left unspecified.
         """
         total_bars = section.bars
         ir_section = IRSection(
@@ -2027,12 +2028,14 @@ def compile_song(song: Song) -> IRSong:
             tempo=effective_tempo,
         )
         bpb_local = _beats_per_bar(effective_ts)
+        display_name = full_section_name[:1].upper() + full_section_name[1:]
+        section_label = f"{display_name} groove"
         new_bars: list[IRBar] = []
         for section_bar_offset in range(total_bars):
             absolute_bar = start_bar_number + section_bar_offset
             placeholders: list[tuple[Fraction, str]] = []
             if section_bar_offset == 0:
-                placeholders.append((Fraction(0), "Section groove"))
+                placeholders.append((Fraction(0), section_label))
             user_placeholders = _collect_bar_placeholders(
                 section, section_bar_offset, 1, bpb_local
             )

@@ -87,42 +87,42 @@
       \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
       \once \override Score.RehearsalMark.padding = #2
       \mark \markup \column { \fontsize #-1 \concat { \note { 4 } #1 " = 120" } \vspace #0.3 \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "INTRO: 4" } }
-      s1^\markup { \bold \box \fontsize #-1 "Section groove" } |
-      s1 |
-      s1 |
-      s1 |
+      s4^\markup { \bold \box \fontsize #-1 "Intro groove" } s4 s4 s4 |
+      s4 s4 s4 s4 |
+      s4 s4 s4 s4 |
+      s4 s4 s4 s4 |
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
       \once \override Score.RehearsalMark.padding = #2
       \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "VERSE: 8" }
-      s1^\markup { \bold \box \fontsize #-1 "Section groove" } |
-      s1 |
-      s1 |
-      s1 |
-      s1 |
-      s1 |
-      s1 |
-      s1^\markup { \bold \box \fontsize #-1 "Fill" } |
+      s4^\markup { \bold \box \fontsize #-1 "Verse groove" } s4 s4 s4 |
+      s4 s4 s4 s4 |
+      s4 s4 s4 s4 |
+      s4 s4 s4 s4 |
+      s4 s4 s4 s4 |
+      s4 s4 s4 s4 |
+      s4 s4 s4 s4 |
+      s4^\markup { \bold \box \fontsize #-1 "Fill" } s4 s4 s4 |
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
       \once \override Score.RehearsalMark.padding = #2
       \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "CHORUS: 8" }
-      s1^\markup { \bold \box \fontsize #-1 "Section groove" } |
-      s1 |
-      s1 |
-      s1^\markup { \bold \box \fontsize #-1 "Fill" } |
-      s1 |
-      s1 |
-      s1 |
-      s1^\markup { \bold \box \fontsize #-1 "Fill" } |
+      s4^\markup { \bold \box \fontsize #-1 "Chorus groove" } s4 s4 s4 |
+      s4 s4 s4 s4 |
+      s4 s4 s4 s4 |
+      s4^\markup { \bold \box \fontsize #-1 "Fill" } s4 s4 s4 |
+      s4 s4 s4 s4 |
+      s4 s4 s4 s4 |
+      s4 s4 s4 s4 |
+      s4^\markup { \bold \box \fontsize #-1 "Fill" } s4 s4 s4 |
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
       \once \override Score.RehearsalMark.padding = #2
       \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "OUTRO: 4" }
-      s1^\markup { \bold \box \fontsize #-1 "Section groove" } |
-      s1 |
-      s1 |
-      s1 |
+      s4^\markup { \bold \box \fontsize #-1 "Outro groove" } s4 s4 s4 |
+      s4 s4 s4 s4 |
+      s4 s4 s4 s4 |
+      s4 s4 s4 s4 |
       \label #'lastPage
     }
   }

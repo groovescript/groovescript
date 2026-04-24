@@ -789,26 +789,16 @@ def _section_mark(
     )
 
 
-def _whole_bar_skip(beats_per_bar: int, beat_unit: int) -> str:
-    """Return the LilyPond token for a whole-bar invisible skip (``s``).
+def _placeholder_bar_skips(beats_per_bar: int, beat_unit: int) -> list[str]:
+    """Return one invisible skip token per beat.
 
-    A skip occupies the same time as a rest but renders no glyph — used for
-    placeholder groove bars in minimal charts, where the section has a bar
-    count but no groove yet. The staff lines remain visible; the measure is
-    otherwise empty.
+    Rendering a placeholder bar as multiple beat-sized skips (e.g.
+    ``s4 s4 s4 s4`` in 4/4) instead of a single whole-bar ``s1`` gives the
+    spacing engine multiple musical moments per bar, which LilyPond
+    widens to a comfortable column — enough room for a transcriber to
+    pencil notes into the printed chart.
     """
-    from fractions import Fraction as _Frac
-    bar_dur = _Frac(beats_per_bar, beat_unit)
-    _DUR_MAP = {
-        _Frac(1, 1): "1",
-        _Frac(3, 4): "2.",
-        _Frac(1, 2): "2",
-        _Frac(1, 4): "4",
-    }
-    dur_str = _DUR_MAP.get(bar_dur)
-    if dur_str is not None:
-        return f"s{dur_str}"
-    return f"s{beat_unit}*{beats_per_bar}"
+    return [f"s{beat_unit}"] * beats_per_bar
 
 
 def _whole_bar_rest(beats_per_bar: int, beat_unit: int) -> str:
@@ -968,23 +958,41 @@ def _group_bars(
             continue
 
         # 2a. Placeholder groove bars (section has bars: but no groove:).
-        # Each bar renders as an invisible skip so the measure shows empty
-        # staff lines with no notes or rests; the first bar carries a boxed
-        # "Section groove" label, plus any user-declared fill placeholders
-        # for that bar (stacked above the skip).
+        # Each bar renders as one invisible skip per beat — widening the
+        # column so a transcriber has room to pencil notes in. The first
+        # bar of the section carries a boxed ``"<Name> groove"`` label;
+        # any user-declared fill placeholders attach to the beat they
+        # were written at.
         if is_top_level and bar.is_placeholder_groove:
             ts_change_cmd = state.compute_time_signature_change(bar)
             cur_tempo_str, tempo_change_cmd = state.compute_tempo_info(bar)
-            skip_token = _whole_bar_skip(state.current_bpb, state.current_beat_unit)
-            for _, label in bar.fill_placeholders:
-                escaped = _ly_str(label)
-                skip_token = (
-                    f'{skip_token}^\\markup {{ \\bold \\box '
-                    f'\\fontsize #-1 "{escaped}" }}'
-                )
+            skip_tokens = _placeholder_bar_skips(state.current_bpb, state.current_beat_unit)
+            # Bucket labels by the spacer they should attach to. Position
+            # ``p`` (bar-relative Fraction) maps to beat index
+            # ``floor(p * beats_per_bar)``; anything at or before beat 0
+            # goes on the first spacer so short accidental positions don't
+            # vanish.
+            beat_labels: dict[int, list[str]] = defaultdict(list)
+            for pos, label in bar.fill_placeholders:
+                idx = int(pos * state.current_bpb)
+                if idx < 0:
+                    idx = 0
+                if idx >= len(skip_tokens):
+                    idx = len(skip_tokens) - 1
+                beat_labels[idx].append(label)
+            for idx, labels in beat_labels.items():
+                token = skip_tokens[idx]
+                for label in labels:
+                    escaped = _ly_str(label)
+                    token = (
+                        f'{token}^\\markup {{ \\bold \\box '
+                        f'\\fontsize #-1 "{escaped}" }}'
+                    )
+                skip_tokens[idx] = token
             mark = _section_mark(bar, tempo_str=cur_tempo_str, bar_text=bar.bar_text)
             measures.append(
-                f"{ts_change_cmd}{tempo_change_cmd}{mark}      {skip_token} |"
+                f"{ts_change_cmd}{tempo_change_cmd}{mark}"
+                f"      {' '.join(skip_tokens)} |"
             )
             i += 1
             continue

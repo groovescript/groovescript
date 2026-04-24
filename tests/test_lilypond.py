@@ -1282,26 +1282,30 @@ section "verse":
 # ── Placeholder groove (minimal-chart) emission ─────────────────────────────
 
 
-def test_placeholder_groove_emits_invisible_skips():
-    """A section with ``bars:`` but no ``groove:`` renders each bar as an
-    invisible skip (``s1`` in 4/4) so the staff shows empty measures with
-    no visible rests. Regression test for the minimal-chart feature.
+def test_placeholder_groove_emits_beat_sized_skips():
+    """A section with ``bars:`` but no ``groove:`` renders each bar as one
+    invisible skip per beat (``s4 s4 s4 s4`` in 4/4) so the column is
+    wide enough for a transcriber to write into by hand. No visible
+    rests should appear.
     """
     from groovescript.parser import parse
     ly = emit_lilypond(compile_song(parse('title: "m"\nsection "intro":\n  bars: 3\n')))
-    assert ly.count("s1 |") == 2  # bars 2 and 3 (bar 1 has the Section groove label)
-    assert "\"Section groove\"" in ly
-    # No visible whole-bar rests should appear for placeholder bars.
+    assert ly.count("s4 s4 s4 s4 |") == 2  # bars 2 and 3 (bar 1 carries the label)
+    assert "\"Intro groove\"" in ly
     assert "R1" not in ly
 
 
-def test_placeholder_groove_label_only_on_first_bar():
-    """The 'Section groove' label appears once per section, attached to the
-    first placeholder bar — not repeated on every bar of the section.
+def test_placeholder_groove_label_uses_section_name():
+    """The placeholder label is ``"<Name> groove"`` using the section's own
+    name, so different sections get different labels (``Intro groove``,
+    ``Verse groove``, …) and the label only appears on the section's
+    first bar.
     """
     from groovescript.parser import parse
-    ly = emit_lilypond(compile_song(parse('title: "m"\nsection "intro":\n  bars: 4\n')))
-    assert ly.count("\"Section groove\"") == 1
+    src = 'title: "m"\nsection "intro":\n  bars: 4\nsection "chorus":\n  bars: 2\n'
+    ly = emit_lilypond(compile_song(parse(src)))
+    assert ly.count("\"Intro groove\"") == 1
+    assert ly.count("\"Chorus groove\"") == 1
 
 
 def test_empty_fill_at_bar_renders_Fill_label():
