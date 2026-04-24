@@ -962,7 +962,11 @@ def _group_bars(
         # column so a transcriber has room to pencil notes in. The first
         # bar of the section carries a boxed ``"<Name> groove"`` label;
         # any user-declared fill placeholders attach to the beat they
-        # were written at.
+        # were written at.  A forced ``\break`` sits at the end of every
+        # 4-bar group: with no notes to hint at density, LilyPond would
+        # otherwise pack many empty bars onto a single line.  The break
+        # combined with the default stretched-line layout forces exactly
+        # four wide bars per system.
         if is_top_level and bar.is_placeholder_groove:
             ts_change_cmd = state.compute_time_signature_change(bar)
             cur_tempo_str, tempo_change_cmd = state.compute_tempo_info(bar)
@@ -990,9 +994,28 @@ def _group_bars(
                     )
                 skip_tokens[idx] = token
             mark = _section_mark(bar, tempo_str=cur_tempo_str, bar_text=bar.bar_text)
+            # Force a line break every 4 placeholder bars (and at the
+            # end of the run) so each bar fills a quarter of the page
+            # width. ``position_in_section`` counts this bar's 1-indexed
+            # offset within its section so the 4-bar cadence resets at
+            # each section boundary — otherwise the section's first bar
+            # gets stranded on its own short line.
+            next_bar = bars[i + 1] if i + 1 < len(bars) else None
+            is_run_end = (
+                next_bar is None
+                or not next_bar.is_placeholder_groove
+                or next_bar.section_name is not None
+            )
+            first_idx = i
+            while first_idx > 0 and bars[first_idx].section_name is None:
+                first_idx -= 1
+            position_in_section = bar.number - bars[first_idx].number + 1
+            break_cmd = ""
+            if is_run_end or position_in_section % 4 == 0:
+                break_cmd = " \\break"
             measures.append(
                 f"{ts_change_cmd}{tempo_change_cmd}{mark}"
-                f"      {' '.join(skip_tokens)} |"
+                f"      {' '.join(skip_tokens)} |{break_cmd}"
             )
             i += 1
             continue

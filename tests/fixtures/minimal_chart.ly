@@ -90,7 +90,7 @@
       s4^\markup { \bold \box \fontsize #-1 "Intro groove" } s4 s4 s4 |
       s4 s4 s4 s4 |
       s4 s4 s4 s4 |
-      s4 s4 s4 s4 |
+      s4 s4 s4 s4 | \break
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
       \once \override Score.RehearsalMark.padding = #2
@@ -98,11 +98,11 @@
       s4^\markup { \bold \box \fontsize #-1 "Verse groove" } s4 s4 s4 |
       s4 s4 s4 s4 |
       s4 s4 s4 s4 |
+      s4 s4 s4 s4 | \break
       s4 s4 s4 s4 |
       s4 s4 s4 s4 |
       s4 s4 s4 s4 |
-      s4 s4 s4 s4 |
-      s4^\markup { \bold \box \fontsize #-1 "Fill" } s4 s4 s4 |
+      s4^\markup { \bold \box \fontsize #-1 "Fill" } s4 s4 s4 | \break
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
       \once \override Score.RehearsalMark.padding = #2
@@ -110,11 +110,11 @@
       s4^\markup { \bold \box \fontsize #-1 "Chorus groove" } s4 s4 s4 |
       s4 s4 s4 s4 |
       s4 s4 s4 s4 |
-      s4^\markup { \bold \box \fontsize #-1 "Fill" } s4 s4 s4 |
+      s4^\markup { \bold \box \fontsize #-1 "Fill" } s4 s4 s4 | \break
       s4 s4 s4 s4 |
       s4 s4 s4 s4 |
       s4 s4 s4 s4 |
-      s4^\markup { \bold \box \fontsize #-1 "Fill" } s4 s4 s4 |
+      s4^\markup { \bold \box \fontsize #-1 "Fill" } s4 s4 s4 | \break
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
       \once \override Score.RehearsalMark.padding = #2
@@ -122,7 +122,7 @@
       s4^\markup { \bold \box \fontsize #-1 "Outro groove" } s4 s4 s4 |
       s4 s4 s4 s4 |
       s4 s4 s4 s4 |
-      s4 s4 s4 s4 |
+      s4 s4 s4 s4 | \break
       \label #'lastPage
     }
   }
