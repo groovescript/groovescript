@@ -107,6 +107,26 @@ section "verse":
 which is equivalent to `bars: 8` + `groove: "rock"`. A section that sets
 its own `bars:` or `groove:` overrides the default.
 
+### Placeholder groove (minimal sections)
+
+A section that declares `bars:` without a `groove:` — and has no
+`default_groove` either — renders as a **placeholder groove**: each bar
+is an empty measure (no notes, no rests) with a boxed "Section groove"
+label above the first bar.
+
+```groovescript
+section "intro":
+  bars: 4
+
+section "verse":
+  bars: 8
+  fill at bar 8                 // placeholders compose — "Fill" label on bar 8
+```
+
+This is the iteration-1 form of a chart: print the form, pencil in the
+grooves by hand, or fill in `groove:` lines later. `bars:` is still
+required; only `groove:` is optional.
+
 `dsl_version` is a forward-compatibility marker. When a file declares
 `dsl_version: N` with N different from the current DSL version, parsing
 fails with a clear error. Files that omit the line are accepted at the
@@ -612,14 +632,20 @@ bar 2).
 ### Fill placeholders
 
 ```groovescript
-fill placeholder at bar 4           # boxed "fill" label above bar 4
-fill placeholder "build" at bar 4   # custom label
-fill placeholder at bar 4 beat 3    # placeholder starting at a specific beat
+fill at bar 4                       # implicit: boxed "Fill" label above bar 4
+fill at bar 4, 8                    # implicit: placeholder on multiple bars
+fill at bar 4 beat 3                # implicit: starting at a specific beat
+fill placeholder "build" at bar 4   # explicit form with a custom label
+fill placeholder at bar 4 beat 3    # explicit form starting at a specific beat
 ```
 
 A placeholder draws a boxed annotation above the staff without altering
 groove events. Swap for a real fill later without touching the surrounding
 section.
+
+`fill at bar N` (no body, no reference) is the shorthand form — no need
+to write the `placeholder` keyword. Use the longer `fill placeholder
+"label" at bar N` form when you want a custom label.
 
 ### Fill extension (`extend:`)
 
@@ -775,7 +801,7 @@ section "name":
       3&: SN
       3a: SN
       4: BD, CR
-  fill placeholder at bar 4           # placeholder: groove renders normally, boxed "fill" label above bar
+  fill at bar 4                       # implicit placeholder: boxed "Fill" label
   fill placeholder "build" at bar 4   # placeholder with a custom label
   fill placeholder at bar 4 beat 3    # placeholder starting at a specific beat
   variation "lift" at bar 8:          # named variation

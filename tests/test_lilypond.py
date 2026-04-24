@@ -1279,6 +1279,85 @@ section "verse":
     assert "\\box" in ly
 
 
+# ── Placeholder groove (minimal-chart) emission ─────────────────────────────
+
+
+def test_placeholder_groove_emits_beat_sized_skips():
+    """A section with ``bars:`` but no ``groove:`` renders each bar as one
+    invisible skip per beat (``s4 s4 s4 s4`` in 4/4) so the column is
+    wide enough for a transcriber to write into by hand. No visible
+    rests should appear.
+    """
+    from groovescript.parser import parse
+    ly = emit_lilypond(compile_song(parse('title: "m"\nsection "intro":\n  bars: 3\n')))
+    assert ly.count("s4 s4 s4 s4 |") == 2  # bars 2 and 3 (bar 1 carries the label)
+    assert "\"Intro groove\"" in ly
+    assert "R1" not in ly
+
+
+def test_placeholder_groove_forces_line_break_every_four_bars():
+    """Placeholder bars emit ``\\break`` every 4 bars within a section and
+    at the section boundary. This prevents LilyPond from packing many
+    empty bars onto a single line — without the forced breaks each bar
+    would collapse to unusable width. Regression guard: a 12-bar
+    single-section placeholder chart should produce 3 breaks (after
+    bars 4, 8, and 12).
+    """
+    from groovescript.parser import parse
+    ly = emit_lilypond(compile_song(parse('title: "m"\nsection "intro":\n  bars: 12\n')))
+    # 3 breaks: 4/8/12 bar-aligned breaks + run-end.
+    # At bar 4 both is_run_end=False and position%4==0; at bar 12 the run
+    # ends so is_run_end=True; neither condition double-emits.
+    assert ly.count("\\break") == 3
+
+
+def test_placeholder_groove_resets_break_cadence_per_section():
+    """The 4-bar break cadence restarts at each section boundary so a
+    section's first bar is never stranded on its own short line.
+    Regression test for the original bug where walking back through
+    placeholder bars ignored section_name and mis-aligned the count.
+    """
+    from groovescript.parser import parse
+    # Two 4-bar sections back-to-back → 2 breaks (one per section end).
+    src = 'title: "m"\nsection "a":\n  bars: 4\nsection "b":\n  bars: 4\n'
+    ly = emit_lilypond(compile_song(parse(src)))
+    assert ly.count("\\break") == 2
+
+
+def test_placeholder_groove_label_uses_section_name():
+    """The placeholder label is ``"<Name> groove"`` using the section's own
+    name, so different sections get different labels (``Intro groove``,
+    ``Verse groove``, …) and the label only appears on the section's
+    first bar.
+    """
+    from groovescript.parser import parse
+    src = 'title: "m"\nsection "intro":\n  bars: 4\nsection "chorus":\n  bars: 2\n'
+    ly = emit_lilypond(compile_song(parse(src)))
+    assert ly.count("\"Intro groove\"") == 1
+    assert ly.count("\"Chorus groove\"") == 1
+
+
+def test_empty_fill_at_bar_renders_Fill_label():
+    """``fill at bar N`` (no body, no reference) renders a boxed 'Fill'
+    label above the bar.
+    """
+    from groovescript.parser import parse
+    src = """\
+groove "beat":
+    BD: 1, 3
+    SN: 2, 4
+    HH: *8
+
+section "verse":
+  bars: 4
+  groove: "beat"
+  fill at bar 4
+"""
+    ly = emit_lilypond(compile_song(parse(src)))
+    assert '"Fill"' in ly
+    assert "\\box" in ly
+
+
 # ── 12/8 emission ─────────────────────────────────────────────────────────
 
 

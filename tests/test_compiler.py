@@ -1563,6 +1563,82 @@ def test_compile_placeholder_does_not_replace_events():
     assert "HH" in bar1_instruments
 
 
+# ── Minimal chart / placeholder groove tests ───────────────────────────────
+
+def test_compile_section_with_only_bars_becomes_placeholder_groove():
+    """A section declaring ``bars:`` without ``groove:`` compiles to
+    ``is_placeholder_groove`` bars with no events — the skeleton form used
+    for minimal charts. Regression test for the minimal-chart feature.
+    """
+    from groovescript.parser import parse
+    song = parse('title: "m"\nsection "intro":\n  bars: 4\n')
+    ir = compile_song(song)
+    assert len(ir.bars) == 4
+    for bar in ir.bars:
+        assert bar.is_placeholder_groove is True
+        assert bar.events == []
+
+
+def test_compile_placeholder_groove_section_label_uses_section_name():
+    """The placeholder label is ``"<Name> groove"`` (first-letter uppercased
+    section name + 'groove') and sits on the first bar of the section only.
+    """
+    from groovescript.parser import parse
+    song = parse('title: "m"\nsection "intro":\n  bars: 3\n')
+    ir = compile_song(song)
+    assert ir.bars[0].fill_placeholders == [(Fraction(0), "Intro groove")]
+    assert ir.bars[1].fill_placeholders == []
+    assert ir.bars[2].fill_placeholders == []
+
+
+def test_compile_missing_bars_still_errors():
+    """``bars:`` is still required; only ``groove:`` is now optional."""
+    from groovescript.parser import parse
+    song = parse('title: "m"\nsection "intro":\n')
+    with pytest.raises(ValueError, match="must define bars"):
+        compile_song(song)
+
+
+def test_compile_empty_fill_placeholder_label_defaults_to_Fill():
+    """``fill at bar N`` (no body, no name) is parsed as a placeholder with
+    label 'Fill'. Regression test for the minimal-chart feature.
+    """
+    from groovescript.parser import parse
+    src = """\
+groove "rock":
+    BD: 1, 3
+    SN: 2, 4
+    HH: *8
+
+section "verse":
+  bars: 4
+  groove: "rock"
+  fill at bar 4
+"""
+    song = parse(src)
+    ir = compile_song(song)
+    assert ir.bars[3].fill_placeholders == [(Fraction(0), "Fill")]
+
+
+def test_compile_empty_fill_placeholder_on_placeholder_section():
+    """``fill at bar N`` is honoured even on sections without a groove —
+    the fill label stacks on top of the same invisible skip bar.
+    """
+    from groovescript.parser import parse
+    src = """\
+title: "m"
+section "verse":
+  bars: 8
+  fill at bar 8
+"""
+    song = parse(src)
+    ir = compile_song(song)
+    # Bar 0: "Verse groove" label. Bar 7 (last): "Fill" label.
+    assert ir.bars[0].fill_placeholders == [(Fraction(0), "Verse groove")]
+    assert ir.bars[7].fill_placeholders == [(Fraction(0), "Fill")]
+    assert all(bar.is_placeholder_groove for bar in ir.bars)
+
+
 def test_compile_multiple_placeholders():
     song = _make_placeholder_song(
         [FillPlaceholder(label="fill", bar=2), FillPlaceholder(label="solo", bar=4)],

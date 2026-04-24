@@ -126,6 +126,10 @@ class IRBar:
     tempo: int | None = None  # effective tempo for this bar
     time_signature: str | None = None  # effective time signature for this bar
     is_rest: bool = False  # whole-bar rest (play: rest item)
+    # Placeholder groove bar: no notes, no rests — just the empty bar with a
+    # "Section groove" label on the first bar of a section that declares
+    # ``bars:`` without a ``groove:``.  Used for minimal/skeleton charts.
+    is_placeholder_groove: bool = False
     # Dynamic hairpin annotations: list of (beat_position, kind) where kind is "cresc" or "decresc"
     dynamic_starts: list[tuple[Fraction, str]] = field(default_factory=list)
     # Hairpin terminators: list of beat_position where a \! should be placed
@@ -1802,16 +1806,13 @@ def compile_song(song: Song) -> IRSong:
             continue
         s_groove = section.groove if section.groove is not None else default_groove
         s_bars = section.bars if section.bars is not None else default_bars
-        if s_groove is None or s_bars is None:
-            missing = []
-            if s_groove is None:
-                missing.append("groove")
-            if s_bars is None:
-                missing.append("bars")
+        if s_bars is None:
             raise ValueError(
-                f"Section {section.name!r} must define {' and '.join(missing)} "
-                f"(or set default_groove / default_bars in metadata, or use like)"
+                f"Section {section.name!r} must define bars "
+                f"(or set default_bars in metadata, or use like)"
             )
+        # s_groove may remain None — this is the minimal-chart case:
+        # the section renders as a placeholder groove (empty bars + label).
         if s_groove != section.groove or s_bars != section.bars:
             section = replace(section, groove=s_groove, bars=s_bars)
         patched_sections.append(section)
@@ -2009,6 +2010,51 @@ def compile_song(song: Song) -> IRSong:
             )
         return new_bars, ir_section
 
+    def _process_placeholder_section(
+        section, effective_ts, effective_tempo, full_section_name, start_bar_number
+    ) -> tuple[list[IRBar], IRSection]:
+        """Build IR for a section that declares ``bars:`` without a ``groove:``.
+
+        Each bar is rendered as an invisible skip with no notes or rests.
+        A boxed ``"<Name> groove"`` label (e.g. ``"Verse groove"``) sits
+        above the first bar so the reader can tell the groove is
+        intentionally left unspecified.
+        """
+        total_bars = section.bars
+        ir_section = IRSection(
+            name=section.name,
+            start_bar=start_bar_number,
+            bars=total_bars,
+            tempo=effective_tempo,
+        )
+        bpb_local = _beats_per_bar(effective_ts)
+        display_name = full_section_name[:1].upper() + full_section_name[1:]
+        section_label = f"{display_name} groove"
+        new_bars: list[IRBar] = []
+        for section_bar_offset in range(total_bars):
+            absolute_bar = start_bar_number + section_bar_offset
+            placeholders: list[tuple[Fraction, str]] = []
+            if section_bar_offset == 0:
+                placeholders.append((Fraction(0), section_label))
+            user_placeholders = _collect_bar_placeholders(
+                section, section_bar_offset, 1, bpb_local
+            )
+            placeholders.extend(user_placeholders)
+            new_bars.append(
+                IRBar(
+                    number=absolute_bar,
+                    subdivision=1,
+                    events=[],
+                    section_name=full_section_name if section_bar_offset == 0 else None,
+                    section_bars=total_bars if section_bar_offset == 0 else None,
+                    fill_placeholders=placeholders,
+                    tempo=effective_tempo,
+                    time_signature=effective_ts,
+                    is_placeholder_groove=True,
+                )
+            )
+        return new_bars, ir_section
+
     def _process_groove_section(section, bpb, beat_unit, effective_ts, effective_tempo, full_section_name, start_bar_number) -> tuple[list[IRBar], IRSection]:
         try:
             groove = _get_groove(section.groove, bpb, beat_unit)
@@ -2132,6 +2178,10 @@ def compile_song(song: Song) -> IRSong:
         if section.play is not None:
             new_bars, ir_section = _process_play_section(
                 section, bpb, beat_unit, effective_ts, effective_tempo, full_section_name, current_bar_number
+            )
+        elif section.groove is None:
+            new_bars, ir_section = _process_placeholder_section(
+                section, effective_ts, effective_tempo, full_section_name, current_bar_number
             )
         else:
             new_bars, ir_section = _process_groove_section(

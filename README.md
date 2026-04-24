@@ -16,6 +16,38 @@ and full support for changing meters.
 - **Fills** — short departures from the groove, placed at a specific bar and beat within a section (e.g., a bar-4 snare roll before the chorus).
 - **Variations** — time-anchored tweaks applied on top of the groove at a particular bar: add, remove, replace, or substitute individual notes without rewriting the whole pattern.
 
+## Minimal chart
+
+The smallest useful chart you can write — just a title, a tempo, and the
+form as a list of sections with bar counts. Every section renders as a
+placeholder groove (empty bars with a "Section groove" label), so you
+can print the form out and pencil the groove in later. `fill at bar N`
+(no body) marks a fill slot without committing to the notes:
+
+```groovescript
+title: "Minimal Chart"
+tempo: 120
+
+section "intro":
+  bars: 4
+
+section "verse":
+  bars: 8
+  fill at bar 8
+
+section "chorus":
+  bars: 8
+  fill at bar 4
+  fill at bar 8
+
+section "outro":
+  bars: 4
+```
+
+From here, iterate: fill in the grooves (step 2 of the tutorial), swap
+placeholder fills for real ones (step 3), add variations (step 4), and
+cues (step 5).
+
 ## Quick taste
 
 ```groovescript

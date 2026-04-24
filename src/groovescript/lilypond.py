@@ -789,6 +789,18 @@ def _section_mark(
     )
 
 
+def _placeholder_bar_skips(beats_per_bar: int, beat_unit: int) -> list[str]:
+    """Return one invisible skip token per beat.
+
+    Rendering a placeholder bar as multiple beat-sized skips (e.g.
+    ``s4 s4 s4 s4`` in 4/4) instead of a single whole-bar ``s1`` gives the
+    spacing engine multiple musical moments per bar, which LilyPond
+    widens to a comfortable column — enough room for a transcriber to
+    pencil notes into the printed chart.
+    """
+    return [f"s{beat_unit}"] * beats_per_bar
+
+
 def _whole_bar_rest(beats_per_bar: int, beat_unit: int) -> str:
     """Return the LilyPond token for a whole-bar rest.
 
@@ -943,6 +955,69 @@ def _group_bars(
             inner_body = "\n".join(inner_measures)
             measures.append(f"{ts_change_cmd}{tempo_change_cmd}{mark}{forced_bar}      \\repeat volta {num_repeats} {{\n{inner_body}\n      }}")
             i += num_repeats * phrase_length
+            continue
+
+        # 2a. Placeholder groove bars (section has bars: but no groove:).
+        # Each bar renders as one invisible skip per beat — widening the
+        # column so a transcriber has room to pencil notes in. The first
+        # bar of the section carries a boxed ``"<Name> groove"`` label;
+        # any user-declared fill placeholders attach to the beat they
+        # were written at.  A forced ``\break`` sits at the end of every
+        # 4-bar group: with no notes to hint at density, LilyPond would
+        # otherwise pack many empty bars onto a single line.  The break
+        # combined with the default stretched-line layout forces exactly
+        # four wide bars per system.
+        if is_top_level and bar.is_placeholder_groove:
+            ts_change_cmd = state.compute_time_signature_change(bar)
+            cur_tempo_str, tempo_change_cmd = state.compute_tempo_info(bar)
+            skip_tokens = _placeholder_bar_skips(state.current_bpb, state.current_beat_unit)
+            # Bucket labels by the spacer they should attach to. Position
+            # ``p`` (bar-relative Fraction) maps to beat index
+            # ``floor(p * beats_per_bar)``; anything at or before beat 0
+            # goes on the first spacer so short accidental positions don't
+            # vanish.
+            beat_labels: dict[int, list[str]] = defaultdict(list)
+            for pos, label in bar.fill_placeholders:
+                idx = int(pos * state.current_bpb)
+                if idx < 0:
+                    idx = 0
+                if idx >= len(skip_tokens):
+                    idx = len(skip_tokens) - 1
+                beat_labels[idx].append(label)
+            for idx, labels in beat_labels.items():
+                token = skip_tokens[idx]
+                for label in labels:
+                    escaped = _ly_str(label)
+                    token = (
+                        f'{token}^\\markup {{ \\bold \\box '
+                        f'\\fontsize #-1 "{escaped}" }}'
+                    )
+                skip_tokens[idx] = token
+            mark = _section_mark(bar, tempo_str=cur_tempo_str, bar_text=bar.bar_text)
+            # Force a line break every 4 placeholder bars (and at the
+            # end of the run) so each bar fills a quarter of the page
+            # width. ``position_in_section`` counts this bar's 1-indexed
+            # offset within its section so the 4-bar cadence resets at
+            # each section boundary — otherwise the section's first bar
+            # gets stranded on its own short line.
+            next_bar = bars[i + 1] if i + 1 < len(bars) else None
+            is_run_end = (
+                next_bar is None
+                or not next_bar.is_placeholder_groove
+                or next_bar.section_name is not None
+            )
+            first_idx = i
+            while first_idx > 0 and bars[first_idx].section_name is None:
+                first_idx -= 1
+            position_in_section = bar.number - bars[first_idx].number + 1
+            break_cmd = ""
+            if is_run_end or position_in_section % 4 == 0:
+                break_cmd = " \\break"
+            measures.append(
+                f"{ts_change_cmd}{tempo_change_cmd}{mark}"
+                f"      {' '.join(skip_tokens)} |{break_cmd}"
+            )
+            i += 1
             continue
 
         # 2. Whole-bar rest bars (play: rest items)

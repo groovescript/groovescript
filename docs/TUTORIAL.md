@@ -1,37 +1,64 @@
 # GrooveScript tutorial
 
-This tutorial builds up a real drum chart piece by piece. Each step
-introduces one concept, and by the end you will have a multi-section song
-with grooves, placeholder fills, variations, and real fills.
+This tutorial builds up a real drum chart in five iterations. Each
+iteration is a usable chart on its own — you can stop at any point and
+print what you have. By the end you will have a multi-section song
+with grooves, fills, variations, and cues.
 
 If you haven't installed GrooveScript yet, start with
 [`GETTING_STARTED.md`](GETTING_STARTED.md). For a searchable reference of
 every feature, see [`DSL_REFERENCE.md`](DSL_REFERENCE.md).
 
-## Step 1 — metadata
+## Iteration 1 — form and tempo
 
-Every chart starts with a few metadata fields. The only required one is
-`title`; everything else has a sensible default.
+The smallest useful chart: a title, a tempo, and the form as a list of
+sections with bar counts. Every section renders as a **placeholder
+groove** — empty bars with a "Section groove" label — so you can print
+the form out and pencil in the groove by hand, or fill it in later.
 
 ```groovescript
 title: "Tutorial Song"
 tempo: 120
-time_signature: 4/4
+
+section "intro":
+  bars: 4
+
+section "verse":
+  bars: 8
+
+section "chorus":
+  bars: 8
+
+section "outro":
+  bars: 4
 ```
 
 - `title` appears as a large centered title on the rendered page.
 - `tempo` sets the song-level BPM (displayed in the score header).
-- `time_signature` sets the meter. If omitted, defaults to `4/4`.
+- Each section becomes a boxed rehearsal mark (`INTRO: 4`, `VERSE: 8`,
+  …) showing the section name and bar count.
+- `time_signature` defaults to `4/4`; override per song or per section
+  when you need a different meter.
 
-You don't have to pick a subdivision — GrooveScript infers the grid of
-each bar from the beat labels and stars you write.
+A section declaring `bars:` without a `groove:` is a placeholder — the
+measure draws empty staff lines so the reader sees the form at a glance.
 
-## Step 2 — form and sections
+## Iteration 2 — grooves
 
-A GrooveScript song is an ordered list of **sections**. File order is song
-order. The simplest section just plays a groove for N bars:
+Now pin a groove on each section. Define it once at the top of the file
+and reference it by name. GrooveScript infers the bar's grid from what
+you wrote — here the `*8` and quarter-note beats fit an 8th-note grid,
+so the bar renders in 8ths.
 
 ```groovescript
+title: "Tutorial Song"
+tempo: 120
+
+groove "money beat":
+    BD: 1, 3
+    SN: 2, 4
+    HH: *8
+
 section "intro":
   bars: 4
   groove: "money beat"
@@ -43,122 +70,41 @@ section "verse":
 section "chorus":
   bars: 8
   groove: "money beat"
+
+section "outro":
+  bars: 4
+  groove: "money beat"
 ```
 
-Each section becomes a boxed rehearsal mark above the staff (`INTRO`,
-`VERSE`, `CHORUS`) showing the section name and bar range.
+- Each line is either `INSTRUMENT: beats` (`BD: 1, 3`) or `beat:
+  instruments` (`1: BD, HH`) — both are legal and mixable.
+- `*8` means "a hit on every 8th note". The general form is `*N` (or
+  `*Nt` for triplets), with N one of `2`, `4`, `8`, `16`.
+- Instruments accept abbreviations (`BD`, `SN`, `HH`), lowercase, or
+  verbose names (`kick`, `snare`, `hat`). Full list in
+  [DSL reference → Instruments](DSL_REFERENCE.md#instruments).
 
-If two sections share most of their content, use `like` to inherit:
+GrooveScript also ships with a **library of common grooves** (`rock`,
+`disco`, `funk`, `bossa-nova`, etc.) you can reference by name without
+defining them. See
+[DSL reference → Library of grooves](DSL_REFERENCE.md#library-of-grooves).
 
-```groovescript
-section "verse 2":
-  like "verse"
-  # add overrides or additions here
-```
+## Iteration 3 — fills
 
-By default, bare `like` copies only the basic arrangement (bars, groove,
-tempo, time signature, inline grooves, section-level dynamics, and any
-`crash in` flag). To also inherit fills, variations, or cues, list the
-categories after `with`:
-
-```groovescript
-section "chorus 2":
-  like "chorus" with fills, variations
-```
-
-The three categories (`fills`, `variations`, `cues`) are order-insensitive
-and commas between them are optional.
-
-For more complex arrangements you can replace `bars:` / `groove:` with a
-`play:` block that lists grooves, one-off bars, and rests in order — see
-[DSL reference → Section arrangement](DSL_REFERENCE.md#section-arrangement-play).
-
-## Step 3 — defining basic grooves
-
-A groove is a named, reusable pattern. Define it once at the top of the
-file and reference it from any section.
+Now mark where fills go. Two styles: **placeholder fills** (just a
+label, notes TBD) and **real fills** (explicit notes). Use placeholders
+while you're still transcribing; swap them for real fills as you nail
+the notes down.
 
 ```groovescript
+title: "Tutorial Song"
+tempo: 120
+
 groove "money beat":
     BD: 1, 3
     SN: 2, 4
     HH: *8
-```
 
-- The groove body sits directly indented under the `groove "…":` line.
-  Each line is either `INSTRUMENT: beats` (what this example shows) or
-  `beat: instruments` (the other notation style, also legal and
-  mixable).
-- `*8` means "a hit on every 8th note". The general form is `*N` (or
-  `*Nt` for triplets), where N is one of `2`, `4`, `8`, `16`. So `*16`
-  would be sixteenths and `*8t` eighth-note triplets.
-- GrooveScript infers the bar's grid from what you wrote — here the `*8`
-  and the quarter-note beats `1, 2, 3, 4` both fit on an 8th-note grid,
-  so the bar is notated in 8ths.
-
-Instruments can be written as canonical abbreviations (`BD`, `SN`, `HH`),
-lowercase (`bd`, `sn`, `hh`), or verbose names (`kick`, `snare`, `hat`) —
-they all normalize to the same output. Full list in
-[DSL reference → Instruments](DSL_REFERENCE.md#instruments).
-
-GrooveScript also ships with a **library of common grooves** (`rock`,
-`disco`, `funk`, `bossa-nova`, etc.) that you can reference by name
-without defining them. See
-[DSL reference → Library of grooves](DSL_REFERENCE.md#library-of-grooves).
-
-## Step 4 — placeholder fills
-
-When you're transcribing a song it's useful to mark "something happens
-here" without yet committing to the exact notes. `fill placeholder` draws
-a boxed label above a bar while leaving the groove underneath unchanged:
-
-```groovescript
-section "verse":
-  bars: 8
-  groove: "money beat"
-  fill placeholder at bar 4
-  fill placeholder "build" at bar 8
-```
-
-The label defaults to "fill" but can be any string. You can later swap
-any placeholder for a real fill (step 6) without touching the surrounding
-section.
-
-## Step 5 — variations
-
-A variation modifies a single bar of the section's groove without defining
-a whole new groove. The name is optional:
-
-```groovescript
-section "chorus":
-  bars: 8
-  groove: "money beat"
-  variation "chorus lift" at bar 8:
-    replace HH with CR at 1
-    add SN ghost at 2&
-    replace SN with SN accent at 4
-  variation at bar 4:
-    add CR accent at 1
-```
-
-Supported actions are `add`, `remove`, `replace`, and `substitute`
-(wipes the bar and replaces it with a count+notes body). Each action
-can target a single instrument or a space-separated list. Supported
-modifiers are `ghost`, `accent`, `flam`, `drag`, and `double` (32nd-note
-double stroke).
-
-See [DSL reference → Variation actions](DSL_REFERENCE.md#variation-actions)
-for the full grammar.
-
-## Step 6 — defining real fills
-
-When a placeholder becomes a real fill, you have two syntaxes to choose
-from. Both reach the same IR, so pick whichever reads most naturally for
-the phrase.
-
-**Count-block syntax** — explicit beat labels on each line:
-
-```groovescript
 fill "bar 4 fill":
   count "3 e & a 4":
     3:  SN
@@ -166,10 +112,33 @@ fill "bar 4 fill":
     3&: SN
     3a: SN
     4:  BD, CR
+
+section "intro":
+  bars: 4
+  groove: "money beat"
+  fill "bar 4 fill" at bar 4 beat 3
+
+section "verse":
+  bars: 8
+  groove: "money beat"
+  fill at bar 8            // placeholder labelled "Fill"
+
+section "chorus":
+  bars: 8
+  groove: "money beat"
+  fill placeholder "build" at bar 8
 ```
 
-**Count+notes syntax** — positional 1-to-1 alignment between count tokens
-and hit tokens:
+Placeholder forms:
+
+- `fill at bar N` → boxed "Fill" label, groove renders unchanged.
+- `fill placeholder "build" at bar N` → custom label above the bar.
+
+Real-fill forms:
+
+- **Count-block syntax** — explicit beat labels on each line (shown in
+  `"bar 4 fill"` above).
+- **Count+notes syntax** — positional 1-to-1 alignment:
 
 ```groovescript
 fill "bar 4 fill":
@@ -177,12 +146,9 @@ fill "bar 4 fill":
   notes: "snare, snare, snare, snare, (bass, crash)"
 ```
 
-Use either form at the top level, then attach it to a section with
-`fill "bar 4 fill" at bar 4`. A fill attached with `at bar N beat X`
-runs from beat X to the end of the bar.
-
-If a fill only appears once, you can skip the top-level definition and
-write it inline:
+Attach a real fill with `fill "name" at bar N` or `fill "name" at bar
+N beat X` (runs from that beat to the end of the bar). If a fill only
+appears once, skip the top-level definition and write it inline:
 
 ```groovescript
 section "verse":
@@ -197,9 +163,58 @@ section "verse":
       4:  BD, CR
 ```
 
-See [DSL reference → Fill](DSL_REFERENCE.md#fill) for the full fill
-grammar including simultaneous hits, trailing modifiers, and triplet
-subdivisions.
+See [DSL reference → Fill](DSL_REFERENCE.md#fill) for simultaneous hits,
+trailing modifiers, and triplet subdivisions.
+
+## Iteration 4 — variations and refinements
+
+A variation tweaks a single bar of the section's groove without defining
+a whole new groove. Use this to add a crash, ghost a snare, or replace
+a hi-hat with a ride for one bar. The name is optional:
+
+```groovescript
+section "chorus":
+  bars: 8
+  groove: "money beat"
+  variation "chorus lift" at bar 8:
+    replace HH with CR at 1
+    add SN ghost at 2&
+    replace SN with SN accent at 4
+  variation at bar 4:
+    add CR accent at 1
+```
+
+Supported actions: `add`, `remove`, `replace`, and `substitute` (wipes
+the bar and replaces it with a count+notes body). Each action can
+target one instrument or a space-separated list. Supported modifiers
+are `ghost`, `accent`, `flam`, `drag`, and `double`.
+
+Other useful refinements at this stage:
+
+- **Section inheritance**: `section "verse 2": like "verse"` copies the
+  basic arrangement; `like "verse" with fills, variations` opts into
+  more.
+- **Per-section tempo / time signature** overrides.
+- **Dynamic spans**: `cresc from bar 5 to bar 8`.
+- **Crash-in**: `crash in` replaces the first cymbal hit of bar 1 with
+  a crash — a common section entry.
+
+See [DSL reference → Variation actions](DSL_REFERENCE.md#variation-actions)
+and the surrounding sections for full grammars.
+
+## Iteration 5 — cues
+
+Cues are italic text annotations placed at a specific bar/beat — vocal
+entries, dynamic markings, "guitar solo", anything the drummer should
+see. They don't affect the notes; they're purely informational.
+
+```groovescript
+section "chorus":
+  bars: 8
+  groove: "money beat"
+  cue "vocals in" at bar 1
+  cue "guitar solo" at bar 5 beat 1
+```
 
 ## Putting it all together
 
@@ -229,6 +244,7 @@ section "verse":
   bars: 8
   groove: "money beat"
   fill placeholder "build" at bar 8
+  cue "vocals in" at bar 1
 
 section "chorus":
   bars: 8
@@ -237,6 +253,7 @@ section "chorus":
     replace HH with CR at 1
     add SN ghost at 2&
     replace SN with SN accent at 4
+  cue "guitar solo" at bar 5
 ```
 
 Save it as `charts/tutorial.gs` (use `./scaffold-chart tutorial` if you
@@ -249,7 +266,7 @@ haven't already) and build:
 `./build-pdf` compiles `charts/tutorial.gs` to LilyPond and then renders
 the PDF alongside it — `charts/tutorial.pdf`.
 
-From here, browse [`DSL_REFERENCE.md`](DSL_REFERENCE.md) for anything this
-tutorial skipped: time-signature changes per section, multi-bar grooves,
-triplet subdivisions, inline unnamed grooves, the `play:` arrangement form,
-vocal cues, per-section tempo, and more.
+From here, browse [`DSL_REFERENCE.md`](DSL_REFERENCE.md) for anything
+this tutorial skipped: multi-bar grooves, triplet subdivisions, inline
+unnamed grooves, the `play:` arrangement form, bar text, dynamic spans,
+and more.

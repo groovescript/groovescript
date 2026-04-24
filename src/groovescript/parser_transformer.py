@@ -576,6 +576,8 @@ class _GrooveScriptTransformer(Transformer):
                 fill_placements.extend(placements)
             elif key == "fill_placeholder":
                 fill_placeholders.append(value)
+            elif key == "fill_placeholder_many":
+                fill_placeholders.extend(value)
             elif key == "variation":
                 variations.append(value)
             elif key == "cue":
@@ -857,12 +859,33 @@ class _GrooveScriptTransformer(Transformer):
             bar = int(items[1])
             beat = str(items[2]) if len(items) > 2 else None
         else:
-            label = "fill"
+            label = "Fill"
             bar = int(items[0])
             beat = str(items[1]) if len(items) > 1 else None
         if beat:
             beat = _normalize_beat_label(beat)
         return ("fill_placeholder", FillPlaceholder(label=label, bar=bar, beat=beat))
+
+    def section_empty_fill_placeholder(self, items):
+        """``fill at bar N`` (no body, no reference) — implicit placeholder.
+
+        Equivalent to writing ``fill placeholder at bar N`` but reads more
+        naturally when the chart is just a skeleton: "there's a fill here,
+        I'll decide the notes later".
+
+        ``fill at bars N, M`` is accepted too (for symmetry with other
+        section-level ``at bars`` forms) and expands to one placeholder per
+        bar. Returns a single ``fill_placeholder`` tuple for one bar, or a
+        ``fill_placeholder_many`` tuple for multiple.
+        """
+        bar_nums = items[0]  # bar_number_list → list[int]
+        beat = _normalize_beat_label(str(items[1])) if len(items) > 1 else None
+        placeholders = [
+            FillPlaceholder(label="Fill", bar=n, beat=beat) for n in bar_nums
+        ]
+        if len(placeholders) == 1:
+            return ("fill_placeholder", placeholders[0])
+        return ("fill_placeholder_many", placeholders)
 
     def section_cue_line(self, items):
         text = _ast.literal_eval(str(items[0]))
