@@ -1547,6 +1547,11 @@ def _resolve_groove_extends(
         _resolve(base_name)
 
         base = groove_defs[base_name]
+        if base.is_placeholder:
+            raise ValueError(
+                f"Groove {name!r} extends placeholder groove {base_name!r}; "
+                f"placeholder grooves have no pattern to inherit from"
+            )
         # Merge bars: if the extending groove has no bars (extend-only, no
         # overrides), use the base bars unchanged. If the extending
         # groove has a single-bar pattern, apply those overrides to every
@@ -1858,6 +1863,11 @@ def compile_song(song: Song) -> IRSong:
         source = groove_defs.get(name)
         if source is None:
             raise KeyError(name)
+        if source.is_placeholder:
+            raise ValueError(
+                f"Groove {name!r} is a placeholder and has no body to compile; "
+                f"this should have been routed through the placeholder path"
+            )
         compiled = compile_groove(source, bpb, beat_unit)
         groove_cache[key] = compiled
         return compiled
@@ -1935,10 +1945,30 @@ def compile_song(song: Song) -> IRSong:
         return out
 
     def _process_play_section(section, bpb, beat_unit, effective_ts, effective_tempo, full_section_name, start_bar_number) -> tuple[list[IRBar], IRSection]:
-        expanded = _expand_play_block(section.play, _get_groove, bpb, beat_unit, section.name)
+        expanded = _expand_play_block(
+            section.play, _get_groove, bpb, beat_unit, section.name, groove_defs
+        )
         total_bars = len(expanded)
         if total_bars == 0:
             raise ValueError(f"Section {section.name!r}: play: block expanded to zero bars")
+
+        # Resolve labels for nameless placeholder spans. A single nameless
+        # span uses ``"<Section> groove"`` (the same default as the
+        # implicit minimal-chart case); two or more get numeric suffixes
+        # (``"Verse groove 1"``, ``"Verse groove 2"``, …) so they can be
+        # told apart on the page.
+        nameless_first_offsets = [
+            i for i, (_, _, _, ph) in enumerate(expanded)
+            if ph is not None and ph[0] is None and ph[1]
+        ]
+        display_name = full_section_name[:1].upper() + full_section_name[1:]
+        if len(nameless_first_offsets) == 1:
+            nameless_label_for_offset = {nameless_first_offsets[0]: f"{display_name} groove"}
+        else:
+            nameless_label_for_offset = {
+                offset: f"{display_name} groove {idx + 1}"
+                for idx, offset in enumerate(nameless_first_offsets)
+            }
 
         ir_section = IRSection(name=section.name, start_bar=start_bar_number, bars=total_bars, tempo=effective_tempo)
         fill_coverage, variation_coverage = _build_coverage_maps(section, fill_map, total_bars, bpb, beat_unit, variation_map)
@@ -1946,8 +1976,48 @@ def compile_song(song: Song) -> IRSong:
         dyn_starts, dyn_stops = _resolve_dynamic_spans(all_spans, total_bars, bpb)
 
         new_bars: list[IRBar] = []
-        for section_bar_offset, (template_events, base_subdivision, is_rest) in enumerate(expanded):
+        for section_bar_offset, (template_events, base_subdivision, is_rest, placeholder_info) in enumerate(expanded):
             absolute_bar = start_bar_number + section_bar_offset
+
+            if placeholder_info is not None:
+                # Placeholder bar: empty events, fixed subdivision=1, label
+                # only on the first bar of the span. Variations cannot apply
+                # (no notes to vary); fills and cues may overlay normally.
+                if section_bar_offset in variation_coverage:
+                    raise ValueError(
+                        f"Section {section.name!r}: variation at bar "
+                        f"{section_bar_offset + 1} targets a placeholder "
+                        f"groove (no notes to vary)"
+                    )
+                placeholders: list[tuple[Fraction, str]] = []
+                label, is_first = placeholder_info
+                if is_first:
+                    if label is None:
+                        label = nameless_label_for_offset[section_bar_offset]
+                    placeholders.append((Fraction(0), label))
+                user_placeholders = _collect_bar_placeholders(
+                    section, section_bar_offset, 1, bpb
+                )
+                placeholders.extend(user_placeholders)
+                bar_cues = _collect_bar_cues(section, section_bar_offset, 1, bpb)
+                new_bars.append(
+                    IRBar(
+                        number=absolute_bar,
+                        subdivision=1,
+                        events=[],
+                        section_name=full_section_name if section_bar_offset == 0 else None,
+                        section_bars=total_bars if section_bar_offset == 0 else None,
+                        cues=bar_cues,
+                        fill_placeholders=placeholders,
+                        tempo=effective_tempo,
+                        time_signature=effective_ts,
+                        is_placeholder_groove=True,
+                        dynamic_starts=dyn_starts.get(section_bar_offset, []),
+                        dynamic_stops=dyn_stops.get(section_bar_offset, []),
+                    )
+                )
+                continue
+
             # Re-stamp bar numbers on the template events for this absolute bar
             arranged_events = [
                 Event(
@@ -2011,15 +2081,25 @@ def compile_song(song: Song) -> IRSong:
         return new_bars, ir_section
 
     def _process_placeholder_section(
-        section, effective_ts, effective_tempo, full_section_name, start_bar_number
+        section, effective_ts, effective_tempo, full_section_name, start_bar_number,
+        placeholder_label: str | None = None,
     ) -> tuple[list[IRBar], IRSection]:
-        """Build IR for a section that declares ``bars:`` without a ``groove:``.
+        """Build IR for a section whose groove is a placeholder (TBD).
 
         Each bar is rendered as an invisible skip with no notes or rests.
-        A boxed ``"<Name> groove"`` label (e.g. ``"Verse groove"``) sits
-        above the first bar so the reader can tell the groove is
-        intentionally left unspecified.
+        A boxed label sits above the first bar so the reader can tell the
+        groove is intentionally left unspecified.
+
+        ``placeholder_label`` overrides the default ``"<Section> groove"``
+        derivation. Used when the section explicitly references a named
+        placeholder (top-level ``groove placeholder "verse-A"`` or inline
+        ``groove: placeholder "intro feel"``).
         """
+        if section.variations:
+            raise ValueError(
+                f"Section {section.name!r}: variations cannot be applied to a "
+                f"placeholder groove (no notes to vary)"
+            )
         total_bars = section.bars
         ir_section = IRSection(
             name=section.name,
@@ -2028,8 +2108,11 @@ def compile_song(song: Song) -> IRSong:
             tempo=effective_tempo,
         )
         bpb_local = _beats_per_bar(effective_ts)
-        display_name = full_section_name[:1].upper() + full_section_name[1:]
-        section_label = f"{display_name} groove"
+        if placeholder_label is not None:
+            section_label = placeholder_label
+        else:
+            display_name = full_section_name[:1].upper() + full_section_name[1:]
+            section_label = f"{display_name} groove"
         new_bars: list[IRBar] = []
         for section_bar_offset in range(total_bars):
             absolute_bar = start_bar_number + section_bar_offset
@@ -2040,6 +2123,7 @@ def compile_song(song: Song) -> IRSong:
                 section, section_bar_offset, 1, bpb_local
             )
             placeholders.extend(user_placeholders)
+            bar_cues = _collect_bar_cues(section, section_bar_offset, 1, bpb_local)
             new_bars.append(
                 IRBar(
                     number=absolute_bar,
@@ -2047,6 +2131,7 @@ def compile_song(song: Song) -> IRSong:
                     events=[],
                     section_name=full_section_name if section_bar_offset == 0 else None,
                     section_bars=total_bars if section_bar_offset == 0 else None,
+                    cues=bar_cues,
                     fill_placeholders=placeholders,
                     tempo=effective_tempo,
                     time_signature=effective_ts,
@@ -2183,6 +2268,11 @@ def compile_song(song: Song) -> IRSong:
             new_bars, ir_section = _process_placeholder_section(
                 section, effective_ts, effective_tempo, full_section_name, current_bar_number
             )
+        elif (resolved_groove := groove_defs.get(section.groove)) is not None and resolved_groove.is_placeholder:
+            new_bars, ir_section = _process_placeholder_section(
+                section, effective_ts, effective_tempo, full_section_name, current_bar_number,
+                placeholder_label=resolved_groove.placeholder_label,
+            )
         else:
             new_bars, ir_section = _process_groove_section(
                 section, bpb, beat_unit, effective_ts, effective_tempo, full_section_name, current_bar_number
@@ -2280,24 +2370,56 @@ def _expand_play_block(
     bpb: int,
     beat_unit: int,
     section_name: str,
-) -> list[tuple[list[Event], int, bool]]:
-    """Expand a play: block into a flat list of (events, subdivision, is_rest) per bar.
+    groove_defs: dict[str, "Groove"] | None = None,
+) -> list[tuple[list[Event], int, bool, tuple[str | None, bool] | None]]:
+    """Expand a play: block into a flat list of per-bar tuples.
 
-    events are bar=1-relative (caller re-stamps to absolute bar numbers).
-    subdivision is the grid for that bar.
-    is_rest is True for whole-bar rest bars.
+    Each entry is ``(events, subdivision, is_rest, placeholder_info)`` where
+    ``placeholder_info`` is ``None`` for regular bars or a
+    ``(label_or_None, is_first_bar_of_span)`` tuple for placeholder-groove
+    bars (label resolution for nameless placeholders is deferred to
+    :func:`_process_play_section` because numbering depends on how many
+    nameless spans the section ends up with).
+
+    Events are bar=1-relative (caller re-stamps to absolute bar numbers).
+    ``subdivision`` is the grid for that bar; for placeholder bars it is
+    fixed at 1 (matches ``_process_placeholder_section``).
+    ``is_rest`` is True for whole-bar rest bars.
 
     ``get_groove`` is a callable ``(name, bpb, beat_unit) -> IRGroove`` so
     the caller controls how grooves are compiled/cached (needed because
     per-section time signature overrides recompile grooves at a different
-    bpb/beat_unit).
+    bpb/beat_unit). ``groove_defs`` is an optional name-to-Groove map used
+    to detect placeholder grooves before compilation; an undefined name
+    here auto-promotes to a named placeholder so users can reference
+    grooves they haven't transcribed yet.
     """
-    result: list[tuple[list[Event], int, bool]] = []
+    result: list[tuple[list[Event], int, bool, tuple[str | None, bool] | None]] = []
     named_bars: dict[str, tuple[list[Event], int]] = {}  # name → (events, subdivision)
     last_groove_subdivision: int | None = None
+    groove_defs = groove_defs or {}
+
+    def _emit_placeholder_span(label: str | None, repeat: int) -> None:
+        # A placeholder span is one contiguous block of ``repeat`` bars; the
+        # label is attached to the first bar only. Subsequent bars carry the
+        # same label tuple but with ``is_first=False`` so the renderer knows
+        # not to re-emit the rehearsal markup.
+        for i in range(repeat):
+            result.append(([], 1, False, (label, i == 0)))
 
     for item in play_items:
         if isinstance(item, PlayGroove):
+            source = groove_defs.get(item.groove_name)
+            if source is not None and source.is_placeholder:
+                _emit_placeholder_span(source.placeholder_label, item.repeat)
+                continue
+            if source is None:
+                # Auto-promote: an undefined groove reference inside play:
+                # becomes a named placeholder using the reference name as
+                # its label. Lets users sketch a chart by listing groove
+                # names before transcribing them.
+                _emit_placeholder_span(item.groove_name, item.repeat)
+                continue
             try:
                 groove = get_groove(item.groove_name, bpb, beat_unit)
             except KeyError:
@@ -2313,7 +2435,7 @@ def _expand_play_block(
             for _ in range(item.repeat):
                 for bar_num in range(1, groove.bars + 1):
                     bar_sub = groove.bar_subdivisions[bar_num - 1]
-                    result.append((groove_events_by_bar[bar_num], bar_sub, False))
+                    result.append((groove_events_by_bar[bar_num], bar_sub, False, None))
 
         elif isinstance(item, PlayBar):
             if item.pattern is not None:
@@ -2338,11 +2460,11 @@ def _expand_play_block(
                 events, subdiv = named_bars[item.name]
 
             for _ in range(item.repeat):
-                result.append((events, subdiv, False))
+                result.append((events, subdiv, False, None))
 
         elif isinstance(item, PlayRest):
             subdiv = last_groove_subdivision if last_groove_subdivision is not None else _whole_bar_rest_subdivision(bpb)
             for _ in range(item.repeat):
-                result.append(([], subdiv, True))
+                result.append(([], subdiv, True, None))
 
     return result

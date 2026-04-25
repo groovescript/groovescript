@@ -27,6 +27,7 @@ the language, start with [`GETTING_STARTED.md`](GETTING_STARTED.md) or
   - [Inline unnamed grooves inside a section](#inline-unnamed-grooves-inside-a-section)
   - [Optional quotes around `count:` / `notes:` values](#optional-quotes-around-count--notes-values)
 - [Library of grooves](#library-of-grooves)
+- [Placeholder grooves](#placeholder-grooves)
 - [Fill](#fill)
   - [Count-block syntax](#fill)
   - [Count+notes syntax](#fill)
@@ -126,6 +127,11 @@ section "verse":
 This is the iteration-1 form of a chart: print the form, pencil in the
 grooves by hand, or fill in `groove:` lines later. `bars:` is still
 required; only `groove:` is optional.
+
+The implicit form above is shorthand. Three equivalent explicit forms
+let you label individual placeholders or sit them alongside transcribed
+grooves inside a `play:` block — see [Placeholder
+grooves](#placeholder-grooves).
 
 `dsl_version` is a forward-compatibility marker. When a file declares
 `dsl_version: N` with N different from the current DSL version, parsing
@@ -499,6 +505,80 @@ groove "rock + crash on 1":
 The canonical source for every built-in is `src/groovescript/groove_library.gs`
 in the repository — the table above mirrors it, so any new or updated
 grooves added there should also be reflected here.
+
+## Placeholder grooves
+
+A **placeholder groove** is a TBD slot — empty bars with a boxed
+rehearsal label — that lets you sketch a chart's form before every
+groove has been transcribed. The shorthand version is the [minimal
+section](#placeholder-groove-minimal-sections) (a section with `bars:`
+but no `groove:`); the explicit forms below let you label individual
+placeholders or place them alongside transcribed grooves inside a
+`play:` block.
+
+Three syntactic surfaces, all parallel to fill placeholders:
+
+```groovescript
+// 1. Top-level declaration. Reference it from any section by name.
+groove placeholder "verse-A"
+
+// 2. Section's sole groove. Nameless or named.
+section "intro":
+  bars: 4
+  groove: placeholder
+
+section "pre-chorus":
+  bars: 4
+  groove: placeholder "hookline tease"
+
+section "verse":
+  bars: 8
+  groove: "verse-A"                  // resolves to the top-level placeholder
+
+// 3. Inside a play: block, alongside transcribed grooves.
+section "chorus":
+  play:
+    groove placeholder x4            // explicit nameless, 4 bars
+    groove placeholder "build" x2    // explicit named, 2 bars
+    groove "outro idea" x4           // undefined name → auto-promotes to a
+                                     //   named placeholder with that label
+    groove "money beat" x4           // a real, transcribed groove
+```
+
+Inside a `play:` list, an undefined groove name **auto-promotes** to a
+named placeholder whose label is the reference name itself. This makes
+the common case — listing the section's grooves by name before
+transcribing them — a one-liner. Defined names continue to resolve
+normally; only unknown ones get promoted.
+
+Outside a `play:` list, `groove: "name"` referencing an undefined name
+remains an error so typos are still caught — use `groove: placeholder
+"name"` if you want the section's sole groove to be a TBD slot.
+
+Labels:
+
+- A **named** placeholder uses its given label verbatim: `"verse-A"`,
+  `"hookline tease"`, `"build"`, etc.
+- A **nameless** placeholder uses `"<Section> groove"` (capitalised
+  section name + the literal word `groove`). When a single section has
+  more than one nameless placeholder span, they're suffixed
+  `1`, `2`, … so they can be told apart on the page.
+- Top-level `groove placeholder "X"` declarations and section sole
+  grooves with the same name are duplicate-name errors, the same as
+  declaring two real grooves of the same name.
+
+Compatibility with other features:
+
+- **Fill placeholders** and **cues** overlay placeholder bars normally,
+  so a placeholder section can still show `fill at bar 4` and `cue
+  "vocals in" at bar 1`.
+- **Variations** that target a placeholder bar are an error — there
+  are no notes to vary. Transcribe the groove first.
+- **`extend:`** cannot reference a placeholder groove (the placeholder
+  has no pattern to inherit from).
+- **MIDI** and **MusicXML** export emit silent measures for the
+  duration of each placeholder span, so playback length still matches
+  the printed chart.
 
 ## Fill
 
@@ -972,9 +1052,11 @@ Items allowed inside `play:`:
 
 | Item                                       | Meaning                                                                          |
 |--------------------------------------------|----------------------------------------------------------------------------------|
-| `groove "name" [xN]`                       | Play the named groove N times (default 1). Multi-bar grooves tile all their bars each repeat. |
+| `groove "name" [xN]`                       | Play the named groove N times (default 1). Multi-bar grooves tile all their bars each repeat. If `"name"` isn't defined anywhere, it auto-promotes to a named placeholder — see [Placeholder grooves](#placeholder-grooves). |
 | `groove [xN]:` *(with indented body)*      | Inline nameless groove definition played N times (default 1). Body uses the same instrument/bar lines as a named groove. |
 | `groove "name" [xN]:` *(with indented body)* | Inline **named** groove definition played N times (default 1). Later `groove "name" [xN]` items in the same section reference this definition. |
+| `groove placeholder [xN]`                  | Nameless placeholder span N bars long. Renders as empty bars with a `"<Section> groove"` rehearsal label. |
+| `groove placeholder "label" [xN]`          | Named placeholder span N bars long, labelled `"label"`. |
 | `bar "name" [xN]:` *(with indented body)*  | Inline definition of a one-off bar, registered under `name` within this section, played N times. |
 | `bar "name" [xN]`  *(no body)*             | Reference to a previously-defined bar in this section, played N times. |
 | `rest [xN]`                                | N bars of whole-bar silence. Rendered as a full-bar rest (`R1` in 4/4). |

@@ -6,8 +6,8 @@ PDF sheet music.
 
 GrooveScript is a text-based DSL optimized for fast transcription of drum
 charts: reusable grooves and fills, section-based song structure,
-time-anchored variations, placeholder fills for incremental chart-building,
-and full support for changing meters.
+time-anchored variations, placeholder grooves and fills for incremental
+chart-building, and full support for changing meters.
 
 ## Core concepts
 
@@ -47,6 +47,23 @@ section "outro":
 From here, iterate: fill in the grooves (step 2 of the tutorial), swap
 placeholder fills for real ones (step 3), add variations (step 4), and
 cues (step 5).
+
+You can also mix transcribed and TBD grooves inside one section.
+Undefined groove names referenced from a `play:` block auto-promote to
+named placeholders, so you can sketch a section by listing the grooves
+you intend to write before any of them exist:
+
+```groovescript
+section "chorus":
+  play:
+    groove "intro feel" x4         # not yet defined → placeholder labelled "intro feel"
+    groove "money beat" x8         # real, transcribed groove
+    groove placeholder "outro" x4  # explicit named placeholder
+```
+
+See the [Placeholder grooves](docs/DSL_REFERENCE.md#placeholder-grooves)
+reference for all three explicit forms (top-level declaration, section
+sole groove, and `play:` list item).
 
 ## Quick taste
 

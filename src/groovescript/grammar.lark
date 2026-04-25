@@ -28,6 +28,7 @@ default_groove_line: "default_groove" ":" ESCAPED_STRING
 default_bars_line: "default_bars" ":" INT
 
 groove_def: "groove" ESCAPED_STRING ":" groove_body
+          | "groove" "placeholder" ESCAPED_STRING                  -> groove_placeholder_def
 groove_body: pattern_content
            | groove_cn_body
            | extend_body
@@ -84,6 +85,8 @@ section_line: bars_line
 bars_line: "bars" ":" INT
 groove_line: "groove" ":" ESCAPED_STRING
            | "groove" ":" groove_body
+           | "groove" ":" "placeholder"                            -> groove_line_placeholder
+           | "groove" ":" "placeholder" ESCAPED_STRING              -> groove_line_placeholder_named
 repeat_line: "repeat" ":" INT
 like_line: "like" ESCAPED_STRING ("with" INHERIT_CATEGORY (","? INHERIT_CATEGORY)*)?
 INHERIT_CATEGORY: "fills" | "variations" | "cues"
@@ -101,6 +104,8 @@ play_block: "play" ":" play_item+
 play_groove: "groove" ESCAPED_STRING repeat_count?                   -> play_groove_named
            | "groove" ESCAPED_STRING repeat_count? ":" groove_body   -> play_groove_named_inline
            | "groove" repeat_count? ":" groove_body                  -> play_groove_inline
+           | "groove" "placeholder" repeat_count?                    -> play_groove_placeholder
+           | "groove" "placeholder" ESCAPED_STRING repeat_count?     -> play_groove_placeholder_named
 play_bar:    "bar"    ESCAPED_STRING repeat_count? play_bar_body?
 play_rest:   "rest"                  repeat_count?
 play_bar_body: ":" pattern_bar_item+

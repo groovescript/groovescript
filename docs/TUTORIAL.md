@@ -89,6 +89,13 @@ GrooveScript also ships with a **library of common grooves** (`rock`,
 defining them. See
 [DSL reference → Library of grooves](DSL_REFERENCE.md#library-of-grooves).
 
+You don't have to transcribe every groove at once. The implicit
+placeholder from iteration 1 (a section with `bars:` but no `groove:`)
+keeps working, and three **explicit placeholder** forms let you label
+TBD grooves or sit them alongside transcribed ones inside a `play:`
+list — see
+[DSL reference → Placeholder grooves](DSL_REFERENCE.md#placeholder-grooves).
+
 ## Iteration 3 — fills
 
 Now mark where fills go. Two styles: **placeholder fills** (just a

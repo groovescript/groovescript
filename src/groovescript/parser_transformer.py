@@ -165,6 +165,16 @@ class _GrooveScriptTransformer(Transformer):
         body = items[1]
         return self._build_groove_from_body(name, body)
 
+    def groove_placeholder_def(self, items):
+        """Top-level ``groove placeholder "name"`` — TBD groove with no body."""
+        name = _ast.literal_eval(str(items[0]))
+        return Groove(
+            name=name,
+            bars=[],
+            is_placeholder=True,
+            placeholder_label=name,
+        )
+
     def _build_groove_from_body(self, name: str, body: dict) -> Groove:
         dynamic_spans = list(body.get("dynamic_spans", []))
         if body.get("count_notes") is not None:
@@ -665,6 +675,40 @@ class _GrooveScriptTransformer(Transformer):
         play_groove_node = PlayGroove(groove_name=synthetic_name, repeat=repeat)
         return ("inline_play_groove", play_groove_node, groove)
 
+    def play_groove_placeholder(self, items):
+        """``groove placeholder xN`` — nameless placeholder inside a play: block."""
+        repeat = items[0] if items else 1
+        self._inline_groove_counter += 1
+        synthetic_name = f"__inline_placeholder_groove_{self._inline_groove_counter}"
+        groove = Groove(
+            name=synthetic_name,
+            bars=[],
+            is_placeholder=True,
+            placeholder_label=None,
+        )
+        play_groove_node = PlayGroove(groove_name=synthetic_name, repeat=repeat)
+        return ("inline_play_groove", play_groove_node, groove)
+
+    def play_groove_placeholder_named(self, items):
+        """``groove placeholder "label" xN`` — named placeholder inside a play: block.
+
+        Each occurrence registers a fresh synthetic groove so two play items
+        with the same label still render as two distinct placeholder spans
+        (rather than collapsing into one repeat block).
+        """
+        label = _ast.literal_eval(str(items[0]))
+        repeat = items[1] if len(items) > 1 else 1
+        self._inline_groove_counter += 1
+        synthetic_name = f"__inline_placeholder_groove_{self._inline_groove_counter}"
+        groove = Groove(
+            name=synthetic_name,
+            bars=[],
+            is_placeholder=True,
+            placeholder_label=label,
+        )
+        play_groove_node = PlayGroove(groove_name=synthetic_name, repeat=repeat)
+        return ("inline_play_groove", play_groove_node, groove)
+
     def play_groove_named_inline(self, items):
         """Inline named groove inside a ``play:`` block.
 
@@ -739,6 +783,31 @@ class _GrooveScriptTransformer(Transformer):
         self._inline_groove_counter += 1
         synthetic_name = f"__inline_groove_{self._inline_groove_counter}"
         groove = self._build_groove_from_body(synthetic_name, body)
+        return ("inline_groove", groove)
+
+    def groove_line_placeholder(self, items):
+        """``groove: placeholder`` — explicit nameless placeholder for the section."""
+        self._inline_groove_counter += 1
+        synthetic_name = f"__inline_placeholder_groove_{self._inline_groove_counter}"
+        groove = Groove(
+            name=synthetic_name,
+            bars=[],
+            is_placeholder=True,
+            placeholder_label=None,
+        )
+        return ("inline_groove", groove)
+
+    def groove_line_placeholder_named(self, items):
+        """``groove: placeholder "label"`` — explicit named placeholder for the section."""
+        label = _ast.literal_eval(str(items[0]))
+        self._inline_groove_counter += 1
+        synthetic_name = f"__inline_placeholder_groove_{self._inline_groove_counter}"
+        groove = Groove(
+            name=synthetic_name,
+            bars=[],
+            is_placeholder=True,
+            placeholder_label=label,
+        )
         return ("inline_groove", groove)
 
     def repeat_line(self, items):
