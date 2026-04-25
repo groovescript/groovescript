@@ -141,6 +141,13 @@ class Groove:
     # carries an ordered list of variation actions to apply to those bars
     # once the base groove's events have been expanded.
     extend_variations: list["GrooveExtendVariation"] = field(default_factory=list)
+    # Placeholder grooves are TBD slots that render as empty bars with a
+    # boxed label. ``bars`` is empty and the other content fields are
+    # ignored. ``placeholder_label`` carries the user-facing label: the
+    # original quoted name for named placeholders, or ``None`` for the
+    # nameless variant (the compiler picks a label from the section name).
+    is_placeholder: bool = False
+    placeholder_label: str | None = None
 
     @property
     def pattern(self) -> list[PatternLine]:

@@ -529,3 +529,104 @@ def test_parse_file_fixture_chained_like():
     assert len(ir.sections) == 3
     verse_section, verse2_section, verse3_section = ir.sections
     assert verse_section.bars == verse2_section.bars == verse3_section.bars == 4
+
+
+# ---------------------------------------------------------------------------
+# Placeholder-groove parsing: top-level ``groove placeholder "X"``, section
+# sole-groove ``groove: placeholder [name]``, and ``play:`` list items
+# ``groove placeholder [name] xN``.
+# ---------------------------------------------------------------------------
+
+
+def test_parse_top_level_placeholder_groove():
+    """``groove placeholder "X"`` declares a TBD groove with no body. The
+    AST stores ``is_placeholder=True``, an empty ``bars`` list, and the
+    user-supplied label.
+    """
+    song = parse('title: "x"\ngroove placeholder "verse-A"\n')
+    assert len(song.grooves) == 1
+    g = song.grooves[0]
+    assert g.name == "verse-A"
+    assert g.is_placeholder is True
+    assert g.placeholder_label == "verse-A"
+    assert g.bars == []
+
+
+def test_parse_section_groove_placeholder_nameless():
+    """``groove: placeholder`` registers a synthetic inline placeholder
+    Groove on the section with ``placeholder_label=None``.
+    """
+    song = parse('title: "x"\nsection "verse":\n  bars: 4\n  groove: placeholder\n')
+    section = song.sections[0]
+    assert len(section.inline_grooves) == 1
+    inline = section.inline_grooves[0]
+    assert inline.is_placeholder is True
+    assert inline.placeholder_label is None
+    # Section's groove field references the synthetic name.
+    assert section.groove == inline.name
+
+
+def test_parse_section_groove_placeholder_named():
+    """``groove: placeholder "label"`` records the user label without
+    treating it as the groove's identifier.
+    """
+    song = parse(
+        'title: "x"\nsection "verse":\n  bars: 4\n  groove: placeholder "intro feel"\n'
+    )
+    section = song.sections[0]
+    inline = section.inline_grooves[0]
+    assert inline.is_placeholder is True
+    assert inline.placeholder_label == "intro feel"
+
+
+def test_parse_play_groove_placeholder_nameless():
+    """``groove placeholder xN`` inside ``play:`` registers an inline
+    placeholder Groove and emits a PlayGroove referencing it.
+    """
+    song = parse(
+        'title: "x"\nsection "verse":\n  play:\n    groove placeholder x4\n'
+    )
+    section = song.sections[0]
+    assert len(section.inline_grooves) == 1
+    inline = section.inline_grooves[0]
+    assert inline.is_placeholder is True
+    assert inline.placeholder_label is None
+    assert section.play[0].groove_name == inline.name
+    assert section.play[0].repeat == 4
+
+
+def test_parse_play_groove_placeholder_named():
+    """``groove placeholder "label" xN`` inside ``play:`` carries the label."""
+    song = parse(
+        'title: "x"\nsection "verse":\n  play:\n    groove placeholder "build" x2\n'
+    )
+    section = song.sections[0]
+    inline = section.inline_grooves[0]
+    assert inline.is_placeholder is True
+    assert inline.placeholder_label == "build"
+    assert section.play[0].repeat == 2
+
+
+def test_parse_play_groove_placeholder_default_repeat():
+    """``groove placeholder`` (no xN) defaults to repeat=1."""
+    song = parse(
+        'title: "x"\nsection "verse":\n  play:\n    groove placeholder\n'
+    )
+    assert song.sections[0].play[0].repeat == 1
+
+
+def test_parse_two_play_placeholder_items_register_separate_grooves():
+    """Two play-list placeholder items with the same label produce two
+    distinct synthetic grooves so the compiler renders them as distinct
+    spans rather than collapsing them.
+    """
+    song = parse(
+        'title: "x"\nsection "verse":\n  play:\n'
+        '    groove placeholder "tbd" x2\n'
+        '    groove placeholder "tbd" x2\n'
+    )
+    section = song.sections[0]
+    assert len(section.inline_grooves) == 2
+    assert section.inline_grooves[0].name != section.inline_grooves[1].name
+    assert section.inline_grooves[0].placeholder_label == "tbd"
+    assert section.inline_grooves[1].placeholder_label == "tbd"

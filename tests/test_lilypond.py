@@ -1358,6 +1358,55 @@ section "verse":
     assert "\\box" in ly
 
 
+def test_explicit_placeholder_groove_renders_named_label():
+    """``groove: placeholder "X"`` and a top-level ``groove placeholder "X"``
+    both render the user-supplied label as the rehearsal mark — boxed and
+    bold like the implicit case.
+    """
+    from groovescript.parser import parse
+    src = (
+        'title: "m"\n'
+        'groove placeholder "verse-A"\n'
+        'section "intro":\n  bars: 4\n  groove: placeholder "intro feel"\n'
+        'section "verse":\n  bars: 4\n  groove: "verse-A"\n'
+    )
+    ly = emit_lilypond(compile_song(parse(src)))
+    assert '"intro feel"' in ly
+    assert '"verse-A"' in ly
+    assert ly.count("\\box") >= 2
+
+
+def test_play_list_nameless_placeholders_get_numbered_labels():
+    """Two nameless placeholder spans inside the same section render with
+    ``"<Section> groove 1"`` and ``"<Section> groove 2"`` boxed labels.
+    """
+    from groovescript.parser import parse
+    src = (
+        'title: "m"\n'
+        'groove "beat":\n  BD: 1\n'
+        'section "verse":\n  play:\n'
+        '    groove placeholder x2\n'
+        '    groove "beat" x2\n'
+        '    groove placeholder x2\n'
+    )
+    ly = emit_lilypond(compile_song(parse(src)))
+    assert '"Verse groove 1"' in ly
+    assert '"Verse groove 2"' in ly
+
+
+def test_play_list_undefined_groove_renders_boxed_label_with_reference_name():
+    """``groove "foo" xN`` with foo undefined auto-promotes to a placeholder
+    whose label is ``foo``.
+    """
+    from groovescript.parser import parse
+    src = (
+        'title: "m"\n'
+        'section "verse":\n  play:\n    groove "intro feel" x4\n'
+    )
+    ly = emit_lilypond(compile_song(parse(src)))
+    assert '"intro feel"' in ly
+
+
 # ── 12/8 emission ─────────────────────────────────────────────────────────
 
 

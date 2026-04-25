@@ -1479,10 +1479,18 @@ def test_compile_play_bar_subdivision_inherits_last_groove():
     assert ir.bars[1].subdivision == 8
 
 
-def test_compile_play_unknown_groove_raises():
+def test_compile_play_undefined_groove_auto_promotes_to_placeholder():
+    """An undefined groove name inside a play: block becomes a named
+    placeholder using the reference name as its label, so users can sketch
+    a chart by listing groove names before transcribing them.
+    """
     song = _make_play_song([PlayGroove("no such groove", 1)])
-    with pytest.raises(ValueError, match="unknown groove"):
-        compile_song(song)
+    ir = compile_song(song)
+    assert len(ir.bars) == 1
+    bar = ir.bars[0]
+    assert bar.is_placeholder_groove is True
+    assert bar.events == []
+    assert bar.fill_placeholders[0] == (Fraction(0), "no such groove")
 
 
 def test_compile_play_unknown_bar_reference_raises():
@@ -2517,3 +2525,296 @@ section "verse":
     bar4 = ir.bars[3]
     sn_in_bar4 = [e for e in bar4.events if e.instrument == "SN"]
     assert any(e.beat_position >= Fraction(1, 2) for e in sn_in_bar4)
+
+
+# ---------------------------------------------------------------------------
+# Placeholder grooves: explicit TBD groove slots that render as empty bars
+# with a boxed rehearsal label. Available as a top-level declaration, as a
+# section's sole groove, and inside ``play:`` lists. Undefined groove names
+# referenced in play: lists auto-promote to named placeholders.
+# ---------------------------------------------------------------------------
+
+
+def test_compile_section_explicit_placeholder_groove_nameless():
+    """``groove: placeholder`` is the explicit equivalent of omitting ``groove:``.
+
+    Uses the section name to derive a default ``"<Section> groove"`` label.
+    """
+    from groovescript.parser import parse
+    src = 'title: "m"\nsection "verse":\n  bars: 4\n  groove: placeholder\n'
+    ir = compile_song(parse(src))
+    assert len(ir.bars) == 4
+    assert all(bar.is_placeholder_groove for bar in ir.bars)
+    assert ir.bars[0].fill_placeholders == [(Fraction(0), "Verse groove")]
+    assert ir.bars[1].fill_placeholders == []
+
+
+def test_compile_section_explicit_placeholder_groove_named():
+    """``groove: placeholder "label"`` uses the user-supplied label verbatim."""
+    from groovescript.parser import parse
+    src = 'title: "m"\nsection "verse":\n  bars: 4\n  groove: placeholder "intro feel"\n'
+    ir = compile_song(parse(src))
+    assert all(bar.is_placeholder_groove for bar in ir.bars)
+    assert ir.bars[0].fill_placeholders == [(Fraction(0), "intro feel")]
+
+
+def test_compile_top_level_placeholder_referenced_by_section():
+    """A section that references a top-level ``groove placeholder "X"`` by
+    name renders as a placeholder with X as the label.
+    """
+    from groovescript.parser import parse
+    src = (
+        'title: "m"\n'
+        'groove placeholder "verse-A"\n'
+        'section "verse":\n  bars: 4\n  groove: "verse-A"\n'
+    )
+    ir = compile_song(parse(src))
+    assert all(bar.is_placeholder_groove for bar in ir.bars)
+    assert ir.bars[0].fill_placeholders == [(Fraction(0), "verse-A")]
+
+
+def test_compile_play_list_explicit_placeholder_nameless():
+    """``groove placeholder x4`` inside a play list emits 4 placeholder bars
+    labelled ``"<Section> groove"`` on the first.
+    """
+    from groovescript.parser import parse
+    src = (
+        'title: "m"\n'
+        'section "verse":\n  play:\n    groove placeholder x4\n'
+    )
+    ir = compile_song(parse(src))
+    assert len(ir.bars) == 4
+    assert all(bar.is_placeholder_groove for bar in ir.bars)
+    assert ir.bars[0].fill_placeholders == [(Fraction(0), "Verse groove")]
+
+
+def test_compile_play_list_explicit_placeholder_named():
+    """``groove placeholder "label" xN`` uses the user-supplied label."""
+    from groovescript.parser import parse
+    src = (
+        'title: "m"\n'
+        'section "verse":\n  play:\n    groove placeholder "intro feel" x3\n'
+    )
+    ir = compile_song(parse(src))
+    assert len(ir.bars) == 3
+    assert ir.bars[0].fill_placeholders == [(Fraction(0), "intro feel")]
+    # No label on subsequent bars of the same span
+    assert ir.bars[1].fill_placeholders == []
+    assert ir.bars[2].fill_placeholders == []
+
+
+def test_compile_play_list_undefined_groove_auto_promotes():
+    """``groove "X" x4`` where X is undefined becomes a named placeholder
+    whose label is the reference name. Lets users sketch by name first.
+    """
+    from groovescript.parser import parse
+    src = (
+        'title: "m"\n'
+        'section "verse":\n  play:\n    groove "intro feel" x2\n'
+    )
+    ir = compile_song(parse(src))
+    assert len(ir.bars) == 2
+    assert all(bar.is_placeholder_groove for bar in ir.bars)
+    assert ir.bars[0].fill_placeholders == [(Fraction(0), "intro feel")]
+
+
+def test_compile_play_list_single_nameless_placeholder_no_number_suffix():
+    """A section with exactly one nameless placeholder span gets the bare
+    ``"<Section> groove"`` label — matching the implicit minimal-chart form.
+    """
+    from groovescript.parser import parse
+    src = (
+        'title: "m"\n'
+        'groove "beat":\n  BD: 1\n'
+        'section "chorus":\n  play:\n    groove "beat" x2\n    groove placeholder x4\n'
+    )
+    ir = compile_song(parse(src))
+    # Find the first placeholder bar and confirm the label has no numeric suffix.
+    placeholder_labels = [
+        ph[1] for bar in ir.bars
+        for ph in bar.fill_placeholders
+        if bar.is_placeholder_groove
+    ]
+    assert "Chorus groove" in placeholder_labels
+    assert not any(label.startswith("Chorus groove ") for label in placeholder_labels)
+
+
+def test_compile_play_list_multiple_nameless_placeholders_get_numbered():
+    """Two or more nameless placeholder spans in the same section receive
+    numeric suffixes so the reader can tell them apart on the page.
+    """
+    from groovescript.parser import parse
+    src = (
+        'title: "m"\n'
+        'groove "beat":\n  BD: 1\n'
+        'section "verse":\n  play:\n'
+        '    groove placeholder x2\n'
+        '    groove "beat" x2\n'
+        '    groove placeholder x2\n'
+        '    groove "beat" x2\n'
+        '    groove placeholder x2\n'
+    )
+    ir = compile_song(parse(src))
+    labels_first_bar_of_each_placeholder = [
+        bar.fill_placeholders[0][1]
+        for bar in ir.bars
+        if bar.is_placeholder_groove and bar.fill_placeholders
+    ]
+    assert labels_first_bar_of_each_placeholder == [
+        "Verse groove 1",
+        "Verse groove 2",
+        "Verse groove 3",
+    ]
+
+
+def test_compile_play_list_named_placeholders_keep_their_labels_when_mixed_with_nameless():
+    """Numbering only applies to nameless spans; named placeholders use
+    their given label regardless of how many other placeholders are present.
+    """
+    from groovescript.parser import parse
+    src = (
+        'title: "m"\n'
+        'section "verse":\n  play:\n'
+        '    groove placeholder x1\n'
+        '    groove placeholder "build" x1\n'
+        '    groove placeholder x1\n'
+    )
+    ir = compile_song(parse(src))
+    labels = [bar.fill_placeholders[0][1] for bar in ir.bars]
+    assert labels == ["Verse groove 1", "build", "Verse groove 2"]
+
+
+def test_compile_placeholder_groove_silent_in_midi_and_xml():
+    """Placeholder bars contain no events, so MIDI emits no notes for them
+    and MusicXML renders them as whole-bar rests (silent in playback).
+    """
+    from groovescript.midi import emit_midi
+    from groovescript.musicxml import emit_musicxml
+    from groovescript.parser import parse
+    src = 'title: "m"\nsection "verse":\n  bars: 4\n  groove: placeholder\n'
+    ir = compile_song(parse(src))
+    midi = emit_midi(ir)
+    assert isinstance(midi, (bytes, bytearray)) and len(midi) > 0
+    xml = emit_musicxml(ir)
+    if isinstance(xml, bytes):
+        xml = xml.decode("utf-8")
+    # No note onsets — every measure body is a rest.
+    assert "<note" in xml  # rests are <note><rest/>... in MusicXML
+    assert "<pitch" not in xml
+
+
+def test_compile_placeholder_groove_rejects_variations():
+    """A variation block that targets a placeholder bar errors at compile
+    time — there are no notes to vary, so silently no-opping would hide
+    user mistakes.
+    """
+    from groovescript.parser import parse
+    src = (
+        'title: "m"\n'
+        'section "verse":\n  bars: 4\n  groove: placeholder\n'
+        '  variation at bar 1:\n    add CR at 1\n'
+    )
+    with pytest.raises(ValueError, match="placeholder groove"):
+        compile_song(parse(src))
+
+
+def test_compile_play_list_variation_against_placeholder_bar_errors():
+    """Same rule applies to placeholder bars in a play list — variations
+    cannot target them.
+    """
+    from groovescript.parser import parse
+    src = (
+        'title: "m"\n'
+        'section "verse":\n  play:\n    groove placeholder x4\n'
+        '  variation at bar 2:\n    add CR at 1\n'
+    )
+    with pytest.raises(ValueError, match="placeholder groove"):
+        compile_song(parse(src))
+
+
+def test_compile_extending_a_placeholder_groove_errors():
+    """A real groove that ``extend:`` s a placeholder errors — there is no
+    pattern to inherit from.
+    """
+    from groovescript.parser import parse
+    src = (
+        'title: "m"\n'
+        'groove placeholder "base"\n'
+        'groove "derived":\n  extend: "base"\n  BD: 1\n'
+        'section "v":\n  bars: 4\n  groove: "derived"\n'
+    )
+    with pytest.raises(ValueError, match="extends placeholder"):
+        compile_song(parse(src))
+
+
+def test_compile_top_level_bodyless_groove_without_keyword_is_parse_error():
+    """``groove "name"`` with no colon and no body (and no ``placeholder``
+    keyword) is rejected by the parser — typo-detection at top level is
+    preserved by requiring the explicit keyword.
+    """
+    from groovescript.errors import GrooveScriptError
+    from groovescript.parser import parse
+    src = 'title: "m"\ngroove "verse-A"\nsection "v":\n  bars: 4\n'
+    with pytest.raises((ValueError, GrooveScriptError)):
+        parse(src)
+
+
+def test_compile_placeholder_groove_carries_fill_placeholders_and_cues():
+    """Fill placeholders and cues overlay placeholder bars correctly,
+    matching the existing implicit-minimal-chart behaviour.
+    """
+    from groovescript.parser import parse
+    src = (
+        'title: "m"\n'
+        'section "verse":\n  bars: 4\n  groove: placeholder "intro feel"\n'
+        '  fill at bar 4\n'
+        '  cue "build" at bar 3\n'
+    )
+    ir = compile_song(parse(src))
+    assert ir.bars[0].fill_placeholders[0] == (Fraction(0), "intro feel")
+    # Cue lands on bar 3.
+    assert ir.bars[2].cues == [(Fraction(0), "build")]
+    # Fill placeholder lands on bar 4.
+    assert (Fraction(0), "Fill") in ir.bars[3].fill_placeholders
+
+
+def test_compile_two_play_groove_placeholder_items_with_same_name_render_as_separate_spans():
+    """Two play-list items with the same placeholder label produce two
+    distinct spans rather than one merged one — important for charts
+    where the same TBD groove appears more than once with a real groove
+    in between.
+    """
+    from groovescript.parser import parse
+    src = (
+        'title: "m"\n'
+        'groove "beat":\n  BD: 1\n'
+        'section "verse":\n  play:\n'
+        '    groove placeholder "tbd" x2\n'
+        '    groove "beat" x2\n'
+        '    groove placeholder "tbd" x2\n'
+    )
+    ir = compile_song(parse(src))
+    placeholder_first_bars = [
+        bar for bar in ir.bars if bar.is_placeholder_groove and bar.fill_placeholders
+    ]
+    assert len(placeholder_first_bars) == 2
+    assert placeholder_first_bars[0].fill_placeholders[0] == (Fraction(0), "tbd")
+    assert placeholder_first_bars[1].fill_placeholders[0] == (Fraction(0), "tbd")
+
+
+def test_compile_like_inherits_placeholder_groove_through_inline_groove_list():
+    """A section that ``like``s a parent whose sole groove is an inline
+    placeholder picks up the same placeholder by synthetic name.
+    """
+    from groovescript.parser import parse
+    src = (
+        'title: "m"\n'
+        'section "verse":\n  bars: 4\n  groove: placeholder "intro feel"\n'
+        'section "verse 2":\n  like "verse"\n'
+    )
+    ir = compile_song(parse(src))
+    # Both sections render as placeholder bars with the same label.
+    section_starts = [bar for bar in ir.bars if bar.section_name is not None]
+    assert len(section_starts) == 2
+    for bar in section_starts:
+        assert bar.fill_placeholders[0] == (Fraction(0), "intro feel")
