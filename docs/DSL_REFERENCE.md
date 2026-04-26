@@ -6,18 +6,26 @@ the language, start with [`GETTING_STARTED.md`](GETTING_STARTED.md) or
 
 ## Contents
 
+- [Lexical conventions](#lexical-conventions)
+  - [Optional commas](#optional-commas)
+  - [Optional quotes around `count:` / `notes:` values](#optional-quotes-around-count--notes-values)
+  - [Bare suffix resolution](#bare-suffix-resolution)
+  - [`dsl_version`](#dsl_version)
 - [Metadata](#metadata)
-  - [`title`, `tempo`, `time_signature`, `dsl_version`, `default_groove`, `default_bars`](#metadata)
+  - [`title`, `tempo`, `time_signature`, `default_groove`, `default_bars`](#metadata)
 - [Instruments](#instruments)
   - [Canonical / lowercase / verbose aliases](#instruments)
+  - [Foot- vs hand-played classification](#instruments)
 - [Beat labels](#beat-labels)
   - [16th-note suffixes `e`, `&` / `and`, `a`](#beat-labels)
   - [Triplet suffixes `trip` / `let` (`t` / `l`)](#beat-labels)
   - [`*N` / `*Nt` — hit on every Nth note (straight or triplet)](#beat-labels)
   - [`*N except` — star exclusion](#star-exclusion-n-except)
   - [Double-digit beat numbers for compound meter](#beat-labels)
-  - [Bare suffix resolution](#beat-labels)
-- [Optional commas in list contexts](#optional-commas)
+- [Modifiers](#modifiers)
+  - [`ghost`, `accent`, `flam`, `drag`](#modifiers)
+  - [`double` / `32nd` (double strokes)](#modifiers)
+  - [`buzz` / `buzz:N` (buzz rolls)](#buzz-rolls)
 - [Groove](#groove)
   - [Instrument→positions and position→instruments styles](#groove)
   - [Multi-bar grooves (`bar N:` blocks)](#groove)
@@ -25,37 +33,124 @@ the language, start with [`GETTING_STARTED.md`](GETTING_STARTED.md) or
   - [Groove extension (`extend:`)](#groove-extension-extend)
   - [Count+notes groove bodies](#countnotes-groove-bodies)
   - [Inline unnamed grooves inside a section](#inline-unnamed-grooves-inside-a-section)
-  - [Optional quotes around `count:` / `notes:` values](#optional-quotes-around-count--notes-values)
-- [Library of grooves](#library-of-grooves)
-- [Placeholder grooves](#placeholder-grooves)
+  - [Library of grooves](#library-of-grooves)
+  - [Placeholder grooves](#placeholder-grooves)
 - [Fill](#fill)
   - [Count-block syntax](#fill)
   - [Count+notes syntax](#fill)
   - [Multi-bar fills](#multi-bar-fills)
-  - [Simultaneous hits and trailing modifiers](#fill)
-  - [Inline one-off fills inside a section](#section)
   - [Fill placeholders](#fill-placeholders)
   - [Fill extension (`extend:`)](#fill-extension-extend)
-- [Library of fills](#library-of-fills)
+  - [Library of fills](#library-of-fills)
 - [Section](#section)
-  - [Classic form (`bars:` / `groove:`)](#classic-form--single-groove)
-  - [`like` inheritance](#classic-form--single-groove)
-  - [Per-section tempo (`tempo:`)](#classic-form--single-groove)
-  - [Per-section time signature (`time_signature:`)](#mixed--changing-meter)
-  - [`crash in` — start a section on a crash](#crash-in)
+  - [Single-groove form](#single-groove-form)
   - [Section arrangement (`play:`)](#section-arrangement-play)
+  - [`like` inheritance](#like-inheritance)
+  - [Per-section meter](#per-section-meter)
+  - [`crash in` — start a section on a crash](#crash-in)
   - [Vocal cues and text annotations](#vocal-cues-and-text-annotations)
   - [Crescendos and decrescendos](#crescendos-and-decrescendos)
-- [Variation actions](#variation-actions)
-  - [`add`, `remove`, `replace`, `substitute`](#variation-actions)
-  - [Multi-instrument actions](#variation-actions)
-- [Modifiers](#modifiers)
-  - [`ghost`, `accent`, `flam`, `drag`](#modifiers)
-  - [`double` / `32nd` (double strokes)](#modifiers)
-  - [`buzz` / `buzz:N` (buzz rolls)](#buzz-rolls)
-- [Hi-hat foot chick (`HF`)](#hi-hat-foot-chick)
+- [Variations](#variations)
+  - [`add`, `remove`, `replace`, `substitute`, `modify`](#variations)
+  - [Reusable named variations](#reusable-named-variations)
+  - [Library of variations](#library-of-variations)
 
 ---
+
+## Lexical conventions
+
+A small set of parser-level conveniences apply across the language. They
+are listed up front so later sections can use them without explanation.
+
+### Optional commas
+
+Commas between items in a list are **optional** — wherever a list of beats
+or instruments appears on a single line you can separate the items with a
+space instead of a comma. This is handy when typing on mobile, where commas
+are a shift-key away:
+
+```groovescript
+groove "money beat":
+    BD: 1 3              # same as  BD: 1, 3
+    SN: 2 4              # same as  SN: 2, 4
+    HH: 1 1& 2 2& 3 3& 4 4&
+    1: BD HH             # position → instruments, also comma-free
+
+section "chorus":
+  bars: 4
+  groove: "money beat"
+  variation at bar 4:
+    add SN ghost at 1 3  # same as  add SN ghost at 1, 3
+    replace HH with CR at 1 3
+```
+
+Modifiers (`ghost`, `accent`, `flam`, `drag`, `double` / `32nd`) still
+attach to the primary they follow, so `BD: 1 flam 3 accent` means "BD on 1
+with a flam and BD on 3 with an accent". You may mix comma-free and
+comma-ful forms on the same line. The comma-delimited form inside fill
+`notes:` strings still requires commas (see [Fill](#fill)) because the
+string is a single opaque token to the parser.
+
+### Optional quotes around `count:` / `notes:` values
+
+Wherever a line looks like `count: <value>` or `notes: <value>` the
+surrounding double quotes are optional. These three snippets all parse
+identically:
+
+```groovescript
+fill "roll":
+  count: "1 e and a"
+  notes: "SN, SN, SN, SN"
+
+fill "roll":
+  count: 1 e and a
+  notes: SN, SN, SN, SN
+
+fill "roll":
+  count: 1 e and a     # trailing comments are fine too
+  notes: SN, SN, SN, SN
+```
+
+The block form `count "label": …` (with a quoted label) is unchanged —
+the rewrite only applies to the standalone `count:` / `notes:` shape.
+
+### Bare suffix resolution
+
+Inside a beat list on a single line, a bare suffix token (`and`, `&`, `e`,
+`a`, `trip`, `let`) attaches itself to the **most recently seen beat
+number**, exactly like in fill `count:` strings. So all of these lines
+describe the same pattern — HH on every eighth note of a 4/4 bar:
+
+```groovescript
+HH: 1, 1&, 2, 2&, 3, 3&, 4, 4&
+HH: 1 1and 2 2and 3 3and 4 4and   # positional "and"
+HH: 1 and 2 and 3 and 4 and       # bare "and"
+HH: 1 & 2 & 3 & 4 &               # bare "&"
+```
+
+And for 16th-note or triplet grids:
+
+```groovescript
+HH: 1 e and a 2 e and a 3 e and a 4 e and a   # all 16 sixteenths
+HH: 1 trip let 2 trip let 3 trip let 4 trip let  # triplet eighths
+```
+
+Bare suffix resolution applies to beat lists in pattern lines and in
+variation action beat lists (`add SN ghost at 2 and`). It does **not**
+apply to position→instrument lines (`1: BD HH`), where the right-hand
+side is a list of instruments, not beats.
+
+### `dsl_version`
+
+`dsl_version` is a forward-compatibility marker. When a file declares
+`dsl_version: N` with N different from the current DSL version, parsing
+fails with a clear error. Files that omit the line are accepted at the
+current version with no warning. New charts scaffolded from the
+templates in `templates/` include the line automatically.
+
+```groovescript
+dsl_version: 1            # the GrooveScript DSL version this file targets
+```
 
 ## Metadata
 
@@ -63,8 +158,6 @@ the language, start with [`GETTING_STARTED.md`](GETTING_STARTED.md) or
 title: "Song Name"
 tempo: 120
 time_signature: 4/4
-dsl_version: 1            # optional — the GrooveScript DSL version this
-                          # file targets. Omit to accept the current version.
 ```
 
 Per-bar subdivision is inferred automatically from the content of each
@@ -87,6 +180,9 @@ groove "mixed":
     HH: 1, 1&, 2, 2&, 3trip, 3let, 4trip, 4let
 ```
 
+Time signatures 4/4, 3/4, 6/8, 12/8, and generally any `N/M` with a
+numerator from 1–99 are supported.
+
 ### Default groove and default bars
 
 The metadata block can declare defaults that apply to any section that
@@ -108,39 +204,11 @@ section "verse":
 which is equivalent to `bars: 8` + `groove: "rock"`. A section that sets
 its own `bars:` or `groove:` overrides the default.
 
-### Placeholder groove (minimal sections)
-
 A section that declares `bars:` without a `groove:` — and has no
-`default_groove` either — renders as a **placeholder groove**: each bar
-is an empty measure (no notes, no rests) with a boxed "Section groove"
-label above the first bar.
-
-```groovescript
-section "intro":
-  bars: 4
-
-section "verse":
-  bars: 8
-  fill at bar 8                 // placeholders compose — "Fill" label on bar 8
-```
-
-This is the iteration-1 form of a chart: print the form, pencil in the
-grooves by hand, or fill in `groove:` lines later. `bars:` is still
-required; only `groove:` is optional.
-
-The implicit form above is shorthand. Three equivalent explicit forms
-let you label individual placeholders or sit them alongside transcribed
-grooves inside a `play:` block — see [Placeholder
-grooves](#placeholder-grooves).
-
-`dsl_version` is a forward-compatibility marker. When a file declares
-`dsl_version: N` with N different from the current DSL version, parsing
-fails with a clear error. Files that omit the line are accepted at the
-current version with no warning. New charts scaffolded from the
-templates in `templates/` include the line automatically.
-
-Time signatures 4/4, 3/4, 6/8, 12/8, and generally any `N/M` with a
-numerator from 1–99 are supported.
+`default_groove` either — renders as a [placeholder
+groove](#placeholder-grooves): each bar is an empty measure with a boxed
+rehearsal label. This is the iteration-1 form of a chart: print the
+form, pencil in the grooves by hand, or fill in `groove:` lines later.
 
 ## Instruments
 
@@ -161,6 +229,13 @@ the output.
 | `FT`      | `ft`      | `floortom`, `lowtom`         | floor tom         |
 | `HT`      | `ht`      | `hightom`, `hitom`           | high tom          |
 | `MT`      | `mt`      | `midtom`                     | mid tom           |
+
+`HF` is the hi-hat "chick" — closing the hi-hat with the foot, no stick
+hit — and renders on the LilyPond `hhp` (hi-hat pedal) staff position.
+
+**`BD` and `HF` are foot-played; everything else is hand-played.** This
+classification matters for buzz-roll overlap rules — see [Buzz
+rolls](#buzz-rolls).
 
 ## Beat labels
 
@@ -203,60 +278,87 @@ The token `and` is a long-form alias for `&` anywhere a beat suffix is
 accepted — `1and` parses identically to `1&`, both in pattern lines and in
 fill `count:` strings (`"1 and 2 and 3 and 4 and"`).
 
-### Bare suffix resolution
+## Modifiers
 
-Inside a beat list on a single line, a bare suffix token (`and`, `&`, `e`,
-`a`, `trip`, `let`) attaches itself to the **most recently seen beat
-number**, exactly like in fill `count:` strings. So all of these lines
-describe the same pattern — HH on every eighth note of a 4/4 bar:
+Supported modifiers: `ghost`, `accent`, `flam`, `drag`, `double`
+(alias: `32nd`), `buzz`.
 
-```groovescript
-HH: 1, 1&, 2, 2&, 3, 3&, 4, 4&
-HH: 1 1and 2 2and 3 3and 4 4and   # positional "and"
-HH: 1 and 2 and 3 and 4 and       # bare "and"
-HH: 1 & 2 & 3 & 4 &               # bare "&"
-```
+- **`ghost`** — parenthesised notehead. Softer / unaccented hit.
+- **`accent`** — `>` above the note.
+- **`flam`** — rendered as a `\slashedGrace` grace note. Only supported on
+  snare (`SN`) and toms (`FT`, `HT`, `MT`); using it on any other
+  instrument is a compile error.
+- **`drag`** — rendered as a two-note grace cluster.
+- **`double`** (or **`32nd`**) — on a 16th-note hit, plays the slot as two
+  equal 32nd notes (a double stroke). Only valid in bars whose inferred
+  grid is 16ths (4 slots/beat) and **incompatible with `flam` and
+  `drag`**.
+- **`buzz`** (or **`buzz:N`**, **`buzz:Nd`**, **`buzz:Ndd`**) — a snare
+  buzz roll rendered as a three-slash tremolo (`:32`). The note occupies
+  a span of the given duration instead of a single point hit. See
+  [Buzz rolls](#buzz-rolls) below.
 
-And for 16th-note or triplet grids:
+Modifier interaction rules for `double`:
 
-```groovescript
-HH: 1 e and a 2 e and a 3 e and a 4 e and a   # all 16 sixteenths
-HH: 1 trip let 2 trip let 3 trip let 4 trip let  # triplet eighths
-```
-
-Bare suffix resolution applies to beat lists in pattern lines and in
-variation action beat lists (`add SN ghost at 2 and`). It does **not**
-apply to position→instrument lines (`1: BD HH`), where the right-hand
-side is a list of instruments, not beats.
-
-## Optional commas
-
-Commas between items in a list are **optional** — wherever a list of beats
-or instruments appears on a single line you can separate the items with a
-space instead of a comma. This is handy when typing on mobile, where commas
-are a shift-key away:
+- `ghost double` → both 32nd strokes are parenthesised.
+- `accent double` → accent on the first stroke only.
+- When multiple instruments share a slot, only those carrying `double` are
+  doubled; others play once on the first 32nd.
 
 ```groovescript
-groove "money beat":
-    BD: 1 3              # same as  BD: 1, 3
-    SN: 2 4              # same as  SN: 2, 4
-    HH: 1 1& 2 2& 3 3& 4 4&
-    1: BD HH             # position → instruments, also comma-free
-
-section "chorus":
-  bars: 4
-  groove: "money beat"
-  variation at bar 4:
-    add SN ghost at 1 3  # same as  add SN ghost at 1, 3
-    replace HH with CR at 1 3
+groove "hihat doubles":
+    BD: 1, 3
+    SN: 2, 4
+    HH: 1, 1e double, 1&, 1a, 2, 2e double, 2&, 2a,
+        3, 3e double, 3&, 3a, 4, 4e double, 4&, 4a
 ```
 
-Modifiers (`ghost`, `accent`, `flam`, `drag`, `double` / `32nd`) still
-attach to the primary they follow, so `BD: 1 flam 3 accent` means "BD on 1
-with a flam and BD on 3 with an accent". You may mix comma-free and
-comma-ful forms on the same line. The comma-delimited form inside fill
-`notes:` strings still requires commas (see below) because the string is a
-single opaque token to the parser.
+### Buzz rolls
+
+A `buzz` modifier turns a snare hit into a sustained buzz roll. Unlike
+every other event (which is a point-in-time hit), a buzz roll occupies
+a span of beats.
+
+```groovescript
+SN: 4 buzz        // quarter-note buzz (default when no duration given)
+SN: 3 buzz:2      // half-note buzz starting on beat 3
+SN: 3 buzz:2d     // dotted-half buzz starting on beat 3
+SN: 3 buzz:2dd    // double-dotted-half buzz starting on beat 3
+SN: 4 buzz:8      // eighth-note buzz
+```
+
+Valid durations are `1`, `2`, `4`, `8`, `16`, with optional `d` (dotted)
+or `dd` (double-dotted) suffix. When no duration is specified, `buzz`
+defaults to a quarter note (`buzz:4`).
+
+**Constraints:**
+
+- **Snare-only** — `buzz` on any instrument other than `SN` is an error.
+- **Incompatible** with `flam`, `drag`, `double`, and `ghost`.
+  Compatible with `accent`.
+- The buzz span may tie across one or more barlines (e.g. a `buzz:2`
+  starting on beat 4 of 4/4 continues into beat 1 of the next bar).
+  The LilyPond emitter renders this as tied tremolo notes
+  (`sn4:32~ | sn4:32`). A buzz that runs past the last bar of the song
+  is a compile error, and hand-played instrument events in the
+  continuation bars are rejected the same way as in-bar overlaps.
+- **Hand-played** instruments (`HH`, `OH`, `RD`, `CR`, `FT`, `HT`, `MT`,
+  `SCS`) cannot have events inside the buzz span — this is a
+  compile error.
+- **Foot-played** instruments (`BD`, `HF`) *may* overlap the buzz span.
+  When they do, the LilyPond emitter produces a localised voice split
+  (`<< { sn2:32 } \\ { bd4 bd4 } >>`) so the buzz renders in voice 1
+  (stems up) and the feet render in voice 2 (stems down).
+
+```groovescript
+groove "hh foot + buzz overlap":
+  HF: 3, 4
+  SN: 3 buzz:2   // HF can overlap the buzz span (foot instrument)
+```
+
+`buzz` is accepted everywhere modifiers appear: groove pattern lines,
+fill lines, fill instrument lines, variation `add`/`replace`, and
+count+notes bodies.
 
 ## Groove
 
@@ -296,7 +398,7 @@ groove "two bar":
       HH: *16              # this bar is notated on a 16th-note grid
 ```
 
-#### Bar-level inheritance (`like: bar N`)
+### Bar-level inheritance (`like: bar N`)
 
 Inside a multi-bar groove, a `bar N:` block can start with `like: bar M`
 to copy all pattern lines from bar M as a starting point, then layer
@@ -427,13 +529,14 @@ groove "shot":
 ```
 
 The count+notes form produces a single-bar groove. Quotes around the
-`count:` / `notes:` values are optional (see below).
+`count:` / `notes:` values are optional (see [Lexical
+conventions](#optional-quotes-around-count--notes-values)).
 
 ### Inline unnamed grooves inside a section
 
 Sections can define a one-off groove inline, without first declaring a
-named top-level groove. Any groove body (classic instrument/bar lines
-or count+notes) is accepted:
+named top-level groove. Any groove body (instrument/bar lines or
+count+notes) is accepted:
 
 ```groovescript
 section "chorus":
@@ -448,30 +551,7 @@ section "chorus":
 The unnamed groove is scoped to its section and does not pollute the
 top-level groove namespace.
 
-### Optional quotes around `count:` / `notes:` values
-
-Wherever a line looks like `count: <value>` or `notes: <value>` the
-surrounding double quotes are optional. These three snippets all parse
-identically:
-
-```groovescript
-fill "roll":
-  count: "1 e and a"
-  notes: "SN, SN, SN, SN"
-
-fill "roll":
-  count: 1 e and a
-  notes: SN, SN, SN, SN
-
-fill "roll":
-  count: 1 e and a     # trailing comments are fine too
-  notes: SN, SN, SN, SN
-```
-
-The block form `count "label": …` (with a quoted label) is unchanged —
-the rewrite only applies to the standalone `count:` / `notes:` shape.
-
-## Library of grooves
+### Library of grooves
 
 GrooveScript includes a built-in library of common drum patterns that you
 can reference by name in your sections without defining them.
@@ -518,15 +598,28 @@ The canonical source for every built-in is `src/groovescript/groove_library.gs`
 in the repository — the table above mirrors it, so any new or updated
 grooves added there should also be reflected here.
 
-## Placeholder grooves
+### Placeholder grooves
 
 A **placeholder groove** is a TBD slot — empty bars with a boxed
 rehearsal label — that lets you sketch a chart's form before every
-groove has been transcribed. The shorthand version is the [minimal
-section](#placeholder-groove-minimal-sections) (a section with `bars:`
-but no `groove:`); the explicit forms below let you label individual
-placeholders or place them alongside transcribed grooves inside a
-`play:` block.
+groove has been transcribed.
+
+The shorthand form is a section that declares `bars:` without a
+`groove:` (and has no `default_groove` either): each bar renders as an
+empty measure with a boxed "Section groove" label above the first bar.
+
+```groovescript
+section "intro":
+  bars: 4
+
+section "verse":
+  bars: 8
+  fill at bar 8                 // placeholders compose — "Fill" label on bar 8
+```
+
+`bars:` is still required; only `groove:` is optional. The explicit
+forms below let you label individual placeholders or sit them alongside
+transcribed grooves inside a `play:` block.
 
 Three syntactic surfaces, all parallel to fill placeholders:
 
@@ -790,7 +883,7 @@ scratch.
 fine; cycles are rejected. Extending a fill does **not** mutate the
 base — the base still compiles to its original events elsewhere.
 
-## Library of fills
+### Library of fills
 
 GrooveScript ships with a library of stock drum fills you can drop into
 any section without defining them in your file. Each entry is one bar
@@ -808,14 +901,14 @@ section "verse":
 `at bar N beat 4`); `-trip` = 8th-note triplet grid; `-up` = ascending
 pitch variant (tom rolls only). Default grid is 16ths.
 
-### Accents
+#### Accents
 
 | Name      | Description                                                  |
 |-----------|--------------------------------------------------------------|
 | `crash`   | Bass drum + crash on beat 1 — section opener / big accent    |
 | `crash-4` | Bass drum + crash on beat 4 — anticipation into next section |
 
-### Snare rolls (straight)
+#### Snare rolls (straight)
 
 | Name                | Grid  | Description                                  |
 |---------------------|-------|----------------------------------------------|
@@ -823,14 +916,14 @@ pitch variant (tom rolls only). Default grid is 16ths.
 | `snare-roll-half`   | 16ths | 16th-note snare roll across beats 3 and 4   |
 | `snare-roll-beat`   | 16ths | One-beat 16th-note snare roll on beat 4     |
 
-### Snare rolls (triplets)
+#### Snare rolls (triplets)
 
 | Name                    | Grid  | Description                               |
 |-------------------------|-------|-------------------------------------------|
 | `snare-roll-trip`       | trip  | Full bar of 8th-note triplet snares      |
 | `snare-roll-trip-half`  | trip  | 8th-note triplet snare roll on beats 3-4 |
 
-### Buzz rolls
+#### Buzz-roll fills
 
 | Name               | Length                 | Description                                      |
 |--------------------|------------------------|--------------------------------------------------|
@@ -838,7 +931,7 @@ pitch variant (tom rolls only). Default grid is 16ths.
 | `buzz-roll-half`   | half note              | Half-note buzz roll starting on beat 3           |
 | `buzz-roll-beat`   | quarter note           | Quarter-note buzz roll on beat 4                 |
 
-### Tom rolls
+#### Tom rolls
 
 | Name            | Grid  | Description                                                              |
 |-----------------|-------|--------------------------------------------------------------------------|
@@ -847,7 +940,7 @@ pitch variant (tom rolls only). Default grid is 16ths.
 | `tom-roll-up`   | 16ths | Ascending 16th-note tom roll: FT → MT → HT                              |
 | `tom-roll-trip` | trip  | Descending 8th-note triplet tom roll: HT → MT → FT                      |
 
-### Snare + tom mixes
+#### Snare + tom mixes
 
 | Name                | Grid    | Description                                                 |
 |---------------------|---------|-------------------------------------------------------------|
@@ -855,7 +948,7 @@ pitch variant (tom rolls only). Default grid is 16ths.
 | `around-kit`        | 1/4s    | Quarter-note tour: SN → HT → MT → FT                         |
 | `around-kit-16ths`  | 16ths   | 16th-note tour: four snares, four HT, four MT, four FT      |
 
-### Rudimental
+#### Rudimental
 
 | Name          | Grid  | Description                                                        |
 |---------------|-------|--------------------------------------------------------------------|
@@ -873,7 +966,7 @@ fills added there should also be reflected here.
 
 ## Section
 
-### Classic form — single groove
+### Single-groove form
 
 ```groovescript
 section "name":
@@ -929,6 +1022,82 @@ exactly like top-level fills. The fill attaches to its section at the bar
 (and optional beat) given on the `fill at bar N …:` line — exactly like a
 named `fill "name" at bar N` placement.
 
+### Section arrangement (`play:`)
+
+Use `play:` to compose a section from an **ordered sequence** of grooves,
+one-off bars, and rests. The section's total bar count is the sum of all
+items. `bars:`, `groove:`, and `repeat:` must not appear alongside `play:`.
+
+```groovescript
+section "verse":
+  tempo: 120
+  play:
+    groove "money beat" x4       # play a named groove N times (N defaults to 1)
+    bar "setup":                 # inline one-off bar definition, played once
+      BD: 1, 3
+      SN: 4
+      CR: 1
+    rest x2                      # N bars of silence (N defaults to 1)
+    groove "money beat" x4
+    bar "setup" x1               # reuse a bar defined earlier in the same play: block
+  fill "crash" at bar 1
+  variation "push" at bar 8:
+    add CR accent at 1
+```
+
+Items allowed inside `play:`:
+
+| Item                                       | Meaning                                                                          |
+|--------------------------------------------|----------------------------------------------------------------------------------|
+| `groove "name" [xN]`                       | Play the named groove N times (default 1). Multi-bar grooves tile all their bars each repeat. If `"name"` isn't defined anywhere, it auto-promotes to a named placeholder — see [Placeholder grooves](#placeholder-grooves). |
+| `groove [xN]:` *(with indented body)*      | Inline nameless groove definition played N times (default 1). Body uses the same instrument/bar lines as a named groove. |
+| `groove "name" [xN]:` *(with indented body)* | Inline **named** groove definition played N times (default 1). Later `groove "name" [xN]` items in the same section reference this definition. |
+| `groove placeholder [xN]`                  | Nameless placeholder span N bars long. Renders as empty bars with a `"<Section> groove"` rehearsal label. |
+| `groove placeholder "label" [xN]`          | Named placeholder span N bars long, labelled `"label"`. |
+| `bar "name" [xN]:` *(with indented body)*  | Inline definition of a one-off bar, registered under `name` within this section, played N times. |
+| `bar "name" [xN]`  *(no body)*             | Reference to a previously-defined bar in this section, played N times. |
+| `rest [xN]`                                | N bars of whole-bar silence. Rendered as a full-bar rest (`R1` in 4/4). |
+
+Inline nameless grooves under `play:` are handy for one-off sections
+where defining a named `groove "…":` at the top of the file would be
+overkill:
+
+```groovescript
+section "outro":
+  play:
+    groove "main" x4
+    groove x2:                   # inline nameless groove
+      BD: 1, 3
+      SN: 2, 4
+      HH: *16
+    rest
+```
+
+To define an inline groove and reuse it later in the same section, give
+it a name — the first occurrence defines the body, subsequent occurrences
+reference it by name:
+
+```groovescript
+section "pre-chorus":
+  play:
+    groove "ride the tom" x4:    # define + play
+      FT: *8
+      BD: 1, 3
+      SN: 2, 4
+    groove "main" x1
+    groove "ride the tom" x4     # reuse by name
+```
+
+The per-bar grid for each `bar` and `rest` item is inferred just like
+any other bar — from the beat labels, `*N` stars, and modifiers used
+inside it. Whole-bar rests take the same grid as the surrounding meter.
+
+Fills and variations attach to bars by 1-based position within the
+section, exactly as in the single-groove form. A fill placed over a
+rest bar **replaces** the rest entirely.
+
+### `like` inheritance
+
 Inherit from another section:
 
 ```groovescript
@@ -962,7 +1131,7 @@ always travel with that groove or fill wherever it's referenced, so a
 inner spans. Spans declared at the section level are inherited only by
 bare `like` (they're part of the basic arrangement).
 
-### Mixed / changing meter
+### Per-section meter
 
 Any section may declare its own `time_signature: N/M` to override the
 song-level meter for the duration of that section. The staff emits a
@@ -1098,80 +1267,6 @@ in` in the same section is rejected. The top-level `crash in` directive
 itself is purely additive — nothing else parses or compiles
 differently when it's absent.
 
-### Section arrangement (`play:`)
-
-Use `play:` to compose a section from an **ordered sequence** of grooves,
-one-off bars, and rests. The section's total bar count is the sum of all
-items. `bars:`, `groove:`, and `repeat:` must not appear alongside `play:`.
-
-```groovescript
-section "verse":
-  tempo: 120
-  play:
-    groove "money beat" x4       # play a named groove N times (N defaults to 1)
-    bar "setup":                 # inline one-off bar definition, played once
-      BD: 1, 3
-      SN: 4
-      CR: 1
-    rest x2                      # N bars of silence (N defaults to 1)
-    groove "money beat" x4
-    bar "setup" x1               # reuse a bar defined earlier in the same play: block
-  fill "crash" at bar 1
-  variation "push" at bar 8:
-    add CR accent at 1
-```
-
-Items allowed inside `play:`:
-
-| Item                                       | Meaning                                                                          |
-|--------------------------------------------|----------------------------------------------------------------------------------|
-| `groove "name" [xN]`                       | Play the named groove N times (default 1). Multi-bar grooves tile all their bars each repeat. If `"name"` isn't defined anywhere, it auto-promotes to a named placeholder — see [Placeholder grooves](#placeholder-grooves). |
-| `groove [xN]:` *(with indented body)*      | Inline nameless groove definition played N times (default 1). Body uses the same instrument/bar lines as a named groove. |
-| `groove "name" [xN]:` *(with indented body)* | Inline **named** groove definition played N times (default 1). Later `groove "name" [xN]` items in the same section reference this definition. |
-| `groove placeholder [xN]`                  | Nameless placeholder span N bars long. Renders as empty bars with a `"<Section> groove"` rehearsal label. |
-| `groove placeholder "label" [xN]`          | Named placeholder span N bars long, labelled `"label"`. |
-| `bar "name" [xN]:` *(with indented body)*  | Inline definition of a one-off bar, registered under `name` within this section, played N times. |
-| `bar "name" [xN]`  *(no body)*             | Reference to a previously-defined bar in this section, played N times. |
-| `rest [xN]`                                | N bars of whole-bar silence. Rendered as a full-bar rest (`R1` in 4/4). |
-
-Inline nameless grooves under `play:` are handy for one-off sections
-where defining a named `groove "…":` at the top of the file would be
-overkill:
-
-```groovescript
-section "outro":
-  play:
-    groove "main" x4
-    groove x2:                   # inline nameless groove
-      BD: 1, 3
-      SN: 2, 4
-      HH: *16
-    rest
-```
-
-To define an inline groove and reuse it later in the same section, give
-it a name — the first occurrence defines the body, subsequent occurrences
-reference it by name:
-
-```groovescript
-section "pre-chorus":
-  play:
-    groove "ride the tom" x4:    # define + play
-      FT: *8
-      BD: 1, 3
-      SN: 2, 4
-    groove "main" x1
-    groove "ride the tom" x4     # reuse by name
-```
-
-The per-bar grid for each `bar` and `rest` item is inferred just like
-any other bar — from the beat labels, `*N` stars, and modifiers used
-inside it. Whole-bar rests take the same grid as the surrounding meter.
-
-Fills and variations attach to bars by 1-based position within the
-section, exactly as in the classic form. A fill placed over a rest bar
-**replaces** the rest entirely.
-
 ### Vocal cues and text annotations
 
 - `cue "text" at bar N [beat X]` — places a text annotation above the
@@ -1215,7 +1310,7 @@ are automatically inherited by any section that uses it. Section-level
 dynamic spans are inherited by bare `like` along with the other
 section-scoped fields.
 
-## Variation actions
+## Variations
 
 A `variation at bar N:` (optionally named: `variation "lift" at bar N:`)
 modifies one or more bars of the section's groove. To apply the same
@@ -1330,100 +1425,3 @@ section can reference without defining them locally:
 If you define a top-level `variation "name":` with the same name as a
 library entry, your definition takes precedence. The canonical source
 for every built-in is `src/groovescript/variation_library.gs`.
-
-## Modifiers
-
-Supported modifiers: `ghost`, `accent`, `flam`, `drag`, `double`
-(alias: `32nd`), `buzz`.
-
-- **`ghost`** — parenthesised notehead. Softer / unaccented hit.
-- **`accent`** — `>` above the note.
-- **`flam`** — rendered as a `\slashedGrace` grace note. Only supported on
-  snare (`SN`) and toms (`FT`, `HT`, `MT`); using it on any other
-  instrument is a compile error.
-- **`drag`** — rendered as a two-note grace cluster.
-- **`double`** (or **`32nd`**) — on a 16th-note hit, plays the slot as two
-  equal 32nd notes (a double stroke). Only valid in bars whose inferred
-  grid is 16ths (4 slots/beat) and **incompatible with `flam` and
-  `drag`**.
-- **`buzz`** (or **`buzz:N`**, **`buzz:Nd`**, **`buzz:Ndd`**) — a snare
-  buzz roll rendered as a three-slash tremolo (`:32`). The note occupies
-  a span of the given duration instead of a single point hit. See
-  [Buzz rolls](#buzz-rolls) below.
-
-Modifier interaction rules for `double`:
-
-- `ghost double` → both 32nd strokes are parenthesised.
-- `accent double` → accent on the first stroke only.
-- When multiple instruments share a slot, only those carrying `double` are
-  doubled; others play once on the first 32nd.
-
-```groovescript
-groove "hihat doubles":
-    BD: 1, 3
-    SN: 2, 4
-    HH: 1, 1e double, 1&, 1a, 2, 2e double, 2&, 2a,
-        3, 3e double, 3&, 3a, 4, 4e double, 4&, 4a
-```
-
-### Buzz rolls
-
-A `buzz` modifier turns a snare hit into a sustained buzz roll. Unlike
-every other event (which is a point-in-time hit), a buzz roll occupies
-a span of beats.
-
-```groovescript
-SN: 4 buzz        // quarter-note buzz (default when no duration given)
-SN: 3 buzz:2      // half-note buzz starting on beat 3
-SN: 3 buzz:2d     // dotted-half buzz starting on beat 3
-SN: 3 buzz:2dd    // double-dotted-half buzz starting on beat 3
-SN: 4 buzz:8      // eighth-note buzz
-```
-
-Valid durations are `1`, `2`, `4`, `8`, `16`, with optional `d` (dotted)
-or `dd` (double-dotted) suffix. When no duration is specified, `buzz`
-defaults to a quarter note (`buzz:4`).
-
-**Constraints:**
-
-- **Snare-only** — `buzz` on any instrument other than `SN` is an error.
-- **Incompatible** with `flam`, `drag`, `double`, and `ghost`.
-  Compatible with `accent`.
-- The buzz span may tie across one or more barlines (e.g. a `buzz:2`
-  starting on beat 4 of 4/4 continues into beat 1 of the next bar).
-  The LilyPond emitter renders this as tied tremolo notes
-  (`sn4:32~ | sn4:32`). A buzz that runs past the last bar of the song
-  is a compile error, and hand-played instrument events in the
-  continuation bars are rejected the same way as in-bar overlaps.
-- **Hand-played** instruments (`HH`, `OH`, `RD`, `CR`, `FT`, `HT`, `MT`,
-  `SCS`) cannot have events inside the buzz span — this is a
-  compile error.
-- **Foot-played** instruments (`BD`, `HF`) *may* overlap the buzz span.
-  When they do, the LilyPond emitter produces a localised voice split
-  (`<< { sn2:32 } \\ { bd4 bd4 } >>`) so the buzz renders in voice 1
-  (stems up) and the feet render in voice 2 (stems down).
-
-`buzz` is accepted everywhere modifiers appear: groove pattern lines,
-fill lines, fill instrument lines, variation `add`/`replace`, and
-count+notes bodies.
-
-## Hi-hat foot chick
-
-The `HF` instrument represents the hi-hat "chick" — closing the hi-hat
-with the foot, with no stick hit. It is a foot-played sound and renders
-on the LilyPond `hhp` (hi-hat pedal) staff position.
-
-```groovescript
-groove "jazz ride with foot":
-  RD: 1, 2, 2let, 3, 4, 4let
-  BD: 1, 3
-  HF: 2, 4
-
-groove "hh foot + buzz overlap":
-  HF: 3, 4
-  SN: 3 buzz:2   // HF can overlap the buzz span (foot instrument)
-```
-
-`HF` is classified as a **foot instrument** for buzz-roll overlap
-purposes — like `BD`, it can coexist with a snare buzz roll without
-causing a compile error.
