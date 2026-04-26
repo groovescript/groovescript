@@ -276,6 +276,14 @@ class _GrooveScriptTransformer(Transformer):
             elif isinstance(item, VariationAction):
                 # substitute_action produces a single VariationAction.
                 bare_actions.append(item)
+            elif isinstance(item, tuple) and item and item[0] == "bar_text":
+                # Bare `text: "..."` at the top of an extend body annotates
+                # bar 1 of the resolved groove.
+                if 1 in bar_texts:
+                    raise ValueError(
+                        "extend: `text:` declared more than once for bar 1"
+                    )
+                bar_texts[1] = item[1]
             else:
                 raise ValueError(
                     f"extend_body: unexpected item of type {type(item).__name__}"
@@ -387,6 +395,9 @@ class _GrooveScriptTransformer(Transformer):
         return (bar_num, lines, text, like_bar)
 
     def pattern_bar_text(self, items):
+        return ("bar_text", _ast.literal_eval(str(items[0])))
+
+    def extend_bar_text(self, items):
         return ("bar_text", _ast.literal_eval(str(items[0])))
 
     @v_args(meta=True)
