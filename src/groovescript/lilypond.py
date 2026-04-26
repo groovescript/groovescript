@@ -1112,15 +1112,111 @@ def _group_bars(
                     break
                 num_identical += 1
 
+        # Multi-bar phrase grouping (e.g. an A-B-A-B-A-B run from a two-bar
+        # groove). Only attempted when single-bar grouping found nothing —
+        # a single-bar repeat is always more compact than a multi-bar one.
+        # The phrase metadata on each bar pins the alignment so the emitter
+        # never picks the wrong rotation (B-A) when the natural phrase is
+        # A-B.
+        multibar_iterations = 1
+        multibar_template_measures: list[str] | None = None
+        L = bar.phrase_length
+        if (
+            is_top_level
+            and num_identical == 1
+            and not has_annotations
+            and bar.phrase_position == 1
+            and L is not None
+            and L > 1
+            and i + 2 * L <= len(bars)
+        ):
+            template_bars = bars[i : i + L]
+            template_ok = True
+            for j, tb in enumerate(template_bars):
+                if j > 0 and tb.section_name is not None:
+                    template_ok = False
+                    break
+                if tb.is_rest or tb.is_placeholder_groove:
+                    template_ok = False
+                    break
+                if tb.cues or tb.fill_placeholders or tb.bar_text:
+                    template_ok = False
+                    break
+                if tb.dynamic_starts or tb.dynamic_stops:
+                    template_ok = False
+                    break
+                if (tb.time_signature or state.current_ts) != state.current_ts:
+                    template_ok = False
+                    break
+                if tb.phrase_position != j + 1 or tb.phrase_length != L:
+                    template_ok = False
+                    break
+            if template_ok:
+                template_measures = [
+                    _drum_measure(
+                        tb.events, tb.subdivision, state.current_bpb, state.current_beat_unit,
+                        forced_voice_split_ids=forced_voice_split_ids,
+                    )
+                    for tb in template_bars
+                ]
+                while True:
+                    next_start = i + multibar_iterations * L
+                    if next_start + L > len(bars):
+                        break
+                    candidate = bars[next_start : next_start + L]
+                    cand_ok = True
+                    for j, cb in enumerate(candidate):
+                        if cb.section_name is not None:
+                            cand_ok = False
+                            break
+                        if cb.is_rest or cb.is_placeholder_groove:
+                            cand_ok = False
+                            break
+                        if cb.cues or cb.fill_placeholders or cb.bar_text:
+                            cand_ok = False
+                            break
+                        if cb.dynamic_starts or cb.dynamic_stops:
+                            cand_ok = False
+                            break
+                        if (cb.time_signature or state.current_ts) != state.current_ts:
+                            cand_ok = False
+                            break
+                        if cb.phrase_position != j + 1 or cb.phrase_length != L:
+                            cand_ok = False
+                            break
+                        if cb.subdivision != template_bars[j].subdivision:
+                            cand_ok = False
+                            break
+                        cand_measure = _drum_measure(
+                            cb.events, cb.subdivision, state.current_bpb, state.current_beat_unit,
+                            forced_voice_split_ids=forced_voice_split_ids,
+                        )
+                        if cand_measure != template_measures[j]:
+                            cand_ok = False
+                            break
+                    if not cand_ok:
+                        break
+                    multibar_iterations += 1
+                if multibar_iterations > 1:
+                    multibar_template_measures = template_measures
+
         cur_tempo_str, tempo_change_cmd = state.compute_tempo_info(bar)
-        mark = _section_mark(bar, override_repeat_times=num_identical if num_identical > 1 else None, tempo_str=cur_tempo_str, bar_text=bar.bar_text) if is_top_level else ""
+        if multibar_template_measures is not None:
+            mark = _section_mark(bar, override_repeat_times=multibar_iterations, tempo_str=cur_tempo_str, bar_text=bar.bar_text) if is_top_level else ""
+        else:
+            mark = _section_mark(bar, override_repeat_times=num_identical if num_identical > 1 else None, tempo_str=cur_tempo_str, bar_text=bar.bar_text) if is_top_level else ""
 
         # Emit bar_text annotation if present — but only as a standalone \mark
         # when there is no section mark to absorb it (bar_text is merged into
         # the section mark's \column to avoid duplicate \mark warnings).
         bar_text_line = f"      {_bar_text_markup(bar.bar_text)}\n" if bar.bar_text and not mark else ""
 
-        if num_identical > 1:
+        if multibar_template_measures is not None:
+            forced_bar = "      \\bar \".|:\"\n" if i == 0 and is_top_level else ""
+            inner_body = "\n".join(f"        {tm} |" for tm in multibar_template_measures)
+            measures.append(f"{ts_change_cmd}{tempo_change_cmd}{mark}{forced_bar}      \\repeat volta {multibar_iterations} {{\n{inner_body}\n      }}")
+            i += multibar_iterations * L
+        elif num_identical > 1:
             forced_bar = "      \\bar \".|:\"\n" if i == 0 and is_top_level else ""
             measures.append(f"{ts_change_cmd}{tempo_change_cmd}{mark}{forced_bar}      \\repeat volta {num_identical} {{\n        {bar_measure} |\n      }}")
             i += num_identical

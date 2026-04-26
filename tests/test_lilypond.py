@@ -601,6 +601,155 @@ section "verse":
     assert box_pos < play_pos, "Section box should come before Play Nx in the markup"
 
 
+def test_emit_two_bar_groove_collapses_into_multibar_repeat():
+    """A section that plays a two-bar groove repeatedly should collapse the
+    A-B-A-B... run into one ``\\repeat volta N { A B }`` block.
+
+    Regression: previously the emitter only grouped consecutive *identical*
+    bars (L=1), so a 2-bar pattern emitted every bar individually because
+    no two consecutive bars matched.
+    """
+    src = """\
+groove "two bar":
+  bar 1:
+    HH: *8
+    BD: 1, 3
+    SN: 2, 4
+  bar 2:
+    like: bar 1
+    BD: 1, 3, 3&
+
+section "verse":
+  bars: 12
+  groove: "two bar"
+"""
+    song = parse(src)
+    ly = emit_lilypond(compile_song(song))
+    assert '\\repeat volta 6' in ly
+    assert '"Play 6x"' in ly
+
+
+def test_emit_two_bar_groove_with_crash_in_and_fill():
+    """End-to-end shape from the teen-angst chart: top-level ``crash in``
+    plus a fill on the last bar should leave bars 1-2 alone, group bars
+    3-14 into ``\\repeat volta 6``, and leave bars 15-16 alone.
+    """
+    src = """\
+crash in
+
+groove "money beat":
+  HH: *8
+  BD: 1, 3
+  SN: 2, 4
+
+groove "two bar":
+  bar 1:
+    HH: *8
+    BD: 1, 3
+    SN: 2, 4
+  bar 2:
+    like: bar 1
+    BD: 1, 3, 3&
+
+section "intro":
+  bars: 4
+  groove: "money beat"
+
+section "verse":
+  bars: 16
+  groove: "two bar"
+  fill at bar 16 beat 4
+"""
+    song = parse(src)
+    ly = emit_lilypond(compile_song(song))
+    assert '\\repeat volta 6' in ly
+    assert '"Play 6x"' in ly
+    # No 7- or 8-iteration block: bar 1 of verse has crash and bar 16 has
+    # fill, so the multi-bar pattern can only run for the middle 12 bars.
+    assert '\\repeat volta 7' not in ly
+    assert '\\repeat volta 8' not in ly
+
+
+def test_emit_multibar_repeat_aligned_to_phrase_boundary():
+    """The detector must align to the natural A-B phrase, never starting on
+    bar 2 to produce a B-A rotation.
+    """
+    src = """\
+crash in
+
+groove "money beat":
+  HH: *8
+  BD: 1, 3
+  SN: 2, 4
+
+groove "two bar":
+  bar 1:
+    HH: *8
+    BD: 1, 3
+    SN: 2, 4
+  bar 2:
+    like: bar 1
+    BD: 1, 3, 3&
+
+section "intro":
+  bars: 4
+  groove: "money beat"
+
+section "verse":
+  bars: 8
+  groove: "two bar"
+"""
+    song = parse(src)
+    ly = emit_lilypond(compile_song(song))
+    # Bar 1 of verse has crash → standalone. Bar 2 has phrase_position=2 so
+    # cannot start a multi-bar block. Bars 3-8 form three iterations of A-B.
+    assert '\\repeat volta 3' in ly
+    assert '"Play 3x"' in ly
+
+
+def test_emit_single_bar_grouping_unaffected_by_phrase_metadata():
+    """Regression: adding phrase metadata to bars from a one-bar groove
+    must not change the existing single-bar grouping behaviour."""
+    src = """\
+groove "money beat":
+    BD: 1, 3
+    SN: 2, 4
+    HH: *8
+
+section "verse":
+  bars: 8
+  groove: "money beat"
+"""
+    song = parse(src)
+    ly = emit_lilypond(compile_song(song))
+    # 4-bar phrase chunking still preserved.
+    assert ly.count('\\repeat volta 4') == 2
+    assert '\\repeat volta 8' not in ly
+
+
+def test_emit_play_list_two_bar_groove_collapses():
+    """play: groove "two bar" xN expands into 2N bars; the emitter should
+    still detect the repeating two-bar phrase."""
+    src = """\
+groove "two bar":
+  bar 1:
+    HH: *8
+    BD: 1, 3
+    SN: 2, 4
+  bar 2:
+    like: bar 1
+    BD: 1, 3, 3&
+
+section "verse":
+  play:
+    groove "two bar" x6
+"""
+    song = parse(src)
+    ly = emit_lilypond(compile_song(song))
+    assert '\\repeat volta 6' in ly
+    assert '"Play 6x"' in ly
+
+
 # --- Iteration 6: flam / drag / open hi-hat ---
 
 from groovescript.ast_nodes import BeatHit, InstrumentHit
