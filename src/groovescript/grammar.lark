@@ -43,6 +43,8 @@ extend_body: "extend" ":" ESCAPED_STRING
            | "extend" ":" ESCAPED_STRING pattern_content extend_body_item+
 ?extend_body_item: variation_action
                  | extend_variation_block
+                 | extend_bar_text
+extend_bar_text: "text" ":" ESCAPED_STRING
 extend_variation_block: "variation" "at" "bar" bar_number_list ":" variation_action+
                       | "variation" "at" "bars" bar_number_list ":" variation_action+
 groove_cn_body: "count" ":" ESCAPED_STRING "notes" ":" ESCAPED_STRING

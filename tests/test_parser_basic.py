@@ -222,6 +222,44 @@ def test_parse_bar_text_stored_on_groove():
     assert 2 not in groove.bar_texts
 
 
+EXTEND_TEXT_SRC = """\
+groove "rock":
+    BD: 1, 3
+    SN: 2, 4
+    HH: *8
+
+groove "main groove":
+    extend: "rock"
+    add BD at 3&
+    text: "Quarter note pulse"
+"""
+
+
+def test_parse_extend_body_top_level_text_targets_bar_one():
+    """Regression: a bare ``text:`` at the top of an ``extend:`` body annotates
+    bar 1 of the resolved groove. Previously the parser rejected this entirely
+    because ``extend_body_item`` only accepted variation actions."""
+    song = parse(EXTEND_TEXT_SRC)
+    groove = next(g for g in song.grooves if g.name == "main groove")
+    assert groove.bar_texts == {1: "Quarter note pulse"}
+
+
+def test_extend_body_duplicate_top_level_text_errors():
+    """Two bare ``text:`` lines target the same bar 1 slot, so the parser
+    must reject the duplicate rather than silently keeping one."""
+    src = """\
+groove "rock":
+    BD: 1, 3
+
+groove "main":
+    extend: "rock"
+    text: "first"
+    text: "second"
+"""
+    with pytest.raises(Exception, match="text"):
+        parse(src)
+
+
 ALIAS_GROOVE_SRC = """\
 groove "alias beat":
     kick: 1, 3

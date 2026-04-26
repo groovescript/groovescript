@@ -392,6 +392,18 @@ carried over to events produced by `replace` (the new hits start fresh).
 Scoping to a bar number that doesn't exist in the merged groove is an
 error, caught at compile time.
 
+A bare `text: "…"` line at the top of an `extend:` body annotates bar 1
+of the resolved groove — the same effect as nesting `text:` inside
+`bar 1:` of a multi-bar pattern, but available to single-bar derived
+grooves that have no `bar 1:` block to put it in:
+
+```groovescript
+groove "main groove":
+  extend: "rock"
+  add BD at 3&
+  text: "Quarter note pulse"
+```
+
 ### Count+notes groove bodies
 
 A groove can also use the positional `count:` / `notes:` form — the same
@@ -1166,6 +1178,9 @@ section, exactly as in the classic form. A fill placed over a rest bar
   staff at the given bar (and optional beat).
 - `text: "…"` inside a groove `bar N:` block — attaches a text annotation
   to that bar of the groove.
+- `text: "…"` at the top of a groove `extend:` body — annotates bar 1 of
+  the resolved groove. Useful for single-bar derived grooves where there
+  is no `bar N:` block to nest the text in.
 
 ### Crescendos and decrescendos
 
