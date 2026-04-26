@@ -5,6 +5,8 @@ time_signature: 4/4
 // Fixture covering the ``crash in`` section flag across different riding
 // instruments and star-syntax subdivisions. The first bar of each section
 // should start with a crash replacing the riding instrument's beat-1 hit.
+// Also exercises the multi-bar (``at <bars>`` and ``at *N``) forms, the
+// top-level directive, and the per-section ``no crash in`` opt-out.
 
 groove "hh8 beat":
     BD: 1, 3
@@ -68,3 +70,15 @@ section "added kick":
     bars: 2
     groove: "no kick on one"
     crash in
+
+// Multi-bar crash-in with an explicit list of section-bar offsets.
+section "explicit bar list":
+    bars: 8
+    groove: "hh8 beat"
+    crash in at 1, 5
+
+// Multi-bar crash-in via the star form: bars 1, 9, 17 of a 24-bar section.
+section "every eight bars":
+    bars: 24
+    groove: "hh8 beat"
+    crash in at *8

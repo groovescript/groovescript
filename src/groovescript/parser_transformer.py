@@ -14,6 +14,7 @@ from lark import Lark, Transformer, v_args
 from .ast_nodes import (
     INHERIT_CATEGORIES,
     BeatHit,
+    CrashInSpec,
     Cue,
     DynamicSpan,
     Fill,
@@ -106,6 +107,7 @@ class _GrooveScriptTransformer(Transformer):
         fills: list[Fill] = []
         sections: list[Section] = []
         variations: list[VariationDef] = []
+        top_crash_in: CrashInSpec | None = None
 
         for item in items:
             if isinstance(item, Metadata):
@@ -118,6 +120,12 @@ class _GrooveScriptTransformer(Transformer):
                 sections.append(item)
             elif isinstance(item, VariationDef):
                 variations.append(item)
+            elif isinstance(item, tuple) and item and item[0] == "top_crash_in":
+                if top_crash_in is not None:
+                    raise ValueError(
+                        "top-level `crash in` declared more than once"
+                    )
+                top_crash_in = item[1]
 
         return Song(
             metadata=metadata,
@@ -125,7 +133,11 @@ class _GrooveScriptTransformer(Transformer):
             fills=fills,
             sections=sections,
             variations=variations,
+            crash_in=top_crash_in,
         )
+
+    def top_level_crash_in_line(self, items):
+        return ("top_crash_in", CrashInSpec())
 
     def statement(self, items):
         return items[0]
@@ -541,7 +553,8 @@ class _GrooveScriptTransformer(Transformer):
         tempo = None
         time_signature = None
         play = None
-        crash_in = False
+        crash_in: CrashInSpec | None = None
+        no_crash_in = False
         fill_placements: list[FillPlacement] = []
         fill_placeholders: list[FillPlaceholder] = []
         inline_fills: list[Fill] = []
@@ -595,7 +608,21 @@ class _GrooveScriptTransformer(Transformer):
             elif key == "dynamic_span":
                 dynamic_spans.append(value)
             elif key == "crash_in":
-                crash_in = True
+                if crash_in is not None:
+                    raise ValueError(
+                        f"Section {name!r}: `crash in` declared more than once"
+                    )
+                if no_crash_in:
+                    raise ValueError(
+                        f"Section {name!r}: cannot combine `no crash in` with `crash in`"
+                    )
+                crash_in = value
+            elif key == "no_crash_in":
+                if crash_in is not None:
+                    raise ValueError(
+                        f"Section {name!r}: cannot combine `no crash in` with `crash in`"
+                    )
+                no_crash_in = True
 
         if play is not None:
             if bars is not None or groove is not None or repeat is not None:
@@ -625,6 +652,7 @@ class _GrooveScriptTransformer(Transformer):
             time_signature=time_signature,
             play=play,
             crash_in=crash_in,
+            no_crash_in=no_crash_in,
         )
 
     def play_block(self, items):
@@ -841,7 +869,26 @@ class _GrooveScriptTransformer(Transformer):
         return ("time_signature", str(items[0]))
 
     def section_crash_in_line(self, items):
-        return ("crash_in", True)
+        return ("crash_in", CrashInSpec())
+
+    def section_crash_in_at_bars(self, items):
+        # items: [CRASH_IN, bar_number_list (list[int])]
+        bar_nums = items[1]
+        return ("crash_in", CrashInSpec(bars=tuple(bar_nums)))
+
+    def section_crash_in_at_star(self, items):
+        # items: [CRASH_IN, STAR_VALUE token]
+        token = str(items[1])
+        body = token[1:]  # drop leading "*"
+        if body.endswith("t"):
+            raise ValueError(
+                f"`crash in at {token}`: triplet star (*Nt) is not supported here"
+            )
+        every = int(body)
+        return ("crash_in", CrashInSpec(every=every))
+
+    def section_no_crash_in_line(self, items):
+        return ("no_crash_in", True)
 
     def section_fill_line(self, items):
         # Eight alternatives combining named/inline × single-bar/multi-bar × with/without beat:

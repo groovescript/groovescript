@@ -225,18 +225,19 @@ _PP_BAR_LIST_RE = re.compile(
     r'^(?P<indent>\s*)'
     r'(?P<prefix>(?:variation(?:\s+"[^"]*")?\s+at\s+bars?\s+)'
     r'|(?:fill\s+"[^"]*"\s+at\s+bars?\s+)'
-    r'|(?:fill\s+at\s+bars?\s+))'
+    r'|(?:fill\s+at\s+bars?\s+)'
+    r'|(?:crash\s+in\s+at\s+))'
     r'(?P<rest>.*)$'
 )
 
 
 def _commafy_bar_list(line: str) -> str:
-    """Insert commas between adjacent bar numbers after ``variation ... at bar(s)``
-    or ``fill ... at bar(s)`` so ``variation at bars 1 5:`` parses the same as
-    ``variation at bars 1, 5:``.
+    """Insert commas between adjacent bar numbers after ``variation ... at bar(s)``,
+    ``fill ... at bar(s)``, or ``crash in at`` so ``variation at bars 1 5:`` parses the
+    same as ``variation at bars 1, 5:`` (and likewise for the others).
 
-    Stops at the first non-INT token (``beat``, ``:``, end-of-line, etc.) so
-    surrounding syntax is preserved.
+    Stops at the first non-INT token (``beat``, ``:``, end-of-line, ``*N``, etc.)
+    so surrounding syntax is preserved.
     """
     code, comment = _strip_trailing_comment(line)
     match = _PP_BAR_LIST_RE.match(code)

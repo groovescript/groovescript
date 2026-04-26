@@ -1020,10 +1020,71 @@ Behaviour details:
 - If beat 1 already carries a `CR`, the crash step is a no-op.
 - A `BD` (kick) is always ensured on beat 1: if none is present, one is
   added; if one is already there, it's left as-is (no duplicate).
-- Only the section's first bar is affected.
 - With `play:`, the flag targets the first bar of the first item.
 - `crash in` is inherited through `like` alongside the other
   section-scoped fields.
+
+#### Crashing into multiple bars
+
+`crash in` accepts an optional `at` clause to target more than just bar
+1 of the section:
+
+- `crash in at <bars>` — comma list of 1-indexed section-bar numbers.
+  Commas are optional, same as `variation at bars …` and `fill at bars
+  …`. Bars outside the section are silently ignored.
+- `crash in at *N` — every Nth bar starting at bar 1. For a 24-bar
+  section, `crash in at *8` crashes bars 1, 9, and 17. The `*Nt`
+  triplet variant is rejected (it has no meaning for a bar count).
+
+```groovescript
+section "verse":
+  bars: 8
+  groove: "money beat"
+  crash in at 1, 5            # crash on bar 1 and bar 5
+
+section "long form":
+  bars: 24
+  groove: "money beat"
+  crash in at *8              # crash on bars 1, 9, 17
+```
+
+The same crash-plus-kick algorithm runs at every targeted bar.
+
+#### Top-level `crash in` and the per-section `no crash in` opt-out
+
+Place a bare `crash in` at the top level of the file (outside any
+section) to crash into **every section after the first** by default —
+the first section is left alone since it doesn't have a previous
+section to crash *into*. A section can opt out with `no crash in`, or
+override the bars with its own `crash in [at …]`:
+
+```groovescript
+crash in
+
+section "intro":
+  bars: 2
+  groove: "money beat"        # not crashed (first section)
+
+section "verse":
+  bars: 4
+  groove: "money beat"        # bar 1 crashed by the top-level default
+
+section "bridge":
+  bars: 2
+  groove: "money beat"
+  no crash in                 # opts out of the top-level default
+
+section "chorus":
+  bars: 8
+  groove: "money beat"
+  crash in at 1, 5            # explicit spec wins over the top-level default
+```
+
+`no crash in` is inherited through `like` and also cancels any crash-in
+inherited from the parent section. Combining `crash in` and `no crash
+in` in the same section is rejected. The top-level `crash in` directive
+itself is purely additive — nothing else parses or compiles
+differently when it's absent.
 
 ### Section arrangement (`play:`)
 

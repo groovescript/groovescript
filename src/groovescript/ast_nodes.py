@@ -69,6 +69,29 @@ class InstrumentHit(str):
 
 
 @dataclass(frozen=True)
+class CrashInSpec:
+    """Where ``crash in`` applies within a section.
+
+    Three shapes:
+      * bare (``crash in``) — bar 1 only; ``bars`` empty, ``every`` is None.
+      * explicit list (``crash in at 1, 9, 17``) — ``bars`` carries the
+        1-indexed bar numbers; ``every`` is None.
+      * star (``crash in at *N``) — ``every`` is N; ``bars`` empty. Crash-in
+        applies at bar 1 and every N bars after (1, 1+N, 1+2N, ...).
+    """
+
+    bars: tuple[int, ...] = ()
+    every: int | None = None
+
+    def applies_at(self, section_bar_offset: int) -> bool:
+        if self.every is not None:
+            return section_bar_offset % self.every == 0
+        if self.bars:
+            return (section_bar_offset + 1) in self.bars
+        return section_bar_offset == 0
+
+
+@dataclass(frozen=True)
 class StarSpec:
     """A ``*N`` / ``*Nt`` pattern-line value.
 
@@ -340,7 +363,13 @@ class Section:
     tempo: int | None = None  # per-section tempo override
     time_signature: str | None = None  # per-section time signature override
     play: list[PlayItem] | None = None  # mutually exclusive with bars/groove/repeat
-    crash_in: bool = False  # replace first riding hit of bar 1 with a crash
+    # Section-scoped ``crash in`` directive. ``None`` means "not declared on
+    # this section"; the compiler may still apply a crash-in if a top-level
+    # ``crash in`` directive is in effect (subject to ``no_crash_in``).
+    crash_in: CrashInSpec | None = None
+    # Set by the section-scoped ``no crash in`` opt-out — disables both any
+    # inherited crash-in and any top-level crash-in for this section.
+    no_crash_in: bool = False
 
 
 @dataclass
@@ -352,3 +381,7 @@ class Song:
     fills: list[Fill] = field(default_factory=list)
     sections: list[Section] = field(default_factory=list)
     variations: list[VariationDef] = field(default_factory=list)
+    # Top-level ``crash in`` directive. When set, every section after the
+    # first gets a bar-1 crash-in by default; sections opt out with
+    # ``no crash in`` and override the bars with their own ``crash in [at …]``.
+    crash_in: CrashInSpec | None = None

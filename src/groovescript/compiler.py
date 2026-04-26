@@ -5,6 +5,7 @@ from math import gcd, lcm
 
 from .ast_nodes import (
     BeatHit,
+    CrashInSpec,
     Cue,
     DynamicSpan,
     Fill,
@@ -1315,8 +1316,11 @@ def _resolve_inheritance(sections: list[Section]) -> list[Section]:
             merged_play = list(original.play)
         else:
             merged_play = None
-        # crash_in is a boolean flag: inherit if either side sets it.
-        merged_crash_in = section.crash_in or original.crash_in
+        # crash_in: child's spec wins when set, else inherit parent's. The
+        # `no_crash_in` opt-out propagates the same way (and overrides any
+        # inherited spec at compile time).
+        merged_crash_in = section.crash_in if section.crash_in is not None else original.crash_in
+        merged_no_crash_in = section.no_crash_in or original.no_crash_in
 
         inherits_fills = spec.inherits("fills")
         inherits_variations = spec.inherits("variations")
@@ -1360,6 +1364,7 @@ def _resolve_inheritance(sections: list[Section]) -> list[Section]:
             time_signature=merged_time_signature,
             play=merged_play,
             crash_in=merged_crash_in,
+            no_crash_in=merged_no_crash_in,
         )
         resolving.discard(name)
 
@@ -1824,6 +1829,22 @@ def compile_song(song: Song) -> IRSong:
 
     sections = _resolve_inheritance(patched_sections)
 
+    # Apply the top-level ``crash in`` directive (if any). Every section
+    # after the first picks up a bar-1 crash-in by default; sections that
+    # already declared their own ``crash in [at …]`` keep their explicit
+    # spec, and sections marked ``no crash in`` opt out entirely.
+    if song.crash_in is not None:
+        promoted: list[Section] = []
+        for index, section in enumerate(sections):
+            if (
+                index > 0
+                and not section.no_crash_in
+                and section.crash_in is None
+            ):
+                section = replace(section, crash_in=song.crash_in)
+            promoted.append(section)
+        sections = promoted
+
     # Collect all referenced groove names so we can pull missing ones from
     # the built-in library. This includes grooves referenced by sections
     # and grooves referenced by extend: declarations.
@@ -2047,7 +2068,11 @@ def compile_song(song: Song) -> IRSong:
                     arranged_events, variation.actions, bar_subdivision, absolute_bar, bpb, beat_unit
                 )
 
-            if section.crash_in and section_bar_offset == 0:
+            if (
+                section.crash_in is not None
+                and not section.no_crash_in
+                and section.crash_in.applies_at(section_bar_offset)
+            ):
                 arranged_events = _apply_crash_in(arranged_events, absolute_bar)
                 is_rest = False
 
@@ -2202,7 +2227,11 @@ def compile_song(song: Song) -> IRSong:
                     arranged_events, variation.actions, bar_subdivision, absolute_bar, bpb, beat_unit
                 )
 
-            if section.crash_in and section_bar_offset == 0:
+            if (
+                section.crash_in is not None
+                and not section.no_crash_in
+                and section.crash_in.applies_at(section_bar_offset)
+            ):
                 arranged_events = _apply_crash_in(arranged_events, absolute_bar)
 
             bar_cues = _collect_bar_cues(section, section_bar_offset, bar_subdivision, bpb)

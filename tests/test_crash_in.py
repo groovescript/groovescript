@@ -418,3 +418,253 @@ section "s":
     assert "CR" in instruments
     assert "HH" in instruments
     assert "RD" not in instruments
+
+
+# ── Multi-bar `crash in at <bars>` ────────────────────────────────────
+
+def test_crash_in_at_explicit_bar_list():
+    """``crash in at 1, 5`` crashes into bars 1 and 5 (and only those)."""
+    src = """
+groove "g":
+  HH: *8
+  BD: 1, 3
+  SN: 2, 4
+
+section "s":
+  bars: 8
+  groove: "g"
+  crash in at 1, 5
+"""
+    ir = _compile(src)
+    for offset, bar in enumerate(ir.bars):
+        present = "CR" in _instruments_at(bar, Fraction(0))
+        if offset in (0, 4):
+            assert present, f"bar {offset + 1} should have a crash"
+        else:
+            assert not present, f"bar {offset + 1} must not have a crash"
+            assert "HH" in _instruments_at(bar, Fraction(0))
+
+
+def test_crash_in_at_explicit_bars_no_commas():
+    """The preprocessor commafies the bar list — `crash in at 1 5` must work."""
+    src = """
+groove "g":
+  HH: *8
+  BD: 1, 3
+  SN: 2, 4
+
+section "s":
+  bars: 8
+  groove: "g"
+  crash in at 1 5
+"""
+    ir = _compile(src)
+    crashing_bars = [
+        offset for offset, bar in enumerate(ir.bars)
+        if "CR" in _instruments_at(bar, Fraction(0))
+    ]
+    assert crashing_bars == [0, 4]
+
+
+def test_crash_in_at_star_every_n_bars():
+    """``crash in at *8`` crashes into bars 1, 9, 17, … of the section."""
+    src = """
+groove "g":
+  HH: *8
+  BD: 1, 3
+  SN: 2, 4
+
+section "s":
+  bars: 24
+  groove: "g"
+  crash in at *8
+"""
+    ir = _compile(src)
+    crashing_bars = [
+        offset for offset, bar in enumerate(ir.bars)
+        if "CR" in _instruments_at(bar, Fraction(0))
+    ]
+    assert crashing_bars == [0, 8, 16]
+
+
+def test_crash_in_at_star_rejects_triplet_grid():
+    """``*8t`` makes no sense for a bar count — reject at parse time."""
+    src = """
+groove "g":
+  HH: *8
+  BD: 1
+section "s":
+  bars: 4
+  groove: "g"
+  crash in at *8t
+"""
+    with pytest.raises(Exception):
+        _compile(src)
+
+
+# ── Top-level ``crash in`` with per-section opt-out ──────────────────
+
+def test_top_level_crash_in_skips_first_section():
+    """Top-level ``crash in`` crashes into every section after the first."""
+    src = """
+crash in
+
+groove "g":
+  HH: *8
+  BD: 1, 3
+  SN: 2, 4
+
+section "intro":
+  bars: 1
+  groove: "g"
+
+section "verse":
+  bars: 1
+  groove: "g"
+
+section "chorus":
+  bars: 1
+  groove: "g"
+"""
+    ir = _compile(src)
+    # First section: no crash.
+    assert "CR" not in _instruments_at(ir.bars[0], Fraction(0))
+    # Subsequent sections: crash on bar 1.
+    assert "CR" in _instruments_at(ir.bars[1], Fraction(0))
+    assert "CR" in _instruments_at(ir.bars[2], Fraction(0))
+
+
+def test_top_level_crash_in_respects_no_crash_in():
+    """A section with ``no crash in`` opts out of the top-level directive."""
+    src = """
+crash in
+
+groove "g":
+  HH: *8
+  BD: 1, 3
+  SN: 2, 4
+
+section "intro":
+  bars: 1
+  groove: "g"
+
+section "bridge":
+  bars: 1
+  groove: "g"
+  no crash in
+
+section "chorus":
+  bars: 1
+  groove: "g"
+"""
+    ir = _compile(src)
+    # intro: untouched (first section)
+    assert "CR" not in _instruments_at(ir.bars[0], Fraction(0))
+    # bridge: opted out
+    assert "CR" not in _instruments_at(ir.bars[1], Fraction(0))
+    # chorus: still crashes
+    assert "CR" in _instruments_at(ir.bars[2], Fraction(0))
+
+
+def test_top_level_crash_in_lets_section_override_with_explicit_spec():
+    """An explicit ``crash in at …`` on a section beats the top-level default."""
+    src = """
+crash in
+
+groove "g":
+  HH: *8
+  BD: 1, 3
+  SN: 2, 4
+
+section "intro":
+  bars: 1
+  groove: "g"
+
+section "verse":
+  bars: 8
+  groove: "g"
+  crash in at 1, 5
+"""
+    ir = _compile(src)
+    # intro
+    assert "CR" not in _instruments_at(ir.bars[0], Fraction(0))
+    # verse: bars 1 and 5 of the section (= ir.bars[1] and ir.bars[5])
+    assert "CR" in _instruments_at(ir.bars[1], Fraction(0))
+    assert "CR" not in _instruments_at(ir.bars[2], Fraction(0))
+    assert "CR" in _instruments_at(ir.bars[5], Fraction(0))
+    assert "CR" not in _instruments_at(ir.bars[6], Fraction(0))
+
+
+def test_no_crash_in_without_top_level_is_a_no_op():
+    """``no crash in`` on a section that wasn't going to crash anyway is harmless."""
+    src = """
+groove "g":
+  HH: *8
+  BD: 1, 3
+  SN: 2, 4
+
+section "s":
+  bars: 1
+  groove: "g"
+  no crash in
+"""
+    ir = _compile(src)
+    assert "CR" not in _instruments_at(ir.bars[0], Fraction(0))
+
+
+def test_no_crash_in_overrides_inherited_crash_in():
+    """``no crash in`` on a child section cancels a crash-in inherited via ``like``."""
+    src = """
+groove "g":
+  HH: *8
+  BD: 1, 3
+  SN: 2, 4
+
+section "parent":
+  bars: 1
+  groove: "g"
+  crash in
+
+section "child":
+  like "parent"
+  no crash in
+"""
+    ir = _compile(src)
+    # parent crashes
+    assert "CR" in _instruments_at(ir.bars[0], Fraction(0))
+    # child inherited the crash but explicitly opted out
+    assert "CR" not in _instruments_at(ir.bars[1], Fraction(0))
+    assert "HH" in _instruments_at(ir.bars[1], Fraction(0))
+
+
+def test_section_cannot_combine_crash_in_and_no_crash_in():
+    """Mixing ``crash in`` and ``no crash in`` in one section is a parse error."""
+    src = """
+groove "g":
+  HH: *8
+  BD: 1
+section "s":
+  bars: 1
+  groove: "g"
+  crash in
+  no crash in
+"""
+    with pytest.raises(Exception):
+        _compile(src)
+
+
+def test_top_level_crash_in_declared_twice_is_an_error():
+    """Two top-level ``crash in`` directives in one file is a parse error."""
+    src = """
+crash in
+crash in
+
+groove "g":
+  HH: *8
+  BD: 1
+section "s":
+  bars: 1
+  groove: "g"
+"""
+    with pytest.raises(Exception):
+        _compile(src)
