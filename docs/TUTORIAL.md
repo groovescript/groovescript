@@ -206,7 +206,7 @@ Other useful refinements at this stage:
 - **Crash-in**: `crash in` replaces the first cymbal hit of bar 1 with
   a crash — a common section entry.
 
-See [DSL reference → Variation actions](DSL_REFERENCE.md#variation-actions)
+See [DSL reference → Variations](DSL_REFERENCE.md#variations)
 and the surrounding sections for full grammars.
 
 ## Iteration 5 — cues
