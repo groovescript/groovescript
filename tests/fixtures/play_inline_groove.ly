@@ -100,10 +100,15 @@
         <bd hh>16 hh16 hh16 hh16 <sn hh>16 hh16 hh16 hh16 <bd hh>16 hh16 hh16 hh16 <sn hh>16 hh16 hh16 hh16 |
       }
       <bd hh>8 hh8 hh8 hh8 <sn hh>8 hh8 hh8 hh8 |
-      <hh bd>8 hh8 <hh sn>8 hh8 <hh bd>8 hh8 <hh sn>8 hh8 |
-      <hh bd>8 hh8 hh8 hh8 hh8 <hh bd>8 hh8 hh8 |
-      <hh bd>8 hh8 <hh sn>8 hh8 <hh bd>8 hh8 <hh sn>8 hh8 |
-      <hh bd>8 hh8 hh8 hh8 hh8 <hh bd>8 hh8 hh8 |
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.padding = #2
+      \once \override Score.RehearsalMark.outside-staff-priority = #1000
+      \mark \markup \italic \fontsize #-1 "Play 2x"
+      \repeat volta 2 {
+        <hh bd>8 hh8 <hh sn>8 hh8 <hh bd>8 hh8 <hh sn>8 hh8 |
+        <hh bd>8 hh8 hh8 hh8 hh8 <hh bd>8 hh8 hh8 |
+      }
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
       \once \override Score.RehearsalMark.padding = #2

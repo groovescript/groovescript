@@ -135,6 +135,14 @@ class IRBar:
     dynamic_starts: list[tuple[Fraction, str]] = field(default_factory=list)
     # Hairpin terminators: list of beat_position where a \! should be placed
     dynamic_stops: list[Fraction] = field(default_factory=list)
+    # Natural-phrase metadata for the lilypond emitter's multi-bar repeat
+    # detector. ``phrase_length`` is the length of the source groove (2 for a
+    # two-bar groove, 1 for a one-bar groove); ``phrase_position`` is this
+    # bar's 1-based offset within that phrase. The emitter uses these to
+    # collapse e.g. an A-B-A-B-A-B run into ``\repeat volta 3 { A B }`` while
+    # respecting phrase alignment so it never emits a B-A rotation.
+    phrase_position: int | None = None
+    phrase_length: int | None = None
 
 
 @dataclass
@@ -1979,7 +1987,7 @@ def compile_song(song: Song) -> IRSong:
         # (``"Verse groove 1"``, ``"Verse groove 2"``, …) so they can be
         # told apart on the page.
         nameless_first_offsets = [
-            i for i, (_, _, _, ph) in enumerate(expanded)
+            i for i, (_, _, _, ph, _, _) in enumerate(expanded)
             if ph is not None and ph[0] is None and ph[1]
         ]
         display_name = full_section_name[:1].upper() + full_section_name[1:]
@@ -1997,7 +2005,7 @@ def compile_song(song: Song) -> IRSong:
         dyn_starts, dyn_stops = _resolve_dynamic_spans(all_spans, total_bars, bpb)
 
         new_bars: list[IRBar] = []
-        for section_bar_offset, (template_events, base_subdivision, is_rest, placeholder_info) in enumerate(expanded):
+        for section_bar_offset, (template_events, base_subdivision, is_rest, placeholder_info, phrase_position, phrase_length) in enumerate(expanded):
             absolute_bar = start_bar_number + section_bar_offset
 
             if placeholder_info is not None:
@@ -2101,6 +2109,8 @@ def compile_song(song: Song) -> IRSong:
                     is_rest=is_rest,
                     dynamic_starts=dyn_starts.get(section_bar_offset, []),
                     dynamic_stops=dyn_stops.get(section_bar_offset, []),
+                    phrase_position=phrase_position,
+                    phrase_length=phrase_length,
                 )
             )
         return new_bars, ir_section
@@ -2265,6 +2275,8 @@ def compile_song(song: Song) -> IRSong:
                     time_signature=effective_ts,
                     dynamic_starts=dyn_starts.get(section_bar_offset, []),
                     dynamic_stops=dyn_stops.get(section_bar_offset, []),
+                    phrase_position=groove_bar_number,
+                    phrase_length=groove.bars,
                 )
             )
         return new_bars, ir_section
@@ -2400,15 +2412,20 @@ def _expand_play_block(
     beat_unit: int,
     section_name: str,
     groove_defs: dict[str, "Groove"] | None = None,
-) -> list[tuple[list[Event], int, bool, tuple[str | None, bool] | None]]:
+) -> list[tuple[list[Event], int, bool, tuple[str | None, bool] | None, int | None, int | None]]:
     """Expand a play: block into a flat list of per-bar tuples.
 
-    Each entry is ``(events, subdivision, is_rest, placeholder_info)`` where
-    ``placeholder_info`` is ``None`` for regular bars or a
-    ``(label_or_None, is_first_bar_of_span)`` tuple for placeholder-groove
-    bars (label resolution for nameless placeholders is deferred to
-    :func:`_process_play_section` because numbering depends on how many
-    nameless spans the section ends up with).
+    Each entry is ``(events, subdivision, is_rest, placeholder_info,
+    phrase_position, phrase_length)`` where ``placeholder_info`` is ``None``
+    for regular bars or a ``(label_or_None, is_first_bar_of_span)`` tuple
+    for placeholder-groove bars (label resolution for nameless placeholders
+    is deferred to :func:`_process_play_section` because numbering depends
+    on how many nameless spans the section ends up with).
+
+    ``phrase_position`` / ``phrase_length`` carry the source groove's
+    natural phrase metadata so the lilypond emitter can group multi-bar
+    repeats; they are ``None`` for placeholder, rest, and inline-bar bars
+    (no natural phrase to align to).
 
     Events are bar=1-relative (caller re-stamps to absolute bar numbers).
     ``subdivision`` is the grid for that bar; for placeholder bars it is
@@ -2423,7 +2440,7 @@ def _expand_play_block(
     here auto-promotes to a named placeholder so users can reference
     grooves they haven't transcribed yet.
     """
-    result: list[tuple[list[Event], int, bool, tuple[str | None, bool] | None]] = []
+    result: list[tuple[list[Event], int, bool, tuple[str | None, bool] | None, int | None, int | None]] = []
     named_bars: dict[str, tuple[list[Event], int]] = {}  # name → (events, subdivision)
     last_groove_subdivision: int | None = None
     groove_defs = groove_defs or {}
@@ -2434,7 +2451,7 @@ def _expand_play_block(
         # same label tuple but with ``is_first=False`` so the renderer knows
         # not to re-emit the rehearsal markup.
         for i in range(repeat):
-            result.append(([], 1, False, (label, i == 0)))
+            result.append(([], 1, False, (label, i == 0), None, None))
 
     for item in play_items:
         if isinstance(item, PlayGroove):
@@ -2464,7 +2481,7 @@ def _expand_play_block(
             for _ in range(item.repeat):
                 for bar_num in range(1, groove.bars + 1):
                     bar_sub = groove.bar_subdivisions[bar_num - 1]
-                    result.append((groove_events_by_bar[bar_num], bar_sub, False, None))
+                    result.append((groove_events_by_bar[bar_num], bar_sub, False, None, bar_num, groove.bars))
 
         elif isinstance(item, PlayBar):
             if item.pattern is not None:
@@ -2489,11 +2506,11 @@ def _expand_play_block(
                 events, subdiv = named_bars[item.name]
 
             for _ in range(item.repeat):
-                result.append((events, subdiv, False, None))
+                result.append((events, subdiv, False, None, None, None))
 
         elif isinstance(item, PlayRest):
             subdiv = last_groove_subdivision if last_groove_subdivision is not None else _whole_bar_rest_subdivision(bpb)
             for _ in range(item.repeat):
-                result.append(([], subdiv, True, None))
+                result.append(([], subdiv, True, None, None, None))
 
     return result
