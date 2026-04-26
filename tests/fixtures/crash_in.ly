@@ -119,6 +119,83 @@
       \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "ADDED KICK: 2" }
       <cymc bd>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       hh8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
+      \once \override Score.RehearsalMark.padding = #2
+      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "EXPLICIT BAR LIST: 8" }
+      <bd cymc>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.padding = #2
+      \once \override Score.RehearsalMark.outside-staff-priority = #1000
+      \mark \markup \italic \fontsize #-1 "Play 3x"
+      \repeat volta 3 {
+        <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      }
+      <bd cymc>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.padding = #2
+      \once \override Score.RehearsalMark.outside-staff-priority = #1000
+      \mark \markup \italic \fontsize #-1 "Play 3x"
+      \repeat volta 3 {
+        <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      }
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
+      \once \override Score.RehearsalMark.padding = #2
+      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "EVERY EIGHT BARS: 24" }
+      <bd cymc>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.padding = #2
+      \once \override Score.RehearsalMark.outside-staff-priority = #1000
+      \mark \markup \italic \fontsize #-1 "Play 3x"
+      \repeat volta 3 {
+        <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      }
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.padding = #2
+      \once \override Score.RehearsalMark.outside-staff-priority = #1000
+      \mark \markup \italic \fontsize #-1 "Play 4x"
+      \repeat volta 4 {
+        <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      }
+      <bd cymc>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.padding = #2
+      \once \override Score.RehearsalMark.outside-staff-priority = #1000
+      \mark \markup \italic \fontsize #-1 "Play 3x"
+      \repeat volta 3 {
+        <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      }
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.padding = #2
+      \once \override Score.RehearsalMark.outside-staff-priority = #1000
+      \mark \markup \italic \fontsize #-1 "Play 4x"
+      \repeat volta 4 {
+        <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      }
+      <bd cymc>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.padding = #2
+      \once \override Score.RehearsalMark.outside-staff-priority = #1000
+      \mark \markup \italic \fontsize #-1 "Play 3x"
+      \repeat volta 3 {
+        <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      }
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.padding = #2
+      \once \override Score.RehearsalMark.outside-staff-priority = #1000
+      \mark \markup \italic \fontsize #-1 "Play 4x"
+      \repeat volta 4 {
+        <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      }
       \label #'lastPage
     }
   }

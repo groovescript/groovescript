@@ -11,6 +11,11 @@ start: statement*
           | section_def
           | fill_def
           | variation_def
+          | top_level_crash_in_line
+
+// Top-level ``crash in`` directive: every section after the first gets a
+// bar-1 crash-in by default. A section can opt out with ``no crash in``.
+top_level_crash_in_line: CRASH_IN
 
 metadata_block: "metadata" ":" metadata_line+
 metadata_line: title_line
@@ -92,12 +97,16 @@ like_line: "like" ESCAPED_STRING ("with" INHERIT_CATEGORY (","? INHERIT_CATEGORY
 INHERIT_CATEGORY: "fills" | "variations" | "cues"
 section_tempo_line: "tempo" ":" INT
 section_time_signature_line: "time_signature" ":" TIME_SIGNATURE
-// Flag line: first cymbal/riding hit of this section's first bar is
-// replaced with a crash. See `_apply_crash_in` in compiler.py. Defined as
-// a single two-word terminal so the ``crash`` keyword doesn't shadow the
-// ``crash`` instrument alias inside pattern lines.
+// Flag line: replace the first cymbal/riding hit of one or more bars in
+// this section with a crash. See `_apply_crash_in` in compiler.py. The
+// terminals are single multi-word regexes so the ``crash`` and ``no``
+// keywords don't shadow other tokens inside pattern lines.
 section_crash_in_line: CRASH_IN
+                     | CRASH_IN "at" bar_number_list   -> section_crash_in_at_bars
+                     | CRASH_IN "at" STAR_VALUE        -> section_crash_in_at_star
+                     | NO_CRASH_IN                     -> section_no_crash_in_line
 CRASH_IN: /crash\s+in/
+NO_CRASH_IN: /no\s+crash\s+in/
 
 play_block: "play" ":" play_item+
 ?play_item: play_groove | play_bar | play_rest
