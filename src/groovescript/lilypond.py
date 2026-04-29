@@ -91,6 +91,19 @@ _INSTRUMENT_TO_LY: dict[str, str] = {
 }
 
 
+def _grace_ly_name(event) -> str | None:
+    """Return the LilyPond drum name for a flam/drag grace stroke, or ``None``.
+
+    Cross-instrument flam/drag (``event.grace_instrument`` set) returns the
+    grace's LilyPond name; otherwise returns ``None`` so the emitter falls
+    back to the main hit's name (same-instrument flam/drag).
+    """
+    grace_inst = getattr(event, "grace_instrument", None)
+    if grace_inst is None:
+        return None
+    return _INSTRUMENT_TO_LY.get(grace_inst, grace_inst.lower())
+
+
 def _is_triplet_only(pos: Fraction, beats_per_bar: int = 4) -> bool:
     """Return True if pos is on the triplet grid (3 per beat) but NOT on the straight 8th grid (2 per beat).
 
@@ -114,8 +127,15 @@ def _is_sixteenth_only(pos: Fraction, beats_per_bar: int = 4) -> bool:
     return (pos * sixteenth_grid).denominator == 1 and (pos * eighth_grid).denominator != 1
 
 
-def _format_hits(hits: list[tuple[str, set[str]]], duration: str) -> str:
-    """Format a list of (ly_name, modifiers) hits as a LilyPond token with *duration*."""
+def _format_hits(hits: list[tuple], duration: str) -> str:
+    """Format a list of hits as a LilyPond token with *duration*.
+
+    Each hit is a tuple ``(ly_name, modifiers)`` or ``(ly_name, modifiers,
+    grace_ly_name)``. ``grace_ly_name`` is the LilyPond drum name the
+    flam/drag grace stroke(s) should play on; when ``None`` (or absent for
+    legacy callers), the grace plays on the main hit's ``ly_name`` — i.e.
+    same-instrument flam/drag.
+    """
     if not hits:
         return f"r{duration}"
 
@@ -123,16 +143,22 @@ def _format_hits(hits: list[tuple[str, set[str]]], duration: str) -> str:
     processed_notes: list[str] = []
     any_accent = False
 
-    for ly_name, mods in hits:
+    for hit in hits:
+        if len(hit) == 3:
+            ly_name, mods, grace_ly = hit
+        else:
+            ly_name, mods = hit
+            grace_ly = None
         # Grace notes: flam = one grace note, drag = two grace notes.
         # Use \slashedGrace (slashed, no auto-slur) for flam — \acciaccatura
         # would draw a slur from the grace to the main note, which renders as
         # a tie when the grace pitch matches a pitch in the main chord.
         if not grace_prefix:
+            grace_target = grace_ly if grace_ly is not None else ly_name
             if "flam" in mods:
-                grace_prefix = f"\\slashedGrace {ly_name}16 "
+                grace_prefix = f"\\slashedGrace {grace_target}16 "
             elif "drag" in mods:
-                grace_prefix = f"\\grace {{ {ly_name}16 {ly_name}16 }} "
+                grace_prefix = f"\\grace {{ {grace_target}16 {grace_target}16 }} "
 
         note = ly_name
         if "ghost" in mods:
@@ -153,7 +179,7 @@ def _format_hits(hits: list[tuple[str, set[str]]], duration: str) -> str:
     return f"{grace_prefix}{token}"
 
 
-def _format_doubled_hits(hits: list[tuple[str, set[str]]]) -> str:
+def _format_doubled_hits(hits: list[tuple]) -> str:
     """Format a 'double' (double-stroke) slot as two 32nd-note LilyPond tokens.
 
     The 'double' modifier means the slot is played as two equal 32nd notes
@@ -166,10 +192,22 @@ def _format_doubled_hits(hits: list[tuple[str, set[str]]]) -> str:
 
     Returns a string of two LilyPond tokens (e.g. ``"hh32 hh32"`` or
     ``"<hh32 sn32>-> hh32"`` when BD is not doubled but HH is).
+
+    Hits may be 2-tuples ``(ly, mods)`` from legacy callers or 3-tuples
+    ``(ly, mods, grace_ly)`` — the third element is unused here because
+    flam/drag and ``double`` are mutually exclusive.
     """
     # Split hits into doubled and non-doubled.
-    doubled = [(ly, mods) for ly, mods in hits if "double" in mods]
-    not_doubled = [(ly, mods) for ly, mods in hits if "double" not in mods]
+    def _split(hit):
+        if len(hit) == 3:
+            ly, mods, _ = hit
+        else:
+            ly, mods = hit
+        return ly, mods
+
+    pairs = [_split(h) for h in hits]
+    doubled = [(ly, mods) for ly, mods in pairs if "double" in mods]
+    not_doubled = [(ly, mods) for ly, mods in pairs if "double" not in mods]
 
     # --- First stroke: all notes (doubled + non-doubled) ---
     first_notes: list[str] = []
@@ -335,7 +373,7 @@ def _drum_measure_straight(
         start_slot: (end_slot, event) for start_slot, end_slot, event in buzz_spans
     }
 
-    pos_map: dict[Fraction, list[tuple[str, set[str]]]] = defaultdict(list)
+    pos_map: dict[Fraction, list[tuple]] = defaultdict(list)
     # Foot events that overlap a buzz span are rendered in the second voice of
     # the voice-split; keep them out of the normal pos_map so they don't get
     # emitted twice.
@@ -353,7 +391,8 @@ def _drum_measure_straight(
                     break
             continue
         ly_name = _INSTRUMENT_TO_LY.get(event.instrument, event.instrument.lower())
-        pos_map[event.beat_position].append((ly_name, set(event.modifiers)))
+        grace_ly = _grace_ly_name(event)
+        pos_map[event.beat_position].append((ly_name, set(event.modifiers), grace_ly))
 
     # Pre-compute which bar-slot indices contain a 'double' hit so consolidation
     # can be skipped for those slots (and their neighbours that would be merged).
@@ -507,10 +546,11 @@ def _drum_measure_mixed(
     a triplet-only (1/12-grid) position; otherwise the beat is treated as
     straight (up to two 8th-note slots).
     """
-    pos_map: dict[Fraction, list[tuple[str, set[str]]]] = defaultdict(list)
+    pos_map: dict[Fraction, list[tuple]] = defaultdict(list)
     for event in events:
         ly_name = _INSTRUMENT_TO_LY.get(event.instrument, event.instrument.lower())
-        pos_map[event.beat_position].append((ly_name, set(event.modifiers)))
+        grace_ly = _grace_ly_name(event)
+        pos_map[event.beat_position].append((ly_name, set(event.modifiers), grace_ly))
 
     def _attach_markup(token: str, pos: Fraction) -> str:
         return _attach_position_markup(

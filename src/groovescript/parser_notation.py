@@ -304,6 +304,24 @@ def _parse_notes_tokens(notes_str: str) -> list[list[InstrumentHit]]:
                     if "buzz" not in hit.modifiers:
                         hit.modifiers.append("buzz")
                     hit.buzz_duration = dur
+            elif _is_grace_token(token):
+                name, raw_inst = _split_grace_modifier(token)
+                grace_inst = (
+                    _normalize_instrument(raw_inst) if raw_inst is not None else None
+                )
+                for hit in current_group:
+                    if name not in hit.modifiers:
+                        hit.modifiers.append(name)
+                    if grace_inst is not None:
+                        if (
+                            hit.grace_instrument is not None
+                            and hit.grace_instrument != grace_inst
+                        ):
+                            raise ValueError(
+                                f"conflicting grace instruments on {str(hit)!r}: "
+                                f"{hit.grace_instrument!r} and {grace_inst!r}"
+                            )
+                        hit.grace_instrument = grace_inst
             else:
                 norm_token = _normalize_modifier(token)
                 for hit in current_group:
@@ -355,9 +373,14 @@ def _parse_paren_group_instruments(inner: str) -> list[InstrumentHit]:
     for sub in subs:
         parts = sub.split()
         inst = _normalize_instrument(parts[0])
-        sub_mods, buzz_dur = _extract_buzz_duration(parts[1:])
+        sub_mods, buzz_dur, grace_inst = _extract_modifier_args(parts[1:])
         hits.append(
-            InstrumentHit(inst, sub_mods if sub_mods else None, buzz_duration=buzz_dur)
+            InstrumentHit(
+                inst,
+                sub_mods if sub_mods else None,
+                buzz_duration=buzz_dur,
+                grace_instrument=grace_inst,
+            )
         )
     return hits
 
@@ -386,13 +409,14 @@ def _parse_hit_spec(spec: str) -> list[InstrumentHit]:
         trailing = spec[end + 1 :].split()
         outer_mods_raw = list(trailing)
         hits = _parse_paren_group_instruments(inner)
-        outer_mods, outer_buzz = _extract_buzz_duration(outer_mods_raw)
-        if outer_mods or outer_buzz is not None:
+        outer_mods, outer_buzz, outer_grace = _extract_modifier_args(outer_mods_raw)
+        if outer_mods or outer_buzz is not None or outer_grace is not None:
             hits = [
                 InstrumentHit(
                     str(h),
                     (list(h.modifiers) if h.modifiers else []) + outer_mods,
                     buzz_duration=outer_buzz if outer_buzz is not None else h.buzz_duration,
+                    grace_instrument=outer_grace if outer_grace is not None else h.grace_instrument,
                 )
                 for h in hits
             ]
@@ -400,8 +424,15 @@ def _parse_hit_spec(spec: str) -> list[InstrumentHit]:
 
     parts = spec.split()
     inst = _normalize_instrument(parts[0])
-    mods, buzz_dur = _extract_buzz_duration(parts[1:])
-    return [InstrumentHit(inst, list(mods) if mods else None, buzz_duration=buzz_dur)]
+    mods, buzz_dur, grace_inst = _extract_modifier_args(parts[1:])
+    return [
+        InstrumentHit(
+            inst,
+            list(mods) if mods else None,
+            buzz_duration=buzz_dur,
+            grace_instrument=grace_inst,
+        )
+    ]
 
 
 _MODIFIER_TOKENS: set[str] = {"ghost", "accent", "flam", "drag", "double", "32nd"}
@@ -414,15 +445,44 @@ _VALID_BUZZ_NOTE_VALUES: frozenset[int] = frozenset({1, 2, 4, 8, 16})
 
 _BUZZ_TOKEN_RE = re.compile(r"^buzz(?::([1-9][0-9]?d{0,2}))?$")
 
+# ``flam[:<inst>]`` / ``drag[:<inst>]`` — the optional ``:<inst>`` names the
+# instrument the grace stroke(s) play on. The inner instrument name is
+# validated downstream via ``_normalize_instrument``; the regex itself is
+# permissive so unknown names produce a clean GrooveScriptError.
+_GRACE_TOKEN_RE = re.compile(r"^(flam|drag)(?::([A-Za-z-]+))?$")
+
 
 def _is_buzz_token(token: str) -> bool:
     """True if ``token`` is the bare ``buzz`` modifier or ``buzz:<duration>``."""
     return _BUZZ_TOKEN_RE.match(token) is not None
 
 
+def _is_grace_token(token: str) -> bool:
+    """True if ``token`` is ``flam``/``drag`` with or without a ``:<inst>`` suffix."""
+    return _GRACE_TOKEN_RE.match(token) is not None
+
+
+def _split_grace_modifier(token: str) -> tuple[str, str | None]:
+    """Split ``flam`` / ``flam:SN`` / ``drag:HT`` into (modifier_name, raw_grace_inst).
+
+    The raw grace-instrument string is returned unnormalised so the caller
+    can produce its own diagnostic with the original spelling. Returns
+    ``(modifier, None)`` for the bare ``flam``/``drag`` form.
+    """
+    match = _GRACE_TOKEN_RE.match(token)
+    if match is None:
+        raise ValueError(f"not a flam/drag token: {token!r}")
+    return match.group(1), match.group(2)
+
+
 def _is_modifier_token(token: str) -> bool:
-    """True if ``token`` is a plain modifier or a buzz-roll modifier."""
-    return token in _MODIFIER_TOKENS or _is_buzz_token(token)
+    """True if ``token`` is a plain modifier, a buzz-roll modifier, or a
+    flam/drag modifier with optional ``:<grace_instrument>`` suffix."""
+    return (
+        token in _MODIFIER_TOKENS
+        or _is_buzz_token(token)
+        or _is_grace_token(token)
+    )
 
 
 def _split_buzz_modifier(token: str) -> tuple[str, str | None]:
@@ -440,6 +500,11 @@ def _normalize_modifier(m: str) -> str:
     """Normalize a modifier token to its canonical form (e.g. '32nd' → 'double')."""
     if _is_buzz_token(m):
         return "buzz"
+    if _is_grace_token(m):
+        # Strip the optional ``:<inst>`` suffix; the grace instrument is
+        # captured separately by ``_extract_modifier_args``.
+        name, _ = _split_grace_modifier(m)
+        return name
     return _MODIFIER_ALIASES.get(m, m)
 
 
@@ -451,15 +516,56 @@ def _extract_buzz_duration(raw_modifiers: list[str]) -> tuple[list[str], str | N
     entry in the canonical list; the duration string (default ``"4"``) is
     returned separately. A non-buzz token is normalized via
     ``_normalize_modifier``.
+
+    Kept as a thin wrapper over ``_extract_modifier_args`` for callers that
+    don't need the grace-instrument extraction.
+    """
+    canonical, buzz_duration, _ = _extract_modifier_args(raw_modifiers)
+    return canonical, buzz_duration
+
+
+def _extract_modifier_args(
+    raw_modifiers: list[str],
+) -> tuple[list[str], str | None, str | None]:
+    """Pull buzz duration and grace instrument out of a raw modifier token list.
+
+    Returns ``(canonical_modifiers, buzz_duration_or_None, grace_instrument_or_None)``.
+
+    * ``buzz`` tokens (with or without ``:<duration>`` suffix) collapse into a
+      single ``"buzz"`` entry; duration string returned separately (default
+      ``"4"``).
+    * ``flam``/``drag`` tokens (with or without ``:<inst>`` suffix) collapse to
+      ``"flam"``/``"drag"``; the instrument string is normalised via
+      ``_normalize_instrument`` and returned separately.
+    * Other tokens pass through ``_normalize_modifier`` (e.g. ``32nd`` →
+      ``double``).
+
+    A flam/drag without a ``:<inst>`` suffix leaves ``grace_instrument`` as
+    ``None`` (same-instrument flam — caller falls back to the main hit's
+    instrument). Specifying both ``flam:X`` and ``flam:Y`` on the same hit
+    raises ``ValueError``.
     """
     canonical: list[str] = []
     buzz_duration: str | None = None
+    grace_instrument: str | None = None
     for raw in raw_modifiers:
         if _is_buzz_token(raw):
             _, dur = _split_buzz_modifier(raw)
             buzz_duration = dur
             if "buzz" not in canonical:
                 canonical.append("buzz")
+        elif _is_grace_token(raw):
+            name, raw_inst = _split_grace_modifier(raw)
+            if raw_inst is not None:
+                normalised = _normalize_instrument(raw_inst)
+                if grace_instrument is not None and grace_instrument != normalised:
+                    raise ValueError(
+                        f"conflicting grace instruments: "
+                        f"{grace_instrument!r} and {normalised!r}"
+                    )
+                grace_instrument = normalised
+            if name not in canonical:
+                canonical.append(name)
         else:
             canonical.append(_normalize_modifier(raw))
-    return canonical, buzz_duration
+    return canonical, buzz_duration, grace_instrument

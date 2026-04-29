@@ -281,8 +281,14 @@ def _add_notes(parent: Element, events: list[Event], bar_divs: int) -> None:
 
 
 def _append_grace_notes(parent: Element, ev: Event) -> None:
-    """Emit grace notes for a flam (1) or drag (2) modifier before the chord."""
-    disp = _DISPLAY.get(ev.instrument)
+    """Emit grace notes for a flam (1) or drag (2) modifier before the chord.
+
+    With cross-instrument flam/drag (``ev.grace_instrument`` set), the grace
+    notes use the named instrument's display info; otherwise they share the
+    main hit's notehead/staff position.
+    """
+    grace_inst = getattr(ev, "grace_instrument", None) or ev.instrument
+    disp = _DISPLAY.get(grace_inst)
     if disp is None:
         return
 

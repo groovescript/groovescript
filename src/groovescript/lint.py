@@ -318,6 +318,8 @@ def _check_bar_hands(events: list, bar_context: str) -> list[StyleWarning]:
 
     A flam uses both hands by itself, so a flam plus any other hand instrument is flagged.
     Without a flam, more than 2 simultaneous hand instruments are flagged.
+    Cross-instrument flams (``flam:<inst>``) still count as one two-handed
+    event — the grace and main occupy both hands across two instruments.
     """
     from .compiler import _HAND_INSTRUMENTS
 
@@ -332,7 +334,16 @@ def _check_bar_hands(events: list, bar_context: str) -> list[StyleWarning]:
         flam_instruments = [e.instrument for e in flam_events]
         if flam_instruments and len(instruments) >= 2:
             names = ", ".join(instruments)
-            flam_names = ", ".join(flam_instruments)
+            # Describe each flam with its grace target when cross-instrument,
+            # so the warning makes clear which two drums the ornament occupies.
+            flam_descs = []
+            for fe in flam_events:
+                grace = getattr(fe, "grace_instrument", None)
+                if grace is not None and grace != fe.instrument:
+                    flam_descs.append(f"{fe.instrument} (grace on {grace})")
+                else:
+                    flam_descs.append(fe.instrument)
+            flam_names = ", ".join(flam_descs)
             # Prefer the flam's source line: that's the "one hit too many"
             # that typically triggers the conflict.
             line = next(

@@ -39,7 +39,7 @@ from .ast_nodes import (
     VariationDef,
 )
 from .parser_notation import (
-    _extract_buzz_duration,
+    _extract_modifier_args,
     _format_count_notes_mismatch,
     _normalize_beat_label,
     _normalize_instrument,
@@ -420,10 +420,12 @@ class _GrooveScriptTransformer(Transformer):
         for instr_hit in instr_hits:
             modifiers = getattr(instr_hit, "modifiers", [])
             buzz_dur = getattr(instr_hit, "buzz_duration", None)
+            grace_inst = getattr(instr_hit, "grace_instrument", None)
             b = BeatHit(
                 beat_label,
                 modifiers if modifiers else None,
                 buzz_duration=buzz_dur,
+                grace_instrument=grace_inst,
             )
             result.append(
                 PatternLine(
@@ -538,8 +540,12 @@ class _GrooveScriptTransformer(Transformer):
         for beat_hit in value:
             modifiers = getattr(beat_hit, "modifiers", [])
             buzz_dur = getattr(beat_hit, "buzz_duration", None)
+            grace_inst = getattr(beat_hit, "grace_instrument", None)
             inst_hit = InstrumentHit(
-                instrument, modifiers if modifiers else None, buzz_duration=buzz_dur
+                instrument,
+                modifiers if modifiers else None,
+                buzz_duration=buzz_dur,
+                grace_instrument=grace_inst,
             )
             result.append(FillLine(beat=str(beat_hit), instruments=[inst_hit]))
         return result
@@ -547,9 +553,12 @@ class _GrooveScriptTransformer(Transformer):
     def fill_instrument_hit(self, items):
         instrument = _normalize_instrument(str(items[0]))
         raw_mods = [str(m) for m in items[1:]]
-        modifiers, buzz_dur = _extract_buzz_duration(raw_mods)
+        modifiers, buzz_dur, grace_inst = _extract_modifier_args(raw_mods)
         return InstrumentHit(
-            instrument, modifiers if modifiers else None, buzz_duration=buzz_dur
+            instrument,
+            modifiers if modifiers else None,
+            buzz_duration=buzz_dur,
+            grace_instrument=grace_inst,
         )
 
     def fill_instruments(self, items):
@@ -1111,19 +1120,19 @@ class _GrooveScriptTransformer(Transformer):
         # items: [INSTRUMENT, *MODIFIER tokens]
         instrument = _normalize_instrument(str(items[0]))
         raw_mods = [str(m) for m in items[1:]]
-        modifiers, buzz_dur = _extract_buzz_duration(raw_mods)
-        return (instrument, modifiers, buzz_dur)
+        modifiers, buzz_dur, grace_inst = _extract_modifier_args(raw_mods)
+        return (instrument, modifiers, buzz_dur, grace_inst)
 
     def replace_instr_spec(self, items):
         # items: [INSTRUMENT, *MODIFIER tokens]
         instrument = _normalize_instrument(str(items[0]))
         raw_mods = [str(m) for m in items[1:]]
-        modifiers, buzz_dur = _extract_buzz_duration(raw_mods)
-        return (instrument, modifiers, buzz_dur)
+        modifiers, buzz_dur, grace_inst = _extract_modifier_args(raw_mods)
+        return (instrument, modifiers, buzz_dur, grace_inst)
 
     @v_args(meta=True)
     def add_action(self, meta, items):
-        # items: [(instrument, modifiers, buzz_duration)+, pattern_value]
+        # items: [(instrument, modifiers, buzz_duration, grace_instrument)+, pattern_value]
         beats = items[-1]
         specs = items[:-1]
         source_line = _meta_line(meta)
@@ -1134,9 +1143,10 @@ class _GrooveScriptTransformer(Transformer):
                 beats=beats,
                 modifiers=list(modifiers),
                 buzz_duration=buzz_duration,
+                grace_instrument=grace_instrument,
                 line=source_line,
             )
-            for instrument, modifiers, buzz_duration in specs
+            for instrument, modifiers, buzz_duration, grace_instrument in specs
         ]
 
     @v_args(meta=True)
@@ -1154,11 +1164,11 @@ class _GrooveScriptTransformer(Transformer):
 
     @v_args(meta=True)
     def replace_action(self, meta, items):
-        # items: [INSTRUMENT+ (from), (INSTRUMENT, modifiers, buzz_duration)+ (to), pattern_value]
+        # items: [INSTRUMENT+ (from), (INSTRUMENT, modifiers, buzz_duration, grace_instrument)+ (to), pattern_value]
         beats = items[-1]
         middle = items[:-1]
         sources: list[str] = []
-        targets: list[tuple[str, list[str], str | None]] = []
+        targets: list[tuple[str, list[str], str | None, str | None]] = []
         for item in middle:
             if isinstance(item, tuple):
                 targets.append(item)
@@ -1178,9 +1188,10 @@ class _GrooveScriptTransformer(Transformer):
                 beats=beats,
                 modifiers=list(target_mods),
                 buzz_duration=target_buzz,
+                grace_instrument=target_grace,
                 line=source_line,
             )
-            for source, (target, target_mods, target_buzz) in zip(sources, targets)
+            for source, (target, target_mods, target_buzz, target_grace) in zip(sources, targets)
         ]
 
     @v_args(meta=True)
@@ -1200,13 +1211,14 @@ class _GrooveScriptTransformer(Transformer):
         beats = items[-1]
         instrument = _normalize_instrument(str(items[-2]))
         raw_mods = [str(m) for m in items[:-2]]
-        modifiers, buzz_dur = _extract_buzz_duration(raw_mods)
+        modifiers, buzz_dur, grace_inst = _extract_modifier_args(raw_mods)
         return VariationAction(
             action="modify_add",
             instrument=instrument,
             beats=beats,
             modifiers=list(modifiers),
             buzz_duration=buzz_dur,
+            grace_instrument=grace_inst,
             line=_meta_line(meta),
         )
 
@@ -1216,13 +1228,14 @@ class _GrooveScriptTransformer(Transformer):
         beats = items[-1]
         instrument = _normalize_instrument(str(items[-2]))
         raw_mods = [str(m) for m in items[:-2]]
-        modifiers, buzz_dur = _extract_buzz_duration(raw_mods)
+        modifiers, buzz_dur, grace_inst = _extract_modifier_args(raw_mods)
         return VariationAction(
             action="modify_remove",
             instrument=instrument,
             beats=beats,
             modifiers=list(modifiers),
             buzz_duration=buzz_dur,
+            grace_instrument=grace_inst,
             line=_meta_line(meta),
         )
 
@@ -1260,8 +1273,13 @@ class _GrooveScriptTransformer(Transformer):
     def beat(self, items):
         label = _normalize_beat_label(str(items[0]))
         raw_mods = [str(m) for m in items[1:]]
-        modifiers, buzz_dur = _extract_buzz_duration(raw_mods)
-        return BeatHit(label, modifiers if modifiers else None, buzz_duration=buzz_dur)
+        modifiers, buzz_dur, grace_inst = _extract_modifier_args(raw_mods)
+        return BeatHit(
+            label,
+            modifiers if modifiers else None,
+            buzz_duration=buzz_dur,
+            grace_instrument=grace_inst,
+        )
 
     @staticmethod
     def _merge_metadata(target: Metadata, incoming: Metadata) -> None:

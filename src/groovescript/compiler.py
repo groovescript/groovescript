@@ -70,6 +70,11 @@ class Event:
     modifiers: list[str] = field(default_factory=list)
     duration: Fraction | None = None
     buzz_duration: str | None = None  # original duration string for LilyPond emission (e.g. "4", "2d")
+    # Grace-stroke instrument for ``flam`` / ``drag`` modifiers. ``None``
+    # means same-instrument flam/drag — the grace plays on
+    # ``self.instrument``. When set, the grace plays on the named
+    # instrument while the main hit lands on ``self.instrument``.
+    grace_instrument: str | None = None
     # True when this buzz event ties into a continuation in the next bar.
     # Set by ``_split_cross_bar_buzz_events`` after arrangement is complete;
     # the LilyPond emitter renders a ``~`` after the buzz token so the
@@ -309,6 +314,37 @@ def _validate_buzz_event(
         )
 
 
+def _validate_grace_uniqueness(events: list[Event], context: str) -> None:
+    """Reject more than one ``flam``/``drag`` event sharing a beat position.
+
+    A flam or drag is a two-handed event (grace stroke on one hand, main on
+    the other). Two such ornaments at the same beat position would require a
+    third hand. The check is per (bar, beat_position): foot-played and
+    non-ornament events at the same position are unaffected.
+    """
+    by_position: dict[Fraction, list[Event]] = defaultdict(list)
+    for ev in events:
+        if "flam" in ev.modifiers or "drag" in ev.modifiers:
+            by_position[ev.beat_position].append(ev)
+    for pos, group in by_position.items():
+        if len(group) <= 1:
+            continue
+        instruments = ", ".join(sorted(e.instrument for e in group))
+        ornament = "flam" if any("flam" in e.modifiers for e in group) else "drag"
+        # Pin diagnostics to the second offending event so the source line
+        # points at the addition that introduced the conflict.
+        culprit = next((e for e in group if e.source_line is not None), group[0])
+        raise GrooveScriptError(
+            message=(
+                f"more than one {ornament}/drag at beat position {pos} in "
+                f"{context} ({instruments}): a flam or drag uses both hands, "
+                f"so only one may sound at a given beat — use {ornament}:<inst> "
+                f"to consolidate the grace if you meant a single ornament"
+            ),
+            line=culprit.source_line,
+        )
+
+
 def _validate_buzz_overlap(events: list[Event], context: str) -> None:
     """Reject hand-played events that overlap a snare buzz span.
 
@@ -400,15 +436,35 @@ def _validate_flam_instrument(
     modifiers: list[str],
     context: str,
     source_line: int | None = None,
+    grace_instrument: str | None = None,
 ) -> None:
-    """Raise ValueError if 'flam' is used on an instrument that doesn't support it."""
-    if "flam" not in modifiers:
+    """Validate flam/drag instrument constraints.
+
+    A ``flam``/``drag`` modifier requires a grace-capable instrument to carry
+    the grace stroke(s). With same-instrument flam/drag (``grace_instrument is
+    None``), the main hit's instrument must be in ``_FLAM_INSTRUMENTS``. With
+    cross-instrument flam/drag, the grace instrument must be in
+    ``_FLAM_INSTRUMENTS`` and the main hit's instrument is unrestricted.
+    """
+    if "flam" not in modifiers and "drag" not in modifiers:
+        return
+    ornament = "flam" if "flam" in modifiers else "drag"
+    if grace_instrument is not None:
+        if grace_instrument not in _FLAM_INSTRUMENTS:
+            raise GrooveScriptError(
+                message=(
+                    f"{ornament!r} grace instrument must be a snare or tom "
+                    f"(SN, FT, HT, MT) — got {grace_instrument!r} in {context}"
+                ),
+                line=source_line,
+            )
         return
     if instrument not in _FLAM_INSTRUMENTS:
         raise GrooveScriptError(
             message=(
-                f"'flam' modifier is only supported on snare and toms "
-                f"(SN, FT, HT, MT) — got {instrument!r} in {context}"
+                f"{ornament!r} modifier is only supported on snare and toms "
+                f"(SN, FT, HT, MT) — got {instrument!r} in {context}; use "
+                f"{ornament}:<inst> to set the grace instrument explicitly"
             ),
             line=source_line,
         )
@@ -637,10 +693,11 @@ def _expand_pattern_line(
         position = _beat_label_to_fraction(str(b), subdivision, beats_per_bar)
         mods = getattr(b, "modifiers", [])
         buzz_dur_str = getattr(b, "buzz_duration", None)
+        grace_inst = getattr(b, "grace_instrument", None)
         if mods:
             _validate_double_modifier(mods, subdivision, f"instrument {line.instrument!r} at beat {b!r}", source_line=line.line)
             _validate_buzz_modifier_compat(mods, f"instrument {line.instrument!r} at beat {b!r}", source_line=line.line)
-            _validate_flam_instrument(line.instrument, mods, f"instrument {line.instrument!r} at beat {b!r}", source_line=line.line)
+            _validate_flam_instrument(line.instrument, mods, f"instrument {line.instrument!r} at beat {b!r}", source_line=line.line, grace_instrument=grace_inst)
         duration: Fraction | None = None
         if "buzz" in (mods or []):
             duration = _buzz_span(buzz_dur_str or "4", beats_per_bar, beat_unit)
@@ -652,6 +709,7 @@ def _expand_pattern_line(
                 modifiers=list(mods),
                 duration=duration,
                 buzz_duration=buzz_dur_str if duration is not None else None,
+                grace_instrument=grace_inst,
                 source_line=line.line,
             )
         )
@@ -789,6 +847,7 @@ def compile_groove(
     for bar_number in range(1, len(bars) + 1):
         bar_events = [e for e in events if e.bar == bar_number]
         _validate_buzz_overlap(bar_events, f"groove {groove.name!r} bar {bar_number}")
+        _validate_grace_uniqueness(bar_events, f"groove {groove.name!r} bar {bar_number}")
 
     events.sort(key=lambda e: (e.bar, e.beat_position))
 
@@ -884,10 +943,11 @@ def compile_fill_bar(fill_bar: FillBar, beats_per_bar: int = 4, beat_unit: int =
         for inst_hit in line.instruments:
             mods = getattr(inst_hit, "modifiers", [])
             buzz_dur_str = getattr(inst_hit, "buzz_duration", None)
+            grace_inst = getattr(inst_hit, "grace_instrument", None)
             if mods:
                 _validate_double_modifier(mods, subdivision, f"fill at beat {line.beat!r}")
                 _validate_buzz_modifier_compat(mods, f"fill at beat {line.beat!r}")
-                _validate_flam_instrument(str(inst_hit), mods, f"fill at beat {line.beat!r}")
+                _validate_flam_instrument(str(inst_hit), mods, f"fill at beat {line.beat!r}", grace_instrument=grace_inst)
             duration: Fraction | None = None
             if "buzz" in (mods or []):
                 duration = _buzz_span(buzz_dur_str or "4", beats_per_bar, beat_unit)
@@ -899,6 +959,7 @@ def compile_fill_bar(fill_bar: FillBar, beats_per_bar: int = 4, beat_unit: int =
                     modifiers=list(mods),
                     duration=duration,
                     buzz_duration=buzz_dur_str if duration is not None else None,
+                    grace_instrument=grace_inst,
                 )
             )
     # Expand star-spec pattern lines (e.g. BD: *8 except 4&).
@@ -935,6 +996,7 @@ def _apply_fill_overlay(
             modifiers=list(fe.modifiers),
             duration=fe.duration,
             buzz_duration=fe.buzz_duration,
+            grace_instrument=fe.grace_instrument,
             source_line=fe.source_line,
         )
         for fe in fill_bar.events
@@ -1029,12 +1091,22 @@ def _apply_variation_actions(
                 position = _beat_label_to_fraction(label, subdivision, beats_per_bar)
                 for hit in hits:
                     mods = getattr(hit, "modifiers", []) or []
+                    grace_inst = getattr(hit, "grace_instrument", None)
+                    if mods:
+                        _validate_flam_instrument(
+                            str(hit),
+                            mods,
+                            f"variation substitute at beat {label!r}",
+                            source_line=action.line,
+                            grace_instrument=grace_inst,
+                        )
                     result.append(
                         Event(
                             bar=absolute_bar,
                             beat_position=position,
                             instrument=str(hit),
                             modifiers=list(mods),
+                            grace_instrument=grace_inst,
                             source_line=action.line,
                         )
                     )
@@ -1056,7 +1128,7 @@ def _apply_variation_actions(
             if action.modifiers:
                 _validate_double_modifier(action.modifiers, subdivision, f"variation add {action.instrument!r}", source_line=action.line)
                 _validate_buzz_modifier_compat(action.modifiers, f"variation add {action.instrument!r}", source_line=action.line)
-                _validate_flam_instrument(action.instrument, action.modifiers, f"variation add {action.instrument!r}", source_line=action.line)
+                _validate_flam_instrument(action.instrument, action.modifiers, f"variation add {action.instrument!r}", source_line=action.line, grace_instrument=action.grace_instrument)
                 if "double" in action.modifiers:
                     _validate_double_subdivision(subdivision, beats_per_bar, f"variation add {action.instrument!r}", source_line=action.line)
             duration: Fraction | None = None
@@ -1082,6 +1154,7 @@ def _apply_variation_actions(
                         modifiers=list(action.modifiers),
                         duration=duration,
                         buzz_duration=action.buzz_duration if duration is not None else None,
+                        grace_instrument=action.grace_instrument,
                         source_line=action.line,
                     )
                 )
@@ -1089,7 +1162,7 @@ def _apply_variation_actions(
             if action.modifiers:
                 _validate_double_modifier(action.modifiers, subdivision, f"variation replace → {action.target_instrument!r}", source_line=action.line)
                 _validate_buzz_modifier_compat(action.modifiers, f"variation replace → {action.target_instrument!r}", source_line=action.line)
-                _validate_flam_instrument(action.target_instrument, action.modifiers, f"variation replace → {action.target_instrument!r}", source_line=action.line)
+                _validate_flam_instrument(action.target_instrument, action.modifiers, f"variation replace → {action.target_instrument!r}", source_line=action.line, grace_instrument=action.grace_instrument)
                 if "double" in action.modifiers:
                     _validate_double_subdivision(subdivision, beats_per_bar, f"variation replace → {action.target_instrument!r}", source_line=action.line)
             result = [
@@ -1120,6 +1193,7 @@ def _apply_variation_actions(
                         modifiers=list(action.modifiers),
                         duration=duration,
                         buzz_duration=action.buzz_duration if duration is not None else None,
+                        grace_instrument=action.grace_instrument,
                         source_line=action.line,
                     )
                 )
@@ -1131,12 +1205,28 @@ def _apply_variation_actions(
                     continue
                 if event.instrument != action.instrument:
                     continue
-                _validate_flam_instrument(event.instrument, action.modifiers, f"variation modify add at beat {event.beat_position}", source_line=action.line)
+                # Resolve the effective grace instrument: explicit on the
+                # action wins; otherwise inherit whatever the event already
+                # carried.
+                effective_grace = (
+                    action.grace_instrument
+                    if action.grace_instrument is not None
+                    else event.grace_instrument
+                )
+                _validate_flam_instrument(
+                    event.instrument,
+                    action.modifiers,
+                    f"variation modify add at beat {event.beat_position}",
+                    source_line=action.line,
+                    grace_instrument=effective_grace,
+                )
                 added_any = False
                 for mod in action.modifiers:
                     if mod not in event.modifiers:
                         event.modifiers.append(mod)
                         added_any = True
+                if action.grace_instrument is not None:
+                    event.grace_instrument = action.grace_instrument
                 if "buzz" in action.modifiers and action.buzz_duration is not None:
                     event.buzz_duration = action.buzz_duration
                     event.duration = _buzz_span(action.buzz_duration, beats_per_bar, beat_unit)
@@ -1161,6 +1251,10 @@ def _apply_variation_actions(
                     if mod == "buzz":
                         event.buzz_duration = None
                         event.duration = None
+                    if mod in ("flam", "drag"):
+                        # Removing the ornament also clears any cross-inst
+                        # grace target so we don't leave dangling state.
+                        event.grace_instrument = None
 
     result.sort(key=lambda e: e.beat_position)
     return result
@@ -1216,7 +1310,12 @@ def _apply_crash_in(events: list[Event], absolute_bar: int) -> list[Event]:
         if rider is not None and rider != "CR":
             for i, event in enumerate(result):
                 if event.instrument == rider and event.beat_position == Fraction(0):
-                    kept_modifiers = [m for m in event.modifiers if m != "ghost"]
+                    # Strip ornaments that don't belong on the new crash:
+                    # ``ghost`` (a crash is never ghosted), and ``flam``/``drag``
+                    # which require a snare/tom main or an explicit grace inst.
+                    kept_modifiers = [
+                        m for m in event.modifiers if m not in ("ghost", "flam", "drag")
+                    ]
                     result[i] = Event(
                         bar=event.bar,
                         beat_position=Fraction(0),
@@ -2056,6 +2155,7 @@ def compile_song(song: Song) -> IRSong:
                     modifiers=list(event.modifiers),
                     duration=event.duration,
                     buzz_duration=event.buzz_duration,
+                    grace_instrument=event.grace_instrument,
                     source_line=event.source_line,
                 )
                 for event in template_events
@@ -2094,6 +2194,7 @@ def compile_song(song: Song) -> IRSong:
             for event in arranged_events:
                 _validate_buzz_event(event, bpb, context)
             _validate_buzz_overlap(arranged_events, context)
+            _validate_grace_uniqueness(arranged_events, context)
 
             new_bars.append(
                 IRBar(
@@ -2217,6 +2318,7 @@ def compile_song(song: Song) -> IRSong:
                     modifiers=list(event.modifiers),
                     duration=event.duration,
                     buzz_duration=event.buzz_duration,
+                    grace_instrument=event.grace_instrument,
                     source_line=event.source_line,
                 )
                 for event in template_events
@@ -2258,6 +2360,7 @@ def compile_song(song: Song) -> IRSong:
             for event in arranged_events:
                 _validate_buzz_event(event, bpb, context)
             _validate_buzz_overlap(arranged_events, context)
+            _validate_grace_uniqueness(arranged_events, context)
 
             new_bars.append(
                 IRBar(
