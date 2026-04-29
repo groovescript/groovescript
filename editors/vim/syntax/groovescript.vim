@@ -55,7 +55,7 @@ syn match gsBodyKeyword "\<no\s\+crash\s\+in\>"
 " -- Placement keywords (used in fill/cue/variation/placeholder lines) ------
 " `fill "..." at bar N beat X`, `cue "..." at bar N`, `variation at bar N:`,
 " `fill placeholder at bar N`.
-syn keyword gsPlacement at bar bars beat placeholder rest from to except
+syn keyword gsPlacement at bar bars beat placeholder rest multirest from to except
 
 " -- Variation action keywords ----------------------------------------------
 " `add BD at 1`, `remove HH at *`, `replace SN with SN accent at 2`,

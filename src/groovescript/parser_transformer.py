@@ -30,6 +30,7 @@ from .ast_nodes import (
     PatternLine,
     PlayBar,
     PlayGroove,
+    PlayMultirest,
     PlayRest,
     Section,
     Song,
@@ -802,6 +803,9 @@ class _GrooveScriptTransformer(Transformer):
     def play_rest(self, items):
         repeat = items[0] if items else 1
         return PlayRest(repeat=repeat)
+
+    def play_multirest(self, items):
+        return PlayMultirest(repeat=items[0])
 
     def repeat_count(self, items):
         value = int(items[0])

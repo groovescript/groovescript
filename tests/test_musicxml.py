@@ -418,6 +418,33 @@ section "verse":
     assert len(rest_measures) > 0
 
 
+def test_multirest_emits_multiple_rest_attribute():
+    """``multirest xN`` puts a ``<measure-style><multiple-rest>N</multiple-rest>``
+    on the first bar of the span; the remaining N-1 bars are plain whole-rests."""
+    src = """\
+title: "T"
+tempo: 120
+time_signature: 4/4
+
+section "tacet":
+  play:
+    multirest x16
+"""
+    song = parse(src)
+    ir = compile_song(song)
+    root = _parse_xml(emit_musicxml(ir))
+    measures = _measures(root)
+    assert len(measures) == 16  # 16 bars present so playback length matches
+    # First measure carries the <multiple-rest> attribute
+    mr = measures[0].find(".//measure-style/multiple-rest")
+    assert mr is not None
+    assert mr.text == "16"
+    # The rest of the span are plain whole-rest measures with no multiple-rest
+    for m in measures[1:]:
+        assert m.find(".//multiple-rest") is None
+        assert m.find(".//rest[@measure='yes']") is not None
+
+
 # ---------------------------------------------------------------------------
 # XML structure checks
 # ---------------------------------------------------------------------------

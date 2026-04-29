@@ -357,7 +357,17 @@ class PlayRest:
     repeat: int = 1
 
 
-PlayItem = PlayGroove | PlayBar | PlayRest
+@dataclass
+class PlayMultirest:
+    """A multi-bar rest spanning ``repeat`` bars, rendered as a single
+    measure with the bar count displayed above (the conventional notation
+    for "tacet N bars"). Distinct from :class:`PlayRest`, which produces
+    ``repeat`` visible whole-bar rests."""
+
+    repeat: int
+
+
+PlayItem = PlayGroove | PlayBar | PlayRest | PlayMultirest
 
 
 @dataclass

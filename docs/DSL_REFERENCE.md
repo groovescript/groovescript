@@ -45,6 +45,7 @@ the language, start with [`GETTING_STARTED.md`](GETTING_STARTED.md) or
 - [Section](#section)
   - [Single-groove form](#single-groove-form)
   - [Section arrangement (`play:`)](#section-arrangement-play)
+  - [Multirest (`multirest xN`)](#multirest)
   - [`like` inheritance](#like-inheritance)
   - [Per-section meter](#per-section-meter)
   - [`crash in` — start a section on a crash](#crash-in)
@@ -1068,6 +1069,7 @@ Items allowed inside `play:`:
 | `bar "name" [xN]:` *(with indented body)*  | Inline definition of a one-off bar, registered under `name` within this section, played N times. |
 | `bar "name" [xN]`  *(no body)*             | Reference to a previously-defined bar in this section, played N times. |
 | `rest [xN]`                                | N bars of whole-bar silence. Rendered as a full-bar rest (`R1` in 4/4). |
+| `multirest xN`                             | An N-bar multi-measure rest, rendered as a single visual measure with `N` displayed above (the standard "tacet N bars" notation). MIDI/MusicXML still play back N silent bars. The count `xN` is required. See [Multirest](#multirest). |
 
 Inline nameless grooves under `play:` are handy for one-off sections
 where defining a named `groove "…":` at the top of the file would be
@@ -1106,6 +1108,34 @@ inside it. Whole-bar rests take the same grid as the surrounding meter.
 Fills and variations attach to bars by 1-based position within the
 section, exactly as in the single-groove form. A fill placed over a
 rest bar **replaces** the rest entirely.
+
+#### Multirest
+
+`multirest xN` is a multi-bar rest: N bars of silence rendered as a
+**single visual measure** with the count displayed above the staff
+— the conventional "tacet N bars" notation. Distinct from `rest xN`,
+which produces N separately-drawn whole-bar rests.
+
+```groovescript
+section "tacet":
+  play:
+    multirest x16        # one multi-rest measure with "16" above
+
+section "verse":
+  play:
+    groove "money beat" x4
+    multirest x8         # 8-bar tacet drop-out in the middle of the section
+    groove "money beat" x4
+```
+
+The `xN` count is required (there is no useful default for a
+multi-bar rest). MIDI and MusicXML export still emit the full N bars
+of silence so playback length matches the printed chart.
+
+A multirest span cannot be overlaid: fills, variations, and the
+`crash in` flag are rejected at compile time when they target a bar
+inside the span. Move them outside the multirest, or replace it with
+a regular `rest xN` if you need bar-by-bar overlays.
 
 ### `like` inheritance
 

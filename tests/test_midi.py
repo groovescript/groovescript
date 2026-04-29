@@ -565,6 +565,38 @@ section "intro":
     assert bar2_notes == []
 
 
+def test_multirest_silences_full_span_in_midi():
+    """``multirest xN`` plays back as N bars of silence — same playback
+    duration as the equivalent ``rest xN``, just rendered as a single
+    visual measure on the score."""
+    src = """\
+metadata:
+  tempo: 120
+  time_signature: 4/4
+
+groove "beat":
+  BD: 1, 3
+  SN: 2, 4
+
+section "tacet":
+  play:
+    groove "beat" x1
+    multirest x4
+    groove "beat" x1
+"""
+    ir = compile_song(parse(src))
+    data = emit_midi(ir)
+    tracks = _parse_tracks(data)
+    notes = _collect_note_on(tracks[1])
+    bar_len = _bar_ticks("4/4")
+    # No note-on events in bars 2-5 (the multirest span)
+    silent = [t for t, p, v in notes if bar_len <= t < 5 * bar_len]
+    assert silent == []
+    # Bar 6 (the trailing groove bar) plays
+    bar6 = [t for t, p, v in notes if 5 * bar_len <= t < 6 * bar_len]
+    assert bar6, "trailing groove bar should still play after the multirest"
+
+
 # ---------------------------------------------------------------------------
 # Modifier: drag (two grace notes before main hit)
 # ---------------------------------------------------------------------------

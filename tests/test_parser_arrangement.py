@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from groovescript.ast_nodes import PlayBar, PlayGroove, PlayRest
+from groovescript.ast_nodes import PlayBar, PlayGroove, PlayMultirest, PlayRest
 from groovescript.parser import parse, parse_file
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -223,6 +223,35 @@ section "s":
     item = song.sections[0].play[1]
     assert isinstance(item, PlayRest)
     assert item.repeat == 1
+
+
+def test_parse_play_multirest_item():
+    """``multirest xN`` parses into a PlayMultirest with repeat=N."""
+    src = """\
+section "tacet":
+  play:
+    multirest x16
+"""
+    song = parse(src)
+    item = song.sections[0].play[0]
+    assert isinstance(item, PlayMultirest)
+    assert item.repeat == 16
+
+
+def test_parse_play_multirest_requires_count():
+    """``multirest`` without an ``xN`` count is a parse error — there is
+    no sensible default, since the whole point is the bar count."""
+    import pytest
+
+    from groovescript.errors import GrooveScriptError
+
+    src = """\
+section "tacet":
+  play:
+    multirest
+"""
+    with pytest.raises(GrooveScriptError):
+        parse(src)
 
 
 def test_parse_play_bar_pattern_preserved():

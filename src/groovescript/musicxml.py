@@ -151,16 +151,26 @@ def _fill_part(
 
         measure = SubElement(part, "measure", number=str(bar.number))
 
-        if is_first or ts != cur_ts:
+        needs_attrs = is_first or ts != cur_ts or bar.multirest_span is not None
+        if needs_attrs:
             attrs = SubElement(measure, "attributes")
             if is_first:
                 SubElement(attrs, "divisions").text = str(_DIVS_PER_BEAT)
                 key = SubElement(attrs, "key")
                 SubElement(key, "fifths").text = "0"
-            _add_time(attrs, ts)
+            if is_first or ts != cur_ts:
+                _add_time(attrs, ts)
             if is_first:
                 clef = SubElement(attrs, "clef")
                 SubElement(clef, "sign").text = "percussion"
+            # The first bar of a multirest span carries a <measure-style>
+            # <multiple-rest>N</multiple-rest></measure-style> attribute so
+            # MusicXML readers collapse the span into a single multi-bar
+            # rest visual; the remaining N-1 bars stay as ordinary whole
+            # rests (as required by the MusicXML spec).
+            if bar.multirest_span is not None:
+                ms = SubElement(attrs, "measure-style")
+                SubElement(ms, "multiple-rest").text = str(bar.multirest_span)
 
         if is_first or bpm != cur_bpm:
             _add_tempo_direction(measure, bpm)

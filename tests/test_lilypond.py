@@ -1330,6 +1330,37 @@ def test_emit_fixture_play_block():
     assert "VERSE" in ly.upper()
 
 
+def test_emit_multirest_uses_compress_mm_rests():
+    """``multirest xN`` collapses to a single \\compressMMRests block with
+    R1*N inside, not N individual rest bars."""
+    from groovescript.parser import parse
+    src = """\
+title: "T"
+tempo: 120
+section "tacet":
+  play:
+    multirest x16
+"""
+    song = parse(src)
+    ir = compile_song(song)
+    ly = emit_lilypond(ir)
+    assert "\\compressMMRests" in ly
+    assert "R1*16" in ly
+    # And it must not also emit a \repeat volta 16 { R1 } (the plain-rest path)
+    assert "\\repeat volta 16" not in ly
+
+
+def test_emit_fixture_multirest():
+    """multirest.gs fixture compiles and emits valid LilyPond."""
+    from groovescript.parser import parse_file
+    song = parse_file(str(FIXTURES / "multirest.gs"))
+    ir = compile_song(song)
+    ly = emit_lilypond(ir)
+    assert "\\compressMMRests" in ly
+    assert "R1*16" in ly  # the tacet section
+    assert "R1*8" in ly   # the inline 8-bar multirest in verse
+
+
 def test_emit_fixture_play_inline_groove():
     """play_inline_groove.gs exercises single-bar, multi-bar, and extend: inline grooves."""
     from groovescript.parser import parse_file

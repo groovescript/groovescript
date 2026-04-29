@@ -1060,7 +1060,26 @@ def _group_bars(
             i += 1
             continue
 
-        # 2. Whole-bar rest bars (play: rest items)
+        # 2. Multi-bar rest bars (play: multirest xN). The whole span
+        # collapses to a single visual measure with the count above,
+        # using LilyPond's \compressMMRests over an R*N rest token.
+        if is_top_level and bar.is_rest and bar.multirest_span is not None:
+            ts_change_cmd = state.compute_time_signature_change(bar)
+            cur_tempo_str, tempo_change_cmd = state.compute_tempo_info(bar)
+            rest_token = _whole_bar_rest(state.current_bpb, state.current_beat_unit)
+            span = bar.multirest_span
+            # Append the *N span multiplier to the bar-rest token (e.g.
+            # ``R1`` -> ``R1*16``; ``R8*12`` -> ``R8*12*16``).
+            mm_token = f"{rest_token}*{span}"
+            mark = _section_mark(bar, tempo_str=cur_tempo_str, bar_text=bar.bar_text) if is_top_level else ""
+            measures.append(
+                f"{ts_change_cmd}{tempo_change_cmd}{mark}      "
+                f"\\compressMMRests {{ {mm_token} | }}"
+            )
+            i += span
+            continue
+
+        # 2b. Whole-bar rest bars (play: rest items)
         if is_top_level and bar.is_rest:
             ts_change_cmd = state.compute_time_signature_change(bar)
             cur_tempo_str, tempo_change_cmd = state.compute_tempo_info(bar)

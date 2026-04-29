@@ -111,7 +111,7 @@ CRASH_IN: /crash\s+in/
 NO_CRASH_IN: /no\s+crash\s+in/
 
 play_block: "play" ":" play_item+
-?play_item: play_groove | play_bar | play_rest
+?play_item: play_groove | play_bar | play_rest | play_multirest
 play_groove: "groove" ESCAPED_STRING repeat_count?                   -> play_groove_named
            | "groove" ESCAPED_STRING repeat_count? ":" groove_body   -> play_groove_named_inline
            | "groove" repeat_count? ":" groove_body                  -> play_groove_inline
@@ -119,6 +119,10 @@ play_groove: "groove" ESCAPED_STRING repeat_count?                   -> play_gro
            | "groove" "placeholder" ESCAPED_STRING repeat_count?     -> play_groove_placeholder_named
 play_bar:    "bar"    ESCAPED_STRING repeat_count? play_bar_body?
 play_rest:   "rest"                  repeat_count?
+// ``multirest xN`` renders as a single multi-bar rest measure (with N above)
+// instead of N visible rest bars. See compiler IR field ``multirest_span``
+// and the lilypond emitter for the rendering details.
+play_multirest: "multirest" repeat_count
 play_bar_body: ":" pattern_bar_item+
 repeat_count: "x" INT
 section_fill_line: "fill" ESCAPED_STRING "at" "bar" bar_number_list
