@@ -22,20 +22,28 @@ class BeatHit(str):
 
     Inherits from str so that existing code comparing beats to plain strings
     (e.g. ``beats == ["1", "3"]``) continues to work.
+
+    ``grace_instrument`` is set when the modifier list contains a parameterised
+    flam/drag (e.g. ``flam:SN`` on a hi-tom hit means the grace stroke plays
+    on snare). ``None`` means same-instrument flam/drag — the grace plays on
+    the carrying instrument.
     """
 
     modifiers: list[str]
     buzz_duration: str | None
+    grace_instrument: str | None
 
     def __new__(
         cls,
         label: str,
         modifiers: list[str] | None = None,
         buzz_duration: str | None = None,
+        grace_instrument: str | None = None,
     ):
         instance = super().__new__(cls, label)
         instance.modifiers = modifiers if modifiers is not None else []
         instance.buzz_duration = buzz_duration
+        instance.grace_instrument = grace_instrument
         return instance
 
     @property
@@ -47,20 +55,26 @@ class InstrumentHit(str):
     """An instrument name with optional modifiers.
 
     Inherits from str for the same backward-compat reason as ``BeatHit``.
+
+    ``grace_instrument`` carries the optional ``flam:<inst>`` / ``drag:<inst>``
+    target — see :class:`BeatHit` for the semantics.
     """
 
     modifiers: list[str]
     buzz_duration: str | None
+    grace_instrument: str | None
 
     def __new__(
         cls,
         instrument: str,
         modifiers: list[str] | None = None,
         buzz_duration: str | None = None,
+        grace_instrument: str | None = None,
     ):
         instance = super().__new__(cls, instrument)
         instance.modifiers = modifiers if modifiers is not None else []
         instance.buzz_duration = buzz_duration
+        instance.grace_instrument = grace_instrument
         return instance
 
     @property
@@ -261,6 +275,10 @@ class VariationAction:
     count_notes: tuple[str, str] | None = None
     # Buzz-roll duration (e.g. "4", "2d") when modifiers contains "buzz".
     buzz_duration: str | None = None
+    # Grace-stroke instrument when modifiers contains "flam" or "drag" with a
+    # parameterised form (``flam:SN`` etc.). ``None`` means same-instrument
+    # flam/drag — the grace plays on the action's main instrument.
+    grace_instrument: str | None = None
     # 1-indexed source line where this action appeared, for diagnostics.
     line: int | None = None
 

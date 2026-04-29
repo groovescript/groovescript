@@ -63,13 +63,19 @@ syn keyword gsPlacement at bar bars beat placeholder rest from to except
 syn keyword gsAction add remove replace with modify
 
 " -- Hit modifiers ----------------------------------------------------------
-syn keyword gsModifier ghost accent flam drag double
+syn keyword gsModifier ghost accent double
 " `32nd` is an alias for `double`; starts with a digit so `keyword` won't match.
 syn match   gsModifier "\<32nd\>"
 " `buzz` — snare buzz-roll modifier, optionally with a duration suffix
 " (e.g. `buzz:2`, `buzz:2d`, `buzz:16dd`). Defined as a match so the
 " `:<duration>` portion is highlighted together with the keyword.
 syn match   gsModifier "\<buzz\>\(:[1-9][0-9]\?d\{0,2}\)\?"
+" `flam` / `drag` — grace-note ornaments, optionally with a `:<instrument>`
+" suffix that names the instrument the grace stroke(s) play on
+" (e.g. `flam:SN`, `drag:HT`). Match form so the suffix highlights with the
+" keyword.
+syn match   gsModifier "\<flam\>\(:[A-Za-z-]\+\)\?"
+syn match   gsModifier "\<drag\>\(:[A-Za-z-]\+\)\?"
 
 " -- Instruments ------------------------------------------------------------
 " Canonical short names.

@@ -191,16 +191,22 @@ def _add_hit(
     vel = _velocity(ev.modifiers)
     mods = ev.modifiers
 
-    # Grace notes (flam / drag) land slightly before the main note
+    # Grace notes (flam / drag) land slightly before the main note. Default
+    # to the main note's pitch (same-instrument flam/drag); when an explicit
+    # ``grace_instrument`` is set, route the grace stroke(s) to that pitch.
+    grace_pitch = note
+    grace_inst = getattr(ev, "grace_instrument", None)
+    if grace_inst is not None:
+        grace_pitch = _NOTE.get(grace_inst, note)
     if "flam" in mods:
         gt = max(0, tick - _GRACE_TICKS)
-        out.append((gt, _note_on(note, _VEL_GRACE)))
-        out.append((gt + _HIT_DURATION, _note_off(note)))
+        out.append((gt, _note_on(grace_pitch, _VEL_GRACE)))
+        out.append((gt + _HIT_DURATION, _note_off(grace_pitch)))
     elif "drag" in mods:
         for offset in (2, 1):
             gt = max(0, tick - offset * _GRACE_TICKS)
-            out.append((gt, _note_on(note, _VEL_GRACE)))
-            out.append((gt + _HIT_DURATION, _note_off(note)))
+            out.append((gt, _note_on(grace_pitch, _VEL_GRACE)))
+            out.append((gt + _HIT_DURATION, _note_off(grace_pitch)))
 
     # Main note
     out.append((tick, _note_on(note, vel)))

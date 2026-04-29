@@ -546,7 +546,7 @@ groove "beat":
 
 fill "f":
   count: "1 2 3 4"
-  notes: "SN accent, SN ghost, SN flam, BD drag"
+  notes: "SN accent, SN ghost, SN flam, SN drag"
 
 section "v":
   bars: 1

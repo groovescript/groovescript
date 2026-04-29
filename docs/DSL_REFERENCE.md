@@ -23,7 +23,7 @@ the language, start with [`GETTING_STARTED.md`](GETTING_STARTED.md) or
   - [`*N except` — star exclusion](#star-exclusion-n-except)
   - [Double-digit beat numbers for compound meter](#beat-labels)
 - [Modifiers](#modifiers)
-  - [`ghost`, `accent`, `flam`, `drag`](#modifiers)
+  - [`ghost`, `accent`, `flam` / `flam:<inst>`, `drag` / `drag:<inst>`](#modifiers)
   - [`double` / `32nd` (double strokes)](#modifiers)
   - [`buzz` / `buzz:N` (buzz rolls)](#buzz-rolls)
 - [Groove](#groove)
@@ -285,10 +285,21 @@ Supported modifiers: `ghost`, `accent`, `flam`, `drag`, `double`
 
 - **`ghost`** — parenthesised notehead. Softer / unaccented hit.
 - **`accent`** — `>` above the note.
-- **`flam`** — rendered as a `\slashedGrace` grace note. Only supported on
-  snare (`SN`) and toms (`FT`, `HT`, `MT`); using it on any other
-  instrument is a compile error.
-- **`drag`** — rendered as a two-note grace cluster.
+- **`flam`** — rendered as a `\slashedGrace` grace note. By default the
+  grace plays on the same instrument as the main hit, so it is only
+  supported on the grace-capable drums: snare (`SN`) and toms (`FT`, `HT`,
+  `MT`). The parameterised form **`flam:<inst>`** (e.g. `flam:SN`) names
+  the instrument the grace stroke plays on, allowing the main hit to be on
+  any instrument: `HT: 1 flam:SN` is a hi-tom hit with a snare grace, and
+  `RD: 2 flam:SN` is a ride hit with a snare grace. The grace instrument
+  must still be `SN`/`FT`/`HT`/`MT`.
+- **`drag`** — rendered as a two-note grace cluster. Same instrument
+  restrictions as `flam`: bare `drag` requires a snare/tom main hit, and
+  the parameterised form **`drag:<inst>`** (e.g. `drag:SN`) lets any main
+  instrument carry a drag whose two grace strokes play on the named drum.
+  At most one `flam` or `drag` may sound at a given beat position — a flam
+  or drag uses both hands, so two would require a third hand and is a
+  compile error.
 - **`double`** (or **`32nd`**) — on a 16th-note hit, plays the slot as two
   equal 32nd notes (a double stroke). Only valid in bars whose inferred
   grid is 16ths (4 slots/beat) and **incompatible with `flam` and

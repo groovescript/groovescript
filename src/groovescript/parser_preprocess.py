@@ -18,6 +18,7 @@ from difflib import SequenceMatcher
 
 from .parser_notation import (
     _is_buzz_token,
+    _is_grace_token,
     _is_modifier_token,
     _normalize_modifier,
 )
@@ -129,7 +130,12 @@ def _group_list_items(rhs: str, allow_bare_suffix: bool = False) -> str:
     last_beat_digits: str | None = None
     for tok in tokens:
         if _is_modifier_token(tok):
-            norm_tok = _normalize_modifier(tok) if not _is_buzz_token(tok) else tok
+            # Preserve the raw token for buzz/flam/drag so their parameter
+            # suffix (``buzz:4``, ``flam:SN``) reaches the lexer intact.
+            if _is_buzz_token(tok) or _is_grace_token(tok):
+                norm_tok = tok
+            else:
+                norm_tok = _normalize_modifier(tok)
             if current:
                 current.append(norm_tok)
             else:

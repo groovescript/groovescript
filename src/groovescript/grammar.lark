@@ -197,7 +197,12 @@ TIME_SIGNATURE: /[0-9]+\/[0-9]+/
 // compound meters (12/8, 10/8, 11/8, 12/16, …) as well as odd meters.
 // "and" is a long-form alias for "&" (e.g. "1and" ↔ "1&")
 BEAT_LABEL: /[1-9][0-9]?(trip|let|and|[e&atl])?/ | /trip/ | /let/ | /and/
-MODIFIER: "ghost" | "accent" | "flam" | "drag" | "double" | /buzz(?::[1-9][0-9]?d{0,2})?/
+// flam / drag accept an optional ``:<instrument>`` suffix that names the
+// instrument the grace stroke(s) play on (e.g. ``flam:SN`` for a hi-tom hit
+// with a snare grace). The suffix tokenises as part of the modifier so the
+// LALR grammar still sees a single MODIFIER terminal; the transformer splits
+// off the instrument name and the compiler validates it.
+MODIFIER: "ghost" | "accent" | /flam(?::[A-Za-z-]+)?/ | /drag(?::[A-Za-z-]+)?/ | "double" | /buzz(?::[1-9][0-9]?d{0,2})?/
 // *N = "every 1/N note"; optional 't' suffix marks a triplet grid
 // (e.g. *8t = 8th-note triplets, *4t = quarter-note triplets).
 STAR_VALUE: /\*(2|4|8|16)t?/
