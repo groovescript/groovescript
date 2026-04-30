@@ -418,6 +418,59 @@ section "verse":
     assert len(rest_measures) > 0
 
 
+def test_rest_xn_emits_multiple_rest_attribute_on_first_bar():
+    """``rest xN`` for N > 1 puts a ``<measure-style><multiple-rest>N</multiple-rest>``
+    on the first bar of the span; the remaining N-1 bars are plain whole-rests."""
+    src = """\
+title: "T"
+tempo: 120
+time_signature: 4/4
+
+section "tacet":
+  play:
+    rest x16
+"""
+    song = parse(src)
+    ir = compile_song(song)
+    root = _parse_xml(emit_musicxml(ir))
+    measures = _measures(root)
+    assert len(measures) == 16  # 16 bars present so playback length matches
+    # First measure carries the <multiple-rest> attribute
+    mr = measures[0].find(".//measure-style/multiple-rest")
+    assert mr is not None
+    assert mr.text == "16"
+    # The rest of the span are plain whole-rest measures with no multiple-rest
+    for m in measures[1:]:
+        assert m.find(".//multiple-rest") is None
+        assert m.find(".//rest[@measure='yes']") is not None
+
+
+def test_lone_rest_x1_does_not_emit_multiple_rest():
+    """A single rest bar should not emit a <multiple-rest> attribute —
+    the attribute is reserved for runs of two or more."""
+    src = """\
+title: "T"
+tempo: 120
+time_signature: 4/4
+
+groove "beat":
+  SN: 2, 4
+  HH: *8
+
+section "verse":
+  play:
+    groove "beat" x2
+    rest x1
+"""
+    song = parse(src)
+    ir = compile_song(song)
+    root = _parse_xml(emit_musicxml(ir))
+    measures = _measures(root)
+    assert root.find(".//multiple-rest") is None
+    # The rest bar still emits a whole-bar rest
+    assert measures[2].find(".//rest[@measure='yes']") is not None
+
+
 # ---------------------------------------------------------------------------
 # XML structure checks
 # ---------------------------------------------------------------------------

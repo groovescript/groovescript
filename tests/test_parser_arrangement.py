@@ -225,6 +225,8 @@ section "s":
     assert item.repeat == 1
 
 
+
+
 def test_parse_play_bar_pattern_preserved():
     """A play bar body with explicit pattern lines parses into a PlayBar."""
     src = """\

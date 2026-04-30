@@ -144,23 +144,63 @@ def _fill_part(
     cur_ts = default_ts
     cur_bpm = default_bpm
 
+    # Pre-compute the multi-rest span count for each rest bar that *starts*
+    # a run of two or more consecutive rest bars. The first bar of the
+    # span emits a <measure-style><multiple-rest>N</multiple-rest>; the
+    # remaining N-1 bars are plain whole-bar rests with no attribute, as
+    # required by the MusicXML spec.
+    multirest_starts: dict[int, int] = {}
+    i = 0
+    while i < len(bars):
+        if not bars[i].is_rest:
+            i += 1
+            continue
+        # Walk forward to count the run, breaking on a non-rest bar, a
+        # section boundary, or a time-signature change (matches the
+        # LilyPond emitter so visual and structural splits agree).
+        run = 1
+        run_ts = bars[i].time_signature
+        while i + run < len(bars):
+            nb = bars[i + run]
+            if not nb.is_rest:
+                break
+            if nb.section_name is not None:
+                break
+            if (nb.time_signature or run_ts) != run_ts:
+                break
+            run += 1
+        if run > 1:
+            multirest_starts[i] = run
+        i += run
+
     for i, bar in enumerate(bars):
         ts = bar.time_signature if bar.time_signature is not None else cur_ts
         bpm = bar.tempo if bar.tempo is not None else cur_bpm
         is_first = i == 0
+        span = multirest_starts.get(i)
 
         measure = SubElement(part, "measure", number=str(bar.number))
 
-        if is_first or ts != cur_ts:
+        needs_attrs = is_first or ts != cur_ts or span is not None
+        if needs_attrs:
             attrs = SubElement(measure, "attributes")
             if is_first:
                 SubElement(attrs, "divisions").text = str(_DIVS_PER_BEAT)
                 key = SubElement(attrs, "key")
                 SubElement(key, "fifths").text = "0"
-            _add_time(attrs, ts)
+            if is_first or ts != cur_ts:
+                _add_time(attrs, ts)
             if is_first:
                 clef = SubElement(attrs, "clef")
                 SubElement(clef, "sign").text = "percussion"
+            # First bar of a multi-rest span carries a
+            # <measure-style><multiple-rest>N</multiple-rest></measure-style>
+            # attribute so MusicXML readers collapse the run into a
+            # single multi-bar rest visual; the remaining N-1 bars stay
+            # as ordinary whole-bar rests.
+            if span is not None:
+                ms = SubElement(attrs, "measure-style")
+                SubElement(ms, "multiple-rest").text = str(span)
 
         if is_first or bpm != cur_bpm:
             _add_tempo_direction(measure, bpm)

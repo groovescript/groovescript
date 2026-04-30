@@ -352,7 +352,14 @@ class PlayBar:
 
 @dataclass
 class PlayRest:
-    """One or more bars of silence inside a play: block."""
+    """One or more bars of silence inside a play: block.
+
+    A single rest bar renders as a whole-bar rest (``R1`` in 4/4); two
+    or more consecutive rest bars collapse visually into a single
+    multi-bar rest measure with the count displayed above the staff
+    (the conventional "tacet N bars" notation). Playback in MIDI and
+    MusicXML always emits ``repeat`` bars of silence regardless of the
+    visual collapse."""
 
     repeat: int = 1
 

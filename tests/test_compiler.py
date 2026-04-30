@@ -1345,6 +1345,8 @@ def test_compile_play_rest_is_empty_and_flagged():
     assert ir.bars[3].events == []
 
 
+
+
 def test_compile_play_bar_definition_events():
     bar_item = PlayBar(
         name="setup",
