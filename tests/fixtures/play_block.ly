@@ -93,6 +93,7 @@
       }
       r4 r4 r4 <bd cymc>4 |
       <bd cymc>4 r4 bd4 sn4 |
+      \once \override MultiMeasureRest.expand-limit = #1
       \compressMMRests { R1*2 | }
       <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       <bd hh>8 hh8 <sn hh>8 hh8 sn16 sn16 sn16 sn16 <bd cymc>4 |

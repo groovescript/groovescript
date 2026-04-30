@@ -1087,10 +1087,17 @@ def _group_bars(
             if num_rests > 1:
                 # Append the *N span multiplier to the bar-rest token (e.g.
                 # ``R1`` -> ``R1*16``; ``R8*12`` -> ``R8*12*16`` for 12/8).
+                # ``expand-limit = 1`` forces the H-block visual for *every*
+                # multi-bar rest. Without it, LilyPond uses a "church rest"
+                # (stacked whole-rest characters) for short counts (≤9 bars
+                # by default) and switches to the H-block only at 10+, which
+                # makes 2/4/8-bar rests look inconsistent with longer ones.
+                # Drum charts uniformly use the H-block-with-count style.
                 mm_token = f"{rest_token}*{num_rests}"
                 measures.append(
-                    f"{ts_change_cmd}{tempo_change_cmd}{mark}      "
-                    f"\\compressMMRests {{ {mm_token} | }}"
+                    f"{ts_change_cmd}{tempo_change_cmd}{mark}"
+                    f"      \\once \\override MultiMeasureRest.expand-limit = #1\n"
+                    f"      \\compressMMRests {{ {mm_token} | }}"
                 )
             else:
                 measures.append(f"{ts_change_cmd}{tempo_change_cmd}{mark}      {rest_token} |")

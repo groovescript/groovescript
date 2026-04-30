@@ -95,6 +95,7 @@
       \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
       \once \override Score.RehearsalMark.padding = #2
       \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "TACET: 16" }
+      \once \override MultiMeasureRest.expand-limit = #1
       \compressMMRests { R1*16 | }
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
@@ -103,6 +104,7 @@
       \repeat volta 4 {
         <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       }
+      \once \override MultiMeasureRest.expand-limit = #1
       \compressMMRests { R1*8 | }
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
