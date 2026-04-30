@@ -1284,7 +1284,7 @@ def test_compile_like_section_inherits_tempo():
 # Section arrangement: play: block — compiler tests
 # ---------------------------------------------------------------------------
 
-from groovescript.ast_nodes import PlayBar, PlayGroove, PlayMultirest, PlayRest
+from groovescript.ast_nodes import PlayBar, PlayGroove, PlayRest
 
 
 def _make_play_song(play_items, fills=None, variations=None, tempo=120):
@@ -1345,47 +1345,6 @@ def test_compile_play_rest_is_empty_and_flagged():
     assert ir.bars[3].events == []
 
 
-def test_compile_play_multirest_marks_first_bar_only():
-    """A ``multirest xN`` expands to N rest bars; only the first carries
-    the ``multirest_span=N`` marker so the renderer can collapse the span."""
-    song = _make_play_song([PlayGroove("money beat", 1), PlayMultirest(repeat=4)])
-    ir = compile_song(song)
-    assert len(ir.bars) == 5
-    assert ir.bars[0].is_rest is False
-    # All four multirest bars are rest bars and have empty events
-    for i in range(1, 5):
-        assert ir.bars[i].is_rest is True
-        assert ir.bars[i].events == []
-    # Only the first multirest bar carries the span marker
-    assert ir.bars[1].multirest_span == 4
-    assert ir.bars[2].multirest_span is None
-    assert ir.bars[3].multirest_span is None
-    assert ir.bars[4].multirest_span is None
-
-
-def test_compile_play_multirest_rejects_fill_inside_span():
-    """Regression test: a fill targeting a bar inside a multirest span
-    must be rejected at compile time so the visual collapse stays intact."""
-    import pytest
-
-    crash = Fill(name="crash", bars=[FillBar(label="1", lines=[FillLine("1", ["CR"])])])
-    song = Song(
-        metadata=Metadata(tempo=120),
-        grooves=[MONEY_BEAT],
-        fills=[crash],
-        sections=[
-            Section(
-                name="verse",
-                bars=None,
-                groove=None,
-                play=[PlayMultirest(repeat=8)],
-                fills=[FillPlacement(fill_name="crash", bar=4, beat=None)],
-                variations=[],
-            )
-        ],
-    )
-    with pytest.raises(ValueError, match="multirest span"):
-        compile_song(song)
 
 
 def test_compile_play_bar_definition_events():

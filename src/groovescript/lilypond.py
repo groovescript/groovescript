@@ -1060,31 +1060,17 @@ def _group_bars(
             i += 1
             continue
 
-        # 2. Multi-bar rest bars (play: multirest xN). The whole span
-        # collapses to a single visual measure with the count above,
-        # using LilyPond's \compressMMRests over an R*N rest token.
-        if is_top_level and bar.is_rest and bar.multirest_span is not None:
-            ts_change_cmd = state.compute_time_signature_change(bar)
-            cur_tempo_str, tempo_change_cmd = state.compute_tempo_info(bar)
-            rest_token = _whole_bar_rest(state.current_bpb, state.current_beat_unit)
-            span = bar.multirest_span
-            # Append the *N span multiplier to the bar-rest token (e.g.
-            # ``R1`` -> ``R1*16``; ``R8*12`` -> ``R8*12*16``).
-            mm_token = f"{rest_token}*{span}"
-            mark = _section_mark(bar, tempo_str=cur_tempo_str, bar_text=bar.bar_text) if is_top_level else ""
-            measures.append(
-                f"{ts_change_cmd}{tempo_change_cmd}{mark}      "
-                f"\\compressMMRests {{ {mm_token} | }}"
-            )
-            i += span
-            continue
-
-        # 2b. Whole-bar rest bars (play: rest items)
+        # 2. Whole-bar rest bars (play: rest items). Two or more
+        # consecutive rest bars collapse into a single multi-measure
+        # rest measure with the count displayed above the staff
+        # (``\compressMMRests { R1*N | }``); a single rest bar emits
+        # a plain ``R1 |``. Rest bars cannot have annotations, so the
+        # only span breakers are section boundaries, time-signature
+        # changes, or a non-rest bar (e.g. a fill bar mid-section).
         if is_top_level and bar.is_rest:
             ts_change_cmd = state.compute_time_signature_change(bar)
             cur_tempo_str, tempo_change_cmd = state.compute_tempo_info(bar)
             rest_token = _whole_bar_rest(state.current_bpb, state.current_beat_unit)
-            # Count consecutive rest bars to collapse into a multi-measure rest block
             num_rests = 1
             while i + num_rests < len(bars):
                 nb = bars[i + num_rests]
@@ -1097,10 +1083,15 @@ def _group_bars(
                 if (nb.time_signature or state.current_ts) != state.current_ts:
                     break
                 num_rests += 1
-            mark = _section_mark(bar, override_repeat_times=num_rests if num_rests > 1 else None, tempo_str=cur_tempo_str, bar_text=bar.bar_text) if is_top_level else ""
+            mark = _section_mark(bar, tempo_str=cur_tempo_str, bar_text=bar.bar_text) if is_top_level else ""
             if num_rests > 1:
-                forced_bar = "      \\bar \".|:\"\n" if i == 0 else ""
-                measures.append(f"{ts_change_cmd}{tempo_change_cmd}{mark}{forced_bar}      \\repeat volta {num_rests} {{\n        {rest_token} |\n      }}")
+                # Append the *N span multiplier to the bar-rest token (e.g.
+                # ``R1`` -> ``R1*16``; ``R8*12`` -> ``R8*12*16`` for 12/8).
+                mm_token = f"{rest_token}*{num_rests}"
+                measures.append(
+                    f"{ts_change_cmd}{tempo_change_cmd}{mark}      "
+                    f"\\compressMMRests {{ {mm_token} | }}"
+                )
             else:
                 measures.append(f"{ts_change_cmd}{tempo_change_cmd}{mark}      {rest_token} |")
             i += num_rests

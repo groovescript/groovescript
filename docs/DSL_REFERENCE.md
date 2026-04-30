@@ -45,7 +45,7 @@ the language, start with [`GETTING_STARTED.md`](GETTING_STARTED.md) or
 - [Section](#section)
   - [Single-groove form](#single-groove-form)
   - [Section arrangement (`play:`)](#section-arrangement-play)
-  - [Multirest (`multirest xN`)](#multirest)
+  - [Multi-bar rests (`rest xN`)](#multi-bar-rests)
   - [`like` inheritance](#like-inheritance)
   - [Per-section meter](#per-section-meter)
   - [`crash in` — start a section on a crash](#crash-in)
@@ -1068,8 +1068,7 @@ Items allowed inside `play:`:
 | `groove placeholder "label" [xN]`          | Named placeholder span N bars long, labelled `"label"`. |
 | `bar "name" [xN]:` *(with indented body)*  | Inline definition of a one-off bar, registered under `name` within this section, played N times. |
 | `bar "name" [xN]`  *(no body)*             | Reference to a previously-defined bar in this section, played N times. |
-| `rest [xN]`                                | N bars of whole-bar silence. Rendered as a full-bar rest (`R1` in 4/4). |
-| `multirest xN`                             | An N-bar multi-measure rest, rendered as a single visual measure with `N` displayed above (the standard "tacet N bars" notation). MIDI/MusicXML still play back N silent bars. The count `xN` is required. See [Multirest](#multirest). |
+| `rest [xN]`                                | N bars of whole-bar silence (default 1). A lone rest renders as a full-bar rest (`R1` in 4/4); two or more consecutive rest bars collapse into a single multi-bar rest measure with the count above the staff. See [Multi-bar rests](#multi-bar-rests). |
 
 Inline nameless grooves under `play:` are handy for one-off sections
 where defining a named `groove "…":` at the top of the file would be
@@ -1109,33 +1108,34 @@ Fills and variations attach to bars by 1-based position within the
 section, exactly as in the single-groove form. A fill placed over a
 rest bar **replaces** the rest entirely.
 
-#### Multirest
+#### Multi-bar rests
 
-`multirest xN` is a multi-bar rest: N bars of silence rendered as a
-**single visual measure** with the count displayed above the staff
-— the conventional "tacet N bars" notation. Distinct from `rest xN`,
-which produces N separately-drawn whole-bar rests.
+A `rest xN` item with N greater than 1 — or any other run of two or
+more consecutive rest bars within a section — collapses on the printed
+page into a **single multi-bar rest measure** with the count
+displayed above the staff (the conventional "tacet N bars"
+notation). A lone rest stays a plain whole-bar rest.
 
 ```groovescript
 section "tacet":
   play:
-    multirest x16        # one multi-rest measure with "16" above
+    rest x16             # one multi-bar rest measure with "16" above
 
 section "verse":
   play:
     groove "money beat" x4
-    multirest x8         # 8-bar tacet drop-out in the middle of the section
+    rest x8              # 8-bar drop-out, rendered as one multi-rest measure
     groove "money beat" x4
 ```
 
-The `xN` count is required (there is no useful default for a
-multi-bar rest). MIDI and MusicXML export still emit the full N bars
-of silence so playback length matches the printed chart.
+MIDI and MusicXML export still emit the full N bars of silence so
+playback length matches the printed chart. A fill, variation, or
+`crash in` that targets a bar inside the run breaks the visual
+collapse at that bar (the bars before and after the overlay collapse
+on their own).
 
-A multirest span cannot be overlaid: fills, variations, and the
-`crash in` flag are rejected at compile time when they target a bar
-inside the span. Move them outside the multirest, or replace it with
-a regular `rest xN` if you need bar-by-bar overlays.
+A run is also broken by a section boundary or a time-signature change
+— each side of the boundary collapses on its own.
 
 ### `like` inheritance
 

@@ -35,7 +35,7 @@ _KEYWORD_CANDIDATES: list[str] = [
     "metadata", "groove", "section", "fill", "bar", "bars", "beat", "at",
     "count", "notes", "repeat", "like", "except", "extend",
     "variation", "add", "remove", "replace", "with", "placeholder",
-    "cue", "play", "rest", "multirest", "text",
+    "cue", "play", "rest", "text",
 ]
 
 

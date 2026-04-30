@@ -1330,24 +1330,46 @@ def test_emit_fixture_play_block():
     assert "VERSE" in ly.upper()
 
 
-def test_emit_multirest_uses_compress_mm_rests():
-    """``multirest xN`` collapses to a single \\compressMMRests block with
-    R1*N inside, not N individual rest bars."""
+def test_emit_rest_xn_collapses_to_multi_measure_rest():
+    """``rest xN`` for N > 1 collapses to a single \\compressMMRests block
+    with R1*N inside, not a \\repeat volta N { R1 | } block."""
     from groovescript.parser import parse
     src = """\
 title: "T"
 tempo: 120
 section "tacet":
   play:
-    multirest x16
+    rest x16
 """
     song = parse(src)
     ir = compile_song(song)
     ly = emit_lilypond(ir)
     assert "\\compressMMRests" in ly
     assert "R1*16" in ly
-    # And it must not also emit a \repeat volta 16 { R1 } (the plain-rest path)
     assert "\\repeat volta 16" not in ly
+
+
+def test_emit_rest_x1_stays_single_whole_rest():
+    """``rest x1`` (or a lone rest bar) stays a plain ``R1 |`` — no
+    \\compressMMRests wrapper, since there's nothing to compress."""
+    from groovescript.parser import parse
+    src = """\
+title: "T"
+tempo: 120
+groove "beat":
+  BD: 1, 3
+  SN: 2, 4
+section "intro":
+  play:
+    groove "beat" x1
+    rest x1
+    groove "beat" x1
+"""
+    song = parse(src)
+    ir = compile_song(song)
+    ly = emit_lilypond(ir)
+    assert "R1 |" in ly
+    assert "\\compressMMRests" not in ly
 
 
 def test_emit_fixture_multirest():
@@ -1358,7 +1380,7 @@ def test_emit_fixture_multirest():
     ly = emit_lilypond(ir)
     assert "\\compressMMRests" in ly
     assert "R1*16" in ly  # the tacet section
-    assert "R1*8" in ly   # the inline 8-bar multirest in verse
+    assert "R1*8" in ly   # the inline 8-bar rest mid-verse
 
 
 def test_emit_fixture_play_inline_groove():

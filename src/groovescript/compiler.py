@@ -18,7 +18,6 @@ from .ast_nodes import (
     PatternLine,
     PlayBar,
     PlayGroove,
-    PlayMultirest,
     PlayRest,
     Section,
     Song,
@@ -133,12 +132,6 @@ class IRBar:
     tempo: int | None = None  # effective tempo for this bar
     time_signature: str | None = None  # effective time signature for this bar
     is_rest: bool = False  # whole-bar rest (play: rest item)
-    # Multi-bar rest marker. When non-None, this bar is the *first* of a
-    # span of N consecutive ``is_rest`` bars that should render as a single
-    # multi-measure rest measure (with N displayed above) rather than N
-    # individual rest bars. Set on the first bar of a ``play: multirest xN``
-    # span; ``None`` on the remaining N-1 bars and on plain rest bars.
-    multirest_span: int | None = None
     # Placeholder groove bar: no notes, no rests — just the empty bar with a
     # "Section groove" label on the first bar of a section that declares
     # ``bars:`` without a ``groove:``.  Used for minimal/skeleton charts.
@@ -2093,7 +2086,7 @@ def compile_song(song: Song) -> IRSong:
         # (``"Verse groove 1"``, ``"Verse groove 2"``, …) so they can be
         # told apart on the page.
         nameless_first_offsets = [
-            i for i, (_, _, _, ph, _, _, _) in enumerate(expanded)
+            i for i, (_, _, _, ph, _, _) in enumerate(expanded)
             if ph is not None and ph[0] is None and ph[1]
         ]
         display_name = full_section_name[:1].upper() + full_section_name[1:]
@@ -2110,36 +2103,8 @@ def compile_song(song: Song) -> IRSong:
         all_spans = _collect_section_dynamic_spans(section, None, fill_map, total_bars)
         dyn_starts, dyn_stops = _resolve_dynamic_spans(all_spans, total_bars, bpb)
 
-        # Validate that no fill / variation / crash-in / cue lands inside
-        # a multirest span — overlaying anything on a multi-measure rest
-        # would silently break the visual collapse, so we reject up front.
-        for offset, (_, _, _, _, _, _, span) in enumerate(expanded):
-            if span is None:
-                continue
-            for k in range(span):
-                target = offset + k
-                if target in fill_coverage:
-                    raise ValueError(
-                        f"Section {section.name!r}: fill at bar {target + 1} "
-                        f"falls inside a multirest span (bars {offset + 1}-{offset + span})"
-                    )
-                if target in variation_coverage:
-                    raise ValueError(
-                        f"Section {section.name!r}: variation at bar {target + 1} "
-                        f"falls inside a multirest span (bars {offset + 1}-{offset + span})"
-                    )
-                if (
-                    section.crash_in is not None
-                    and not section.no_crash_in
-                    and section.crash_in.applies_at(target)
-                ):
-                    raise ValueError(
-                        f"Section {section.name!r}: crash in at bar {target + 1} "
-                        f"falls inside a multirest span (bars {offset + 1}-{offset + span})"
-                    )
-
         new_bars: list[IRBar] = []
-        for section_bar_offset, (template_events, base_subdivision, is_rest, placeholder_info, phrase_position, phrase_length, multirest_span) in enumerate(expanded):
+        for section_bar_offset, (template_events, base_subdivision, is_rest, placeholder_info, phrase_position, phrase_length) in enumerate(expanded):
             absolute_bar = start_bar_number + section_bar_offset
 
             if placeholder_info is not None:
@@ -2243,7 +2208,6 @@ def compile_song(song: Song) -> IRSong:
                     tempo=effective_tempo,
                     time_signature=effective_ts,
                     is_rest=is_rest,
-                    multirest_span=multirest_span,
                     dynamic_starts=dyn_starts.get(section_bar_offset, []),
                     dynamic_stops=dyn_stops.get(section_bar_offset, []),
                     phrase_position=phrase_position,
@@ -2551,26 +2515,20 @@ def _expand_play_block(
     beat_unit: int,
     section_name: str,
     groove_defs: dict[str, "Groove"] | None = None,
-) -> list[tuple[list[Event], int, bool, tuple[str | None, bool] | None, int | None, int | None, int | None]]:
+) -> list[tuple[list[Event], int, bool, tuple[str | None, bool] | None, int | None, int | None]]:
     """Expand a play: block into a flat list of per-bar tuples.
 
     Each entry is ``(events, subdivision, is_rest, placeholder_info,
-    phrase_position, phrase_length, multirest_span)`` where
-    ``placeholder_info`` is ``None`` for regular bars or a
-    ``(label_or_None, is_first_bar_of_span)`` tuple for placeholder-groove
-    bars (label resolution for nameless placeholders is deferred to
-    :func:`_process_play_section` because numbering depends on how many
-    nameless spans the section ends up with).
+    phrase_position, phrase_length)`` where ``placeholder_info`` is ``None``
+    for regular bars or a ``(label_or_None, is_first_bar_of_span)`` tuple
+    for placeholder-groove bars (label resolution for nameless placeholders
+    is deferred to :func:`_process_play_section` because numbering depends
+    on how many nameless spans the section ends up with).
 
     ``phrase_position`` / ``phrase_length`` carry the source groove's
     natural phrase metadata so the lilypond emitter can group multi-bar
     repeats; they are ``None`` for placeholder, rest, and inline-bar bars
     (no natural phrase to align to).
-
-    ``multirest_span`` is N on the first bar of a ``multirest xN`` span
-    (and ``None`` on the remaining N-1 bars and on every other bar) so the
-    LilyPond emitter can collapse that span into a single multi-measure
-    rest measure with the count above. ``None`` for plain rest bars too.
 
     Events are bar=1-relative (caller re-stamps to absolute bar numbers).
     ``subdivision`` is the grid for that bar; for placeholder bars it is
@@ -2585,7 +2543,7 @@ def _expand_play_block(
     here auto-promotes to a named placeholder so users can reference
     grooves they haven't transcribed yet.
     """
-    result: list[tuple[list[Event], int, bool, tuple[str | None, bool] | None, int | None, int | None, int | None]] = []
+    result: list[tuple[list[Event], int, bool, tuple[str | None, bool] | None, int | None, int | None]] = []
     named_bars: dict[str, tuple[list[Event], int]] = {}  # name → (events, subdivision)
     last_groove_subdivision: int | None = None
     groove_defs = groove_defs or {}
@@ -2596,7 +2554,7 @@ def _expand_play_block(
         # same label tuple but with ``is_first=False`` so the renderer knows
         # not to re-emit the rehearsal markup.
         for i in range(repeat):
-            result.append(([], 1, False, (label, i == 0), None, None, None))
+            result.append(([], 1, False, (label, i == 0), None, None))
 
     for item in play_items:
         if isinstance(item, PlayGroove):
@@ -2626,7 +2584,7 @@ def _expand_play_block(
             for _ in range(item.repeat):
                 for bar_num in range(1, groove.bars + 1):
                     bar_sub = groove.bar_subdivisions[bar_num - 1]
-                    result.append((groove_events_by_bar[bar_num], bar_sub, False, None, bar_num, groove.bars, None))
+                    result.append((groove_events_by_bar[bar_num], bar_sub, False, None, bar_num, groove.bars))
 
         elif isinstance(item, PlayBar):
             if item.pattern is not None:
@@ -2651,20 +2609,11 @@ def _expand_play_block(
                 events, subdiv = named_bars[item.name]
 
             for _ in range(item.repeat):
-                result.append((events, subdiv, False, None, None, None, None))
+                result.append((events, subdiv, False, None, None, None))
 
         elif isinstance(item, PlayRest):
             subdiv = last_groove_subdivision if last_groove_subdivision is not None else _whole_bar_rest_subdivision(bpb)
             for _ in range(item.repeat):
-                result.append(([], subdiv, True, None, None, None, None))
-
-        elif isinstance(item, PlayMultirest):
-            subdiv = last_groove_subdivision if last_groove_subdivision is not None else _whole_bar_rest_subdivision(bpb)
-            # The multirest_span marker rides on the first bar of the span;
-            # the remaining bars look like ordinary rest bars so MIDI and
-            # MusicXML emit the right amount of silence and bar numbering
-            # stays linear across the span.
-            for i in range(item.repeat):
-                result.append(([], subdiv, True, None, None, None, item.repeat if i == 0 else None))
+                result.append(([], subdiv, True, None, None, None))
 
     return result

@@ -2,10 +2,11 @@ title: "Multirest Demo"
 tempo: 120
 time_signature: 4/4
 
-// Demonstrates the play: multirest xN item, which renders an N-bar rest
-// as a single visual multi-bar rest measure with the count above (the
-// standard "tacet N bars" notation), as opposed to ``rest xN`` which
-// produces N visible whole-bar rests.
+// Demonstrates that ``rest xN`` for N > 1 collapses to a single multi-bar
+// rest measure with the count above the staff (the standard "tacet N bars"
+// notation). MIDI/MusicXML still play back the full N bars of silence so
+// playback length matches the printed chart. A lone ``rest`` (or
+// ``rest x1``) stays a plain whole-bar rest.
 
 groove "money beat":
     BD: 1, 3
@@ -18,10 +19,10 @@ section "intro":
 
 section "tacet":
   play:
-    multirest x16
+    rest x16
 
 section "verse":
   play:
     groove "money beat" x4
-    multirest x8
+    rest x8
     groove "money beat" x4

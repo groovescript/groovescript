@@ -93,14 +93,7 @@
       }
       r4 r4 r4 <bd cymc>4 |
       <bd cymc>4 r4 bd4 sn4 |
-      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
-      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
-      \once \override Score.RehearsalMark.padding = #2
-      \once \override Score.RehearsalMark.outside-staff-priority = #1000
-      \mark \markup \italic \fontsize #-1 "Play 2x"
-      \repeat volta 2 {
-        R1 |
-      }
+      \compressMMRests { R1*2 | }
       <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       <bd hh>8 hh8 <sn hh>8 hh8 sn16 sn16 sn16 sn16 <bd cymc>4 |
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
