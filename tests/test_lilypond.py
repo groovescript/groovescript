@@ -368,6 +368,66 @@ def test_no_consolidation_unaligned():
     assert "r16" in ly
 
 
+def test_dotted_eighth_followed_by_sixteenth():
+    """Regression: a hit on a beat downbeat followed by a hit on the same
+    beat's "a" (3/16 later) should render as `8. 16`, not `8 r16 16`. The
+    e/and slot must be empty so the dotted-eighth covers it cleanly."""
+    # SN on 2 (1/4) and 2a (1/4 + 3/16 = 7/16) in a 16th-grid bar
+    events = [
+        Event(bar=1, beat_position=Fraction(1, 4), instrument="SN"),
+        Event(bar=1, beat_position=Fraction(7, 16), instrument="SN"),
+    ]
+    ly = _drum_measure(events, 16)
+    assert "sn8. sn16" in ly
+    assert "r16" not in ly
+
+
+def test_dotted_eighth_chord_stays_single_voice():
+    """Mixed cymbal/drum chords on a dotted-eighth still emit a single chord
+    token (the dot lands on the chord as a whole). Voice splitting was
+    rejected because it broke the beam between the dotted note and its
+    16th-note partner."""
+    # MT + HH on beat 2, MT alone on 2a
+    events = [
+        Event(bar=1, beat_position=Fraction(1, 4), instrument="MT"),
+        Event(bar=1, beat_position=Fraction(1, 4), instrument="HH"),
+        Event(bar=1, beat_position=Fraction(7, 16), instrument="MT"),
+    ]
+    ly = _drum_measure(events, 16)
+    assert "<tommh hh>8. tommh16" in ly
+    assert "<<" not in ly
+
+
+def test_dotted_eighth_blocked_by_intermediate_hit():
+    """If a hit lands on the e or and of the same beat, the dotted-eighth
+    consolidation must NOT kick in — fall back to per-16th emission."""
+    # SN on 2, 2e, 2a — slot 2e (5/16) blocks the dotted-eighth
+    events = [
+        Event(bar=1, beat_position=Fraction(1, 4), instrument="SN"),
+        Event(bar=1, beat_position=Fraction(5, 16), instrument="SN"),
+        Event(bar=1, beat_position=Fraction(7, 16), instrument="SN"),
+    ]
+    ly = _drum_measure(events, 16)
+    assert "sn8." not in ly
+    # Original behaviour: sn16 sn16 r16 sn16
+    assert "sn16 sn16 r16 sn16" in ly
+
+
+def test_dotted_eighth_only_on_beat_downbeats():
+    """Dotted-eighth consolidation must not span a beat boundary. A hit on
+    the "and" of beat 1 followed by a hit on the "e" of beat 2 should still
+    emit `8 r16 16`, not a dotted eighth crossing the bar's beat 1/2 line."""
+    # SN on 1and (1/8 = 2/16) and 2e (5/16)
+    events = [
+        Event(bar=1, beat_position=Fraction(1, 8), instrument="SN"),
+        Event(bar=1, beat_position=Fraction(5, 16), instrument="SN"),
+    ]
+    ly = _drum_measure(events, 16)
+    assert "sn8." not in ly
+    assert "sn8" in ly
+    assert "r16 sn16" in ly
+
+
 def test_emit_repeat_play_x_markup():
     src = """\
 groove "money beat":
