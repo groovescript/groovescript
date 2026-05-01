@@ -191,7 +191,7 @@ beat: BEAT_LABEL MODIFIER*
 // so that Python regex takes the full token (e.g. "snare" before "sn").
 // cr(?!esc) prevents the 'cr' abbreviation from consuming the first two chars
 // of the 'cresc' dynamic keyword before the lexer can match DYNAMIC_KIND.
-INSTRUMENT: /SCS|cross-stick|floortom|hightom|hitom|lowtom|midtom|openhat|hihatfoot|footchick|hihat|snare|crash|click|ride|bass|kick|open|hat|BD|bd|SN|sn|OH|oh|RD|rd|CR|cr(?!esc)|FT|ft|HH|hh|HT|ht|MT|mt|HF|hf/
+INSTRUMENT: /SCS|cross-stick|floortom|hightom|hitom|lowtom|midtom|openhat|hihatfoot|footchick|hihat|snare|crash|click|ridebell|cowbell|bell|ride|bass|kick|open|hat|BD|bd|SN|sn|OH|oh|RD|rd|RB|rb|CR|cr(?!esc)|CB|cb|FT|ft|HH|hh|HT|ht|MT|mt|HF|hf/
 TIME_SIGNATURE: /[0-9]+\/[0-9]+/
 // [e&a] = 16th suffixes; [tl] = triplet (trip/let) suffixes; beats 1-99 to cover
 // compound meters (12/8, 10/8, 11/8, 12/16, …) as well as odd meters.

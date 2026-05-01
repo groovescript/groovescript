@@ -6,10 +6,11 @@ import { tags } from './vendor/codemirror.bundle.js';
 // ── Keyword sets ──────────────────────────────────────────────────────────────
 
 const INSTRUMENTS = new Set([
-  'BD','SN','HH','OH','RD','CR','FT','HT','MT','SCS','HF',
-  'bd','sn','hh','oh','rd','cr','ft','ht','mt','hf',
+  'BD','SN','HH','OH','RD','RB','CR','CB','FT','HT','MT','SCS','HF',
+  'bd','sn','hh','oh','rd','rb','cr','cb','ft','ht','mt','hf',
   'bass','kick','snare','click','hihat','openhat','hat','open',
-  'ride','crash','lowtom','floortom','hightom','hitom','midtom',
+  'ride','crash','ridebell','bell','cowbell',
+  'lowtom','floortom','hightom','hitom','midtom',
   'hihatfoot','footchick',
   'cross-stick','hi-hat-foot','foot-chick',
 ]);

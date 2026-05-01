@@ -208,7 +208,7 @@ def test_three_simultaneous_hand_instruments_warns() -> None:
     """Regression: check_notation warns when >2 hand-played instruments share a beat position."""
     src = """\
 groove "busy":
-    1: HH, SN, OH
+    1: HH, SN, CR
     2: BD
     3: HH
     4: SN
@@ -221,7 +221,7 @@ groove "busy":
     assert "3 hand-played instruments" in w.message
     assert "HH" in w.message
     assert "SN" in w.message
-    assert "OH" in w.message
+    assert "CR" in w.message
     assert w.hint is not None
 
 
@@ -255,7 +255,7 @@ def test_check_notation_on_irsong_warns_in_arranged_bar() -> None:
     """check_notation flags simultaneous hand hits in a compiled IRSong."""
     src = """\
 groove "busy":
-    1: HH, SN, OH
+    1: HH, SN, CR
     2: BD
 
 section "verse":
@@ -276,7 +276,7 @@ def test_notation_warning_carries_source_line() -> None:
     """
     src = """\
 groove "busy":
-    1: HH, SN, OH
+    1: HH, SN, CR
     2: BD
 """
     song = parse(src)

@@ -79,11 +79,12 @@ syn match   gsModifier "\<drag\>\(:[A-Za-z-]\+\)\?"
 
 " -- Instruments ------------------------------------------------------------
 " Canonical short names.
-syn keyword gsInstrument BD SN HH OH RD CR FT HT MT SCS HF
-syn keyword gsInstrument bd sn hh oh rd cr ft ht mt hf
+syn keyword gsInstrument BD SN HH OH RD RB CR CB FT HT MT SCS HF
+syn keyword gsInstrument bd sn hh oh rd rb cr cb ft ht mt hf
 " Long-form and lowercase aliases accepted by the parser.
 syn keyword gsInstrument bass kick snare click hihat openhat hat
-                       \ open ride crash lowtom floortom hightom hitom midtom
+                       \ open ride crash ridebell bell cowbell
+                       \ lowtom floortom hightom hitom midtom
                        \ hihatfoot footchick
 " cross-stick and hi-hat-foot / foot-chick contain hyphens, so they need
 " match rules (vim `keyword` doesn't allow hyphens).
