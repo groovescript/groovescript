@@ -296,13 +296,15 @@ def main() -> None:
     )
     compile_cmd.add_argument(
         "--compact",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help=(
             "Collapse runs of identical bars into a single repeat block even "
             "when they span implicit phrase boundaries (e.g. 12 identical "
             "bars render as 'Play 12x' instead of three 'Play 4x' blocks). "
             "Section boundaries, fills, variations, cues, bar text, dynamic "
-            "spans, and time-signature changes are still respected."
+            "spans, and time-signature changes are still respected. Enabled "
+            "by default; pass --no-compact to disable."
         ),
     )
 
