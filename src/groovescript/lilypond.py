@@ -509,6 +509,24 @@ def _drum_measure_straight(
                 if match:
                     consolidated = slots_in_quarter
 
+        # Dotted-eighth (8.) consolidation: 3 sixteenth slots starting on a
+        # beat downbeat. Lets "2 2a" render as `8. 16` instead of `8 r16 16`.
+        # Restricted to beat downbeats so the dotted note never spans a beat
+        # boundary, and to 16th subdivision so the dot maps cleanly to slots.
+        if (
+            consolidated == 1
+            and slots_in_quarter == 4
+            and slots_in_eighth == 2
+            and i % slots_in_quarter == 0
+            and i + 3 <= subdivision
+        ):
+            blocked = any(
+                (i + j in doubled_slots) or (i + j in buzz_span_slots) or (i + j in buzz_start_map)
+                for j in range(1, 3)
+            )
+            if not blocked and not pos_map.get(Fraction(i + 1, subdivision)) and not pos_map.get(Fraction(i + 2, subdivision)):
+                consolidated = 3
+
         if consolidated == 1 and i % slots_in_eighth == 0 and i + slots_in_eighth <= subdivision:
             blocked = any(
                 (i + j in doubled_slots) or (i + j in buzz_span_slots) or (i + j in buzz_start_map)
@@ -523,7 +541,11 @@ def _drum_measure_straight(
                 if match:
                     consolidated = slots_in_eighth
 
-        duration = str(beat_unit * subdivision // (consolidated * beats_per_bar))
+        if consolidated == 3:
+            # Dotted eighth: undotted-eighth duration with a "." suffix.
+            duration = f"{beat_unit * subdivision // (2 * beats_per_bar)}."
+        else:
+            duration = str(beat_unit * subdivision // (consolidated * beats_per_bar))
         token = _format_hits(hits, duration)
         token = _attach_position_markup(token, pos, cue_map, placeholder_map, dynamic_start_map, dynamic_stop_set)
         tokens.append(token)
