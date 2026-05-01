@@ -225,8 +225,10 @@ the output.
 | `HH`      | `hh`      | `hat`, `hihat`, `hi-hat`     | closed hi-hat     |
 | `OH`      | `oh`      | `open`, `openhat`            | open hi-hat       |
 | `HF`      | `hf`      | `hihatfoot`, `footchick`     | hi-hat foot chick |
-| `RD`      | `rd`      | `ride`                       | ride              |
+| `RD`      | `rd`      | `ride`                       | ride (bow)        |
+| `RB`      | `rb`      | `ridebell`, `bell`           | ride bell         |
 | `CR`      | `cr`      | `crash`                      | crash             |
+| `CB`      | `cb`      | `cowbell`                    | cowbell           |
 | `FT`      | `ft`      | `floortom`, `lowtom`         | floor tom         |
 | `HT`      | `ht`      | `hightom`, `hitom`           | high tom          |
 | `MT`      | `mt`      | `midtom`                     | mid tom           |
@@ -234,9 +236,26 @@ the output.
 `HF` is the hi-hat "chick" — closing the hi-hat with the foot, no stick
 hit — and renders on the LilyPond `hhp` (hi-hat pedal) staff position.
 
+`RB` is the bell (cup) of the ride cymbal — rendered as a hollow
+diamond notehead on the ride line. `CB` is cowbell — rendered as a
+triangle notehead one position above the hi-hat. The `bell` alias is
+reserved for ride bell; cowbell is `cb` or `cowbell`.
+
 **`BD` and `HF` are foot-played; everything else is hand-played.** This
 classification matters for buzz-roll overlap rules — see [Buzz
 rolls](#buzz-rolls).
+
+### Mutually exclusive instruments
+
+Two instrument abbreviations refer to the same physical drum struck or
+articulated differently, so they cannot sound on the same beat position:
+
+- `HH` and `OH` — closed and open hi-hat
+- `RD` and `RB` — ride bow and ride bell
+
+Stacking either pair on a single beat is a compile error. Substitute one
+for the other across beats (e.g. `HH: *16 except 2a, 4a` paired with
+`OH: 2a, 4a`), or use a `variation` to swap them on a specific beat.
 
 ## Beat labels
 

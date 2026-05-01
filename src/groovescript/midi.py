@@ -26,7 +26,9 @@ _NOTE: dict[str, int] = {
     "OH":  46,   # Open Hi-Hat
     "HF":  44,   # Pedal Hi-Hat
     "RD":  51,   # Ride Cymbal 1
+    "RB":  53,   # Ride Bell
     "CR":  49,   # Crash Cymbal 1
+    "CB":  56,   # Cowbell
     "FT":  41,   # Low Floor Tom
     "HT":  50,   # High Tom
     "MT":  45,   # Low-Mid Tom

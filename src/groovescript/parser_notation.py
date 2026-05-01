@@ -19,6 +19,7 @@ _INSTRUMENT_ALIASES: dict[str, str] = {
     # Canonical abbreviations (also accepted lowercase)
     "bd": "BD", "sn": "SN", "scs": "SCS",
     "hh": "HH", "oh": "OH", "rd": "RD", "cr": "CR",
+    "rb": "RB", "cb": "CB",
     "ft": "FT", "ht": "HT", "mt": "MT",
     "hf": "HF",
     # Long-form aliases
@@ -29,6 +30,8 @@ _INSTRUMENT_ALIASES: dict[str, str] = {
     "openhat": "OH", "open": "OH",
     "ride": "RD",
     "crash": "CR",
+    "ridebell": "RB", "bell": "RB",
+    "cowbell": "CB",
     "floortom": "FT", "lowtom": "FT",
     "hightom": "HT", "hitom": "HT",
     "midtom": "MT",

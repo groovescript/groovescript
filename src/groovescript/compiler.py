@@ -227,11 +227,22 @@ _FOOT_INSTRUMENTS: frozenset[str] = frozenset({"BD", "HF"})
 
 # Instruments that are hand-played — these cannot overlap a snare buzz roll.
 _HAND_INSTRUMENTS: frozenset[str] = frozenset({
-    "HH", "OH", "RD", "CR", "FT", "HT", "MT", "SCS", "SN",
+    "HH", "OH", "RD", "CR", "RB", "CB", "FT", "HT", "MT", "SCS", "SN",
 })
 
 # Instruments that support the flam modifier (grace-note ornament).
 _FLAM_INSTRUMENTS: frozenset[str] = frozenset({"SN", "FT", "HT", "MT"})
+
+# Instrument pairs that cannot sound simultaneously on the same beat position
+# because they're physically the same instrument with different articulations.
+# A drummer can't strike the closed and open hat at the same instant
+# (articulation is an either/or property of the same cymbal); likewise the
+# bow and bell of the ride share one cymbal. Each frozenset is the set of
+# instrument abbreviations that are mutually exclusive at one beat.
+_INSTRUMENT_MUTEX_GROUPS: tuple[frozenset[str], ...] = (
+    frozenset({"HH", "OH"}),
+    frozenset({"RD", "RB"}),
+)
 
 
 def _parse_buzz_duration(spec: str) -> tuple[int, int]:
@@ -343,6 +354,43 @@ def _validate_grace_uniqueness(events: list[Event], context: str) -> None:
             ),
             line=culprit.source_line,
         )
+
+
+def _validate_instrument_mutex(events: list[Event], context: str) -> None:
+    """Reject mutually-exclusive instruments sounding at the same beat position.
+
+    See :data:`_INSTRUMENT_MUTEX_GROUPS`. Pin the diagnostic to the second
+    offending event so the source line points at the addition that
+    introduced the conflict.
+    """
+    by_position: dict[Fraction, list[Event]] = defaultdict(list)
+    for ev in events:
+        by_position[ev.beat_position].append(ev)
+    for pos, group in by_position.items():
+        if len(group) < 2:
+            continue
+        instruments_at_pos = {ev.instrument for ev in group}
+        for mutex in _INSTRUMENT_MUTEX_GROUPS:
+            collision = instruments_at_pos & mutex
+            if len(collision) < 2:
+                continue
+            colliding = sorted(collision)
+            culprits = [
+                e for e in group if e.instrument in collision
+            ]
+            culprit = next(
+                (e for e in culprits[1:] if e.source_line is not None),
+                next((e for e in culprits if e.source_line is not None), culprits[0]),
+            )
+            raise GrooveScriptError(
+                message=(
+                    f"{' and '.join(colliding)} cannot sound at the same beat "
+                    f"position {pos} in {context}: they're the same physical "
+                    f"instrument with different articulations and only one "
+                    f"may sound at a time"
+                ),
+                line=culprit.source_line,
+            )
 
 
 def _validate_buzz_overlap(events: list[Event], context: str) -> None:
@@ -848,6 +896,7 @@ def compile_groove(
         bar_events = [e for e in events if e.bar == bar_number]
         _validate_buzz_overlap(bar_events, f"groove {groove.name!r} bar {bar_number}")
         _validate_grace_uniqueness(bar_events, f"groove {groove.name!r} bar {bar_number}")
+        _validate_instrument_mutex(bar_events, f"groove {groove.name!r} bar {bar_number}")
 
     events.sort(key=lambda e: (e.bar, e.beat_position))
 
@@ -972,6 +1021,7 @@ def compile_fill_bar(fill_bar: FillBar, beats_per_bar: int = 4, beat_unit: int =
     for event in events:
         _validate_buzz_event(event, beats_per_bar, fill_bar_desc)
     _validate_buzz_overlap(events, fill_bar_desc)
+    _validate_instrument_mutex(events, fill_bar_desc)
     events.sort(key=lambda e: e.beat_position)
     return IRFillBar(events=events, subdivision=subdivision)
 
@@ -2195,6 +2245,7 @@ def compile_song(song: Song) -> IRSong:
                 _validate_buzz_event(event, bpb, context)
             _validate_buzz_overlap(arranged_events, context)
             _validate_grace_uniqueness(arranged_events, context)
+            _validate_instrument_mutex(arranged_events, context)
 
             new_bars.append(
                 IRBar(
@@ -2361,6 +2412,7 @@ def compile_song(song: Song) -> IRSong:
                 _validate_buzz_event(event, bpb, context)
             _validate_buzz_overlap(arranged_events, context)
             _validate_grace_uniqueness(arranged_events, context)
+            _validate_instrument_mutex(arranged_events, context)
 
             new_bars.append(
                 IRBar(

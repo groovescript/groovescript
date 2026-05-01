@@ -24,7 +24,12 @@
        (filter (lambda (p) (not (memq (car p) '(hihat openhihat ridecymbal ridebell crashcymbal cowbell))))
                (hash-table->alist drums-style)))))
 
-{{HEADER}}\paper {
+\header {
+  title = "Cowbell and Ride Bell Demo"
+  tagline = ##f
+}
+
+\paper {
   print-page-number = ##t
   print-first-page-number = ##t
   top-margin = 10\mm
@@ -73,10 +78,32 @@
 }
 
 \score {
-{{SCORE_HEADER}}  \new DrumStaff \with {
+\header {
+  subtitle = "Tempo: 120    Time Signature: 4/4"
+}
+  \new DrumStaff \with {
     drumStyleTable = #my-drums-style
   } {
-{{SCORE_PRELUDE}}{{BODY}}
+    \drummode {
+      \numericTimeSignature
+      \time 4/4
+      \omit Score.MetronomeMark
+      \tempo 4 = 120
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.padding = #2
+      \mark \markup \column { \fontsize #-1 \concat { \note { 4 } #1 " = 120" } \vspace #0.3 \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "INTRO: 2" } \vspace #0.3 \italic \fontsize #-1 "Play 2x" }
+      \bar ".|:"
+      \repeat volta 2 {
+        <bd cb rb>4 <sn cb>8 bd8 <bd cb rb>4 <sn cb>4 |
+      }
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.padding = #2
+      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "VERSE: 2" } \vspace #0.3 \italic \fontsize #-1 "Play 2x" }
+      \repeat volta 2 {
+        <bd rb>4 <sn cymr>4 <bd rb>4 <sn cymr>4 |
+      }
       \label #'lastPage
     }
   }

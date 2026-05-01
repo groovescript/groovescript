@@ -84,7 +84,9 @@ _INSTRUMENT_TO_LY: dict[str, str] = {
     "OH": "hho",    # open hi-hat (LilyPond alias for openhihat)
     "HF": "hhp",    # hi-hat foot chick (pedal)
     "RD": "cymr",
+    "RB": "rb",     # ride bell (LilyPond alias for ridebell)
     "CR": "cymc",
+    "CB": "cb",     # cowbell
     "FT": "tomfh",
     "HT": "tomh",
     "MT": "tommh",

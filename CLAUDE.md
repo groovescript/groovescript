@@ -41,6 +41,7 @@ charts/               # Real (non-test) charts: .gs source + compiled .ly + .pdf
 - IR beat positions use `fractions.Fraction` -- not float, not int grid
 - Per-bar subdivision is inferred from bar content, not declared; one of `{1,2,3,4}` slots-per-beat; mixing straight 16ths with triplets in one bar is rejected
 - Fill bars have independent subdivision from surrounding groove bars
+- Mutually exclusive instrument pairs cannot sound at the same beat position because they describe one physical drum with different articulations: `HH`/`OH` (closed/open hi-hat), `RD`/`RB` (ride bow/bell). Enforced by `_validate_instrument_mutex` in `compiler.py`. New same-instrument pairs go in `_INSTRUMENT_MUTEX_GROUPS`
 - Variation actions are `add`, `remove`, `replace`, `substitute`, `modify add`, `modify remove`. `modify add <mod> to <instrument> at <beats>` / `modify remove <mod> from <instrument> at <beats>` target existing hits on the named instrument without re-stating beat positions
 - Groove `extend:` bodies accept variation actions in addition to pattern-line overrides. Bare actions apply to every bar of the base; wrap them in `variation at bar N:` / `variation at bars N, M:` blocks to scope to specific bars. Pattern-line merge runs before actions are applied. Chains accumulate: `C extend: "B"` inherits `B`'s already-resolved `extend_variations` and appends its own on top
 - File order = arrangement order
