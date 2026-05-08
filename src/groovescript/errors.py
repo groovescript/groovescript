@@ -34,7 +34,7 @@ _KNOWN_INSTRUMENT_ALIASES: tuple[str, ...] = (
     "hihatfoot", "footchick",
 )
 
-_KNOWN_MODIFIERS: tuple[str, ...] = ("ghost", "accent", "flam", "drag", "double", "32nd")
+_KNOWN_MODIFIERS: tuple[str, ...] = ("ghost", "accent", "fermata", "flam", "drag", "double", "32nd")
 
 
 @dataclass

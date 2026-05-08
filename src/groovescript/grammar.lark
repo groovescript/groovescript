@@ -202,7 +202,7 @@ BEAT_LABEL: /[1-9][0-9]?(trip|let|and|[e&atl])?/ | /trip/ | /let/ | /and/
 // with a snare grace). The suffix tokenises as part of the modifier so the
 // LALR grammar still sees a single MODIFIER terminal; the transformer splits
 // off the instrument name and the compiler validates it.
-MODIFIER: "ghost" | "accent" | "choke" | /flam(?::[A-Za-z-]+)?/ | /drag(?::[A-Za-z-]+)?/ | "double" | /buzz(?::[1-9][0-9]?d{0,2})?/
+MODIFIER: "ghost" | "accent" | "choke" | "fermata" | /flam(?::[A-Za-z-]+)?/ | /drag(?::[A-Za-z-]+)?/ | "double" | /buzz(?::[1-9][0-9]?d{0,2})?/
 // *N = "every 1/N note"; optional 't' suffix marks a triplet grid
 // (e.g. *8t = 8th-note triplets, *4t = quarter-note triplets).
 STAR_VALUE: /\*(2|4|8|16)t?/

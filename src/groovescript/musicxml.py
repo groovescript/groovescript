@@ -436,6 +436,11 @@ def _append_note(
             # standard cymbal-choke notation.
             SubElement(artic, "stopped")
 
+    # <fermata/> is a top-level notation (sibling of <articulations>) and
+    # only attaches to the first split-part (the attack), like articulations.
+    if show_articulation and "fermata" in ev.modifiers:
+        SubElement(_notations(), "fermata")
+
 
 def _append_rest(parent: Element, dur: int) -> None:
     note = SubElement(parent, "note")
