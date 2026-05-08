@@ -149,6 +149,7 @@ def _format_hits(hits: list[tuple], duration: str) -> str:
     processed_notes: list[str] = []
     any_accent = False
     any_choke = False
+    any_fermata = False
 
     for hit in hits:
         if len(hit) == 3:
@@ -174,6 +175,8 @@ def _format_hits(hits: list[tuple], duration: str) -> str:
             any_accent = True
         if "choke" in mods:
             any_choke = True
+        if "fermata" in mods:
+            any_fermata = True
         processed_notes.append(note)
 
     if len(processed_notes) == 1:
@@ -188,6 +191,8 @@ def _format_hits(hits: list[tuple], duration: str) -> str:
         # \stopped renders the standard "+" symbol above the note used by
         # drum notation to indicate a cymbal choke.
         token = f"{token}\\stopped"
+    if any_fermata:
+        token = f"{token}\\fermata"
 
     return f"{grace_prefix}{token}"
 
@@ -226,6 +231,7 @@ def _format_doubled_hits(hits: list[tuple]) -> str:
     first_notes: list[str] = []
     any_accent_first = False
     any_choke_first = False
+    any_fermata_first = False
     for ly_name, mods in not_doubled + doubled:
         note = ly_name
         if "ghost" in mods:
@@ -234,6 +240,8 @@ def _format_doubled_hits(hits: list[tuple]) -> str:
             any_accent_first = True
         if "choke" in mods:
             any_choke_first = True
+        if "fermata" in mods:
+            any_fermata_first = True
         first_notes.append(note)
 
     if len(first_notes) == 1:
@@ -244,6 +252,8 @@ def _format_doubled_hits(hits: list[tuple]) -> str:
         first_token = f"{first_token}->"
     if any_choke_first:
         first_token = f"{first_token}\\stopped"
+    if any_fermata_first:
+        first_token = f"{first_token}\\fermata"
 
     # --- Second stroke: only doubled notes ---
     second_notes: list[str] = []
@@ -453,6 +463,8 @@ def _drum_measure_straight(
             buzz_token = f"{buzz_ly_name}{ly_dur}:32"
             if "accent" in buzz_event.modifiers:
                 buzz_token = f"{buzz_token}->"
+            if "fermata" in buzz_event.modifiers:
+                buzz_token = f"{buzz_token}\\fermata"
             if getattr(buzz_event, "tied_to_next", False):
                 buzz_token = f"{buzz_token}~"
 
