@@ -17,7 +17,10 @@ TICKS_PER_BEAT = 480  # ticks per quarter note (PPQ)
 _DRUM_CHANNEL = 9     # MIDI channel 10, 0-indexed
 _DEFAULT_TEMPO = 120  # BPM when no tempo is specified in metadata
 
-# General MIDI standard drum note numbers (channel 10 / 0-indexed 9)
+# General MIDI standard drum note numbers (channel 10 / 0-indexed 9).
+# ST (stack) has no GM slot of its own; we reuse the GM "Mute Triangle" pitch
+# (80) since stacks share the short, metallic, naturally-choked character —
+# users who want a sample-accurate stack will typically remap in their DAW.
 _NOTE: dict[str, int] = {
     "BD":  36,   # Bass Drum 1
     "SN":  38,   # Acoustic Snare
@@ -28,6 +31,10 @@ _NOTE: dict[str, int] = {
     "RD":  51,   # Ride Cymbal 1
     "RB":  53,   # Ride Bell
     "CR":  49,   # Crash Cymbal 1
+    "CR2": 57,   # Crash Cymbal 2
+    "SP":  55,   # Splash Cymbal
+    "CH":  52,   # Chinese Cymbal
+    "ST":  80,   # Mute Triangle (re-used for stack — see note above)
     "CB":  56,   # Cowbell
     "FT":  41,   # Low Floor Tom
     "HT":  50,   # High Tom
@@ -44,7 +51,16 @@ _HIT_DURATION = 30  # note-on → note-off gap for a standard percussive hit
 
 # Cymbals ring: their note-off is deferred until just before the next strike
 # of the same pitch (or extended past the end of the song with a tail).
-_SUSTAIN_PITCHES: frozenset[int] = frozenset({49, 51, 46})  # CR, RD, OH
+# Stack (80) is intentionally excluded — stacks are physically pre-muted and
+# don't sustain.
+_SUSTAIN_PITCHES: frozenset[int] = frozenset({
+    49,  # CR  — crash 1
+    57,  # CR2 — crash 2
+    51,  # RD  — ride
+    46,  # OH  — open hi-hat
+    55,  # SP  — splash
+    52,  # CH  — china
+})
 _SUSTAIN_TAIL_TICKS = 4 * TICKS_PER_BEAT  # ring-out past the final strike
 
 

@@ -217,8 +217,8 @@ Every instrument can be written as its canonical abbreviation, a lowercase
 abbreviation, or a verbose name — all normalize to the same canonical form in
 the output.
 
-| Canonical | Lowercase | Verbose aliases          | Drum              |
-|-----------|-----------|--------------------------|-------------------|
+| Canonical | Lowercase | Verbose aliases              | Drum              |
+|-----------|-----------|------------------------------|-------------------|
 | `BD`      | `bd`      | `kick`, `bass`               | bass drum         |
 | `SN`      | `sn`      | `snare`                      | snare             |
 | `SCS`     | `scs`     | `click`, `cross-stick`       | snare cross stick |
@@ -228,6 +228,10 @@ the output.
 | `RD`      | `rd`      | `ride`                       | ride (bow)        |
 | `RB`      | `rb`      | `ridebell`, `bell`           | ride bell         |
 | `CR`      | `cr`      | `crash`                      | crash             |
+| `CR2`     | `cr2`     | `crash2`, `secondcrash`      | second crash      |
+| `SP`      | `sp`      | `splash`                     | splash            |
+| `CH`      | `ch`      | `china`                      | china             |
+| `ST`      | `st`      | `stack`                      | stack             |
 | `CB`      | `cb`      | `cowbell`                    | cowbell           |
 | `FT`      | `ft`      | `floortom`, `lowtom`         | floor tom         |
 | `HT`      | `ht`      | `hightom`, `hitom`           | high tom          |
@@ -240,6 +244,24 @@ hit — and renders on the LilyPond `hhp` (hi-hat pedal) staff position.
 diamond notehead on the ride line. `CB` is cowbell — rendered as a
 triangle notehead one position above the hi-hat. The `bell` alias is
 reserved for ride bell; cowbell is `cb` or `cowbell`.
+
+The four extended cymbals each get a unique notehead+position pair so
+the chart stays readable even when several cymbals appear on the same
+beat:
+
+- `CR2` — second crash, drawn as an `x` notehead one space below `CR`
+  to mirror the conventional opposite-side mounting of crash 2.
+- `SP` — splash, drawn as a diamond notehead above the crash line; the
+  small diamond echoes the small physical cymbal.
+- `CH` — china, drawn as a circle-x notehead at the highest staff
+  position, evoking the trashy/ringing character.
+- `ST` — stack, drawn as a slash notehead on the crash line; the slash
+  flags it as a short, pre-muted hit rather than a ringing crash.
+
+`SP`, `CH`, and `CR2` ring like the original crash and so support the
+`choke` modifier. `ST` is excluded — a stack is two cymbals pressed
+together, naturally choked by design, so `ST: 4 choke` is a compile
+error.
 
 **`BD` and `HF` are foot-played; everything else is hand-played.** This
 classification matters for buzz-roll overlap rules — see [Buzz
@@ -307,8 +329,9 @@ Supported modifiers: `ghost`, `accent`, `choke`, `flam`, `drag`, `double`
 - **`accent`** — `>` above the note.
 - **`choke`** — `+` above the note. Marks a cymbal that is grabbed
   mid-ring to silence it. Restricted to the cymbals that actually ring
-  out: `CR` (crash), `RD` (ride), `RB` (ride bell). Hi-hats already model
-  closed/open via `HH`/`OH`, and cowbell / drums don't sustain enough to
+  out: `CR` (crash), `CR2` (second crash), `RD` (ride), `RB` (ride
+  bell), `SP` (splash), `CH` (china). Hi-hats already model closed/open
+  via `HH`/`OH`, and cowbell, stack, and drums don't sustain enough to
   choke meaningfully, so `choke` on those instruments is a compile error.
   Combines freely with `accent` (a hard stab that's then choked) and with
   cross-instrument `flam:<inst>` / `drag:<inst>` whose main hit is a

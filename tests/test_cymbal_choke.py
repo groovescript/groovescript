@@ -1,10 +1,11 @@
 """Tests for the ``choke`` modifier and the SN/SCS instrument mutex.
 
 The ``choke`` modifier marks a cymbal hit that is grabbed mid-ring to
-silence it. It is restricted to cymbals (CR, RD, RB) — hi-hats and
-cowbell don't sustain in a way that's meaningfully "choked," and drums
-have no ring to cut. Snare (SN) and snare cross-stick (SCS) describe one
-drum with two articulations and may not sound at the same beat.
+silence it. It is restricted to ringing cymbals (CR, CR2, RD, RB, SP, CH)
+— hi-hats, cowbell, and stacks don't sustain in a way that's meaningfully
+"choked," and drums have no ring to cut. Snare (SN) and snare cross-stick
+(SCS) describe one drum with two articulations and may not sound at the
+same beat.
 """
 
 from __future__ import annotations

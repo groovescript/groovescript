@@ -39,6 +39,16 @@ _DISPLAY: dict[str, tuple[str, int, str, str]] = {
     "RD":  ("F", 5, "x",        "up"),
     "RB":  ("F", 5, "diamond",  "up"),
     "CR":  ("A", 5, "x",        "up"),
+    # Crash 2 sits on the same line as cowbell (A5) but uses a slash notehead
+    # so it remains visually distinct from CR (x), CB (triangle), and ST.
+    "CR2": ("A", 5, "slash",    "up"),
+    # Splash and china are drawn higher than crash. Both share the B5 ledger
+    # space; the diamond / circle-x noteheads keep them apart.
+    "SP":  ("B", 5, "diamond",  "up"),
+    "CH":  ("C", 6, "circle-x", "up"),
+    # Stack: same line as crash 1 but with the slash notehead inverted-arrow
+    # variant ("cluster") to flag the short, choked character.
+    "ST":  ("A", 5, "cluster",  "up"),
     "CB":  ("A", 5, "triangle", "up"),
     "FT":  ("A", 4, "normal",   "down"),
     "MT":  ("D", 5, "normal",   "down"),
