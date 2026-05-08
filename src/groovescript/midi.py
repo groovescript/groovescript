@@ -137,12 +137,20 @@ def _velocity(modifiers: list[str]) -> int:
 
 
 def _extend_sustained(
-    events: list[tuple[int, bytes]], end_tick: int
+    events: list[tuple[int, bytes]],
+    end_tick: int,
+    choked: dict[int, set[int]] | None = None,
 ) -> list[tuple[int, bytes]]:
     """Let cymbals ring: replace the short note-off on every sustained pitch
     with one that lands just before the next strike of the same pitch (or a
     full bar past the song's end if no further strike follows).
+
+    ``choked`` maps pitch → set of note-on ticks that should be cut short
+    instead of allowed to ring. A choked strike emits a tight note-off
+    ``_HIT_DURATION`` ticks after the strike, simulating the drummer
+    grabbing the cymbal.
     """
+    choked = choked or {}
     on_ticks: dict[int, list[int]] = {}
     for tick, data in events:
         if (
@@ -165,8 +173,16 @@ def _extend_sustained(
         out.append((tick, data))
 
     for pitch, ticks in on_ticks.items():
+        choked_for_pitch = choked.get(pitch, set())
         for i, t in enumerate(ticks):
-            if i + 1 < len(ticks):
+            if t in choked_for_pitch:
+                # Choked strike: cut the ring almost immediately. Cap the
+                # off-tick at the next strike so a choke followed quickly
+                # by another hit on the same pitch doesn't overrun.
+                off_tick = t + _HIT_DURATION
+                if i + 1 < len(ticks):
+                    off_tick = min(off_tick, ticks[i + 1] - 1)
+            elif i + 1 < len(ticks):
                 off_tick = max(t + 1, ticks[i + 1] - 1)
             else:
                 off_tick = max(t + 1, end_tick + _SUSTAIN_TAIL_TICKS)
@@ -271,8 +287,8 @@ def _midi_from_song(song: IRSong) -> bytes:
             cur_bpm = bar.tempo
             tempo_track.append((tick, _tempo_event(cur_bpm)))
 
-    drum_track = _bars_to_drum_events(song.bars, bar_starts, default_ts)
-    drum_track = _extend_sustained(drum_track, cur_tick)
+    drum_track, choked = _bars_to_drum_events(song.bars, bar_starts, default_ts)
+    drum_track = _extend_sustained(drum_track, cur_tick, choked)
 
     header = b"MThd" + _u32(6) + _u16(1) + _u16(2) + _u16(TICKS_PER_BEAT)
     return header + _build_track(tempo_track) + _build_track(drum_track)
@@ -282,9 +298,15 @@ def _bars_to_drum_events(
     bars: list,
     bar_starts: list[int],
     default_ts: str,
-) -> list[tuple[int, bytes]]:
-    """Convert a list of IRBars to MIDI drum note events."""
+) -> tuple[list[tuple[int, bytes]], dict[int, set[int]]]:
+    """Convert a list of IRBars to MIDI drum note events.
+
+    Returns ``(events, choked)`` where ``choked`` maps pitch → the set of
+    note-on ticks that carry the ``choke`` modifier; the sustain extender
+    uses this to cut those strikes short instead of letting them ring.
+    """
     out: list[tuple[int, bytes]] = []
+    choked: dict[int, set[int]] = {}
     cur_ts = default_ts
 
     for bar_idx, bar in enumerate(bars):
@@ -325,8 +347,10 @@ def _bars_to_drum_events(
                 continue
 
             _add_hit(out, ev, note, tick)
+            if "choke" in ev.modifiers:
+                choked.setdefault(note, set()).add(tick)
 
-    return out
+    return out, choked
 
 
 # ---------------------------------------------------------------------------
@@ -346,6 +370,7 @@ def _midi_from_groove(groove: IRGroove) -> bytes:
     ]
 
     drum_track: list[tuple[int, bytes]] = []
+    choked: dict[int, set[int]] = {}
     for ev in groove.events:
         bar_idx = ev.bar - 1  # 1-indexed to 0-indexed
         if bar_idx < 0 or bar_idx >= groove.bars:
@@ -375,8 +400,10 @@ def _midi_from_groove(groove: IRGroove) -> bytes:
             continue
 
         _add_hit(drum_track, ev, note, tick)
+        if "choke" in ev.modifiers:
+            choked.setdefault(note, set()).add(tick)
 
-    drum_track = _extend_sustained(drum_track, groove.bars * bticks)
+    drum_track = _extend_sustained(drum_track, groove.bars * bticks, choked)
 
     header = b"MThd" + _u32(6) + _u16(1) + _u16(2) + _u16(TICKS_PER_BEAT)
     return header + _build_track(tempo_track) + _build_track(drum_track)

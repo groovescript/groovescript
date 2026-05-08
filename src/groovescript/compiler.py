@@ -237,12 +237,20 @@ _FLAM_INSTRUMENTS: frozenset[str] = frozenset({"SN", "FT", "HT", "MT"})
 # because they're physically the same instrument with different articulations.
 # A drummer can't strike the closed and open hat at the same instant
 # (articulation is an either/or property of the same cymbal); likewise the
-# bow and bell of the ride share one cymbal. Each frozenset is the set of
-# instrument abbreviations that are mutually exclusive at one beat.
+# bow and bell of the ride share one cymbal, and a snare struck normally vs
+# with a cross-stick is one drum with two articulations. Each frozenset is
+# the set of instrument abbreviations that are mutually exclusive at one beat.
 _INSTRUMENT_MUTEX_GROUPS: tuple[frozenset[str], ...] = (
     frozenset({"HH", "OH"}),
     frozenset({"RD", "RB"}),
+    frozenset({"SN", "SCS"}),
 )
+
+# Instruments that accept the ``choke`` modifier (cymbal chokes — grabbing
+# the cymbal mid-ring to silence it). Hi-hats, cowbell, and the foot chick
+# are excluded: hi-hats already model open/closed via HH/OH, and cowbells
+# don't sustain enough to choke meaningfully.
+_CHOKE_INSTRUMENTS: frozenset[str] = frozenset({"CR", "RD", "RB"})
 
 
 def _parse_buzz_duration(spec: str) -> tuple[int, int]:
@@ -474,6 +482,33 @@ def _validate_double_subdivision(
                 f"'double' modifier requires 16th-note subdivision "
                 f"(4 slots per beat), but got {slots_per_beat} slots per beat "
                 f"(subdivision={subdivision}, beats_per_bar={beats_per_bar}) in {context}"
+            ),
+            line=source_line,
+        )
+
+
+def _validate_choke_instrument(
+    instrument: str,
+    modifiers: list[str],
+    context: str,
+    source_line: int | None = None,
+) -> None:
+    """Reject ``choke`` on instruments that aren't cymbals.
+
+    The ``choke`` modifier represents the drummer grabbing a sustaining
+    cymbal mid-ring to silence it. It only makes sense on cymbals that
+    actually ring out — crash, ride, and ride bell. Hi-hats already model
+    closed/open via ``HH``/``OH`` (the closed hat is a continuous choke
+    of the open one), and cowbell / drums don't sustain enough to choke
+    meaningfully.
+    """
+    if "choke" not in modifiers:
+        return
+    if instrument not in _CHOKE_INSTRUMENTS:
+        raise GrooveScriptError(
+            message=(
+                f"'choke' modifier is only supported on cymbals "
+                f"(CR, RD, RB) — got {instrument!r} in {context}"
             ),
             line=source_line,
         )
@@ -746,6 +781,7 @@ def _expand_pattern_line(
             _validate_double_modifier(mods, subdivision, f"instrument {line.instrument!r} at beat {b!r}", source_line=line.line)
             _validate_buzz_modifier_compat(mods, f"instrument {line.instrument!r} at beat {b!r}", source_line=line.line)
             _validate_flam_instrument(line.instrument, mods, f"instrument {line.instrument!r} at beat {b!r}", source_line=line.line, grace_instrument=grace_inst)
+            _validate_choke_instrument(line.instrument, mods, f"instrument {line.instrument!r} at beat {b!r}", source_line=line.line)
         duration: Fraction | None = None
         if "buzz" in (mods or []):
             duration = _buzz_span(buzz_dur_str or "4", beats_per_bar, beat_unit)
@@ -997,6 +1033,7 @@ def compile_fill_bar(fill_bar: FillBar, beats_per_bar: int = 4, beat_unit: int =
                 _validate_double_modifier(mods, subdivision, f"fill at beat {line.beat!r}")
                 _validate_buzz_modifier_compat(mods, f"fill at beat {line.beat!r}")
                 _validate_flam_instrument(str(inst_hit), mods, f"fill at beat {line.beat!r}", grace_instrument=grace_inst)
+                _validate_choke_instrument(str(inst_hit), mods, f"fill at beat {line.beat!r}")
             duration: Fraction | None = None
             if "buzz" in (mods or []):
                 duration = _buzz_span(buzz_dur_str or "4", beats_per_bar, beat_unit)
@@ -1150,6 +1187,12 @@ def _apply_variation_actions(
                             source_line=action.line,
                             grace_instrument=grace_inst,
                         )
+                        _validate_choke_instrument(
+                            str(hit),
+                            mods,
+                            f"variation substitute at beat {label!r}",
+                            source_line=action.line,
+                        )
                     result.append(
                         Event(
                             bar=absolute_bar,
@@ -1179,6 +1222,7 @@ def _apply_variation_actions(
                 _validate_double_modifier(action.modifiers, subdivision, f"variation add {action.instrument!r}", source_line=action.line)
                 _validate_buzz_modifier_compat(action.modifiers, f"variation add {action.instrument!r}", source_line=action.line)
                 _validate_flam_instrument(action.instrument, action.modifiers, f"variation add {action.instrument!r}", source_line=action.line, grace_instrument=action.grace_instrument)
+                _validate_choke_instrument(action.instrument, action.modifiers, f"variation add {action.instrument!r}", source_line=action.line)
                 if "double" in action.modifiers:
                     _validate_double_subdivision(subdivision, beats_per_bar, f"variation add {action.instrument!r}", source_line=action.line)
             duration: Fraction | None = None
@@ -1213,6 +1257,7 @@ def _apply_variation_actions(
                 _validate_double_modifier(action.modifiers, subdivision, f"variation replace → {action.target_instrument!r}", source_line=action.line)
                 _validate_buzz_modifier_compat(action.modifiers, f"variation replace → {action.target_instrument!r}", source_line=action.line)
                 _validate_flam_instrument(action.target_instrument, action.modifiers, f"variation replace → {action.target_instrument!r}", source_line=action.line, grace_instrument=action.grace_instrument)
+                _validate_choke_instrument(action.target_instrument, action.modifiers, f"variation replace → {action.target_instrument!r}", source_line=action.line)
                 if "double" in action.modifiers:
                     _validate_double_subdivision(subdivision, beats_per_bar, f"variation replace → {action.target_instrument!r}", source_line=action.line)
             result = [
@@ -1269,6 +1314,12 @@ def _apply_variation_actions(
                     f"variation modify add at beat {event.beat_position}",
                     source_line=action.line,
                     grace_instrument=effective_grace,
+                )
+                _validate_choke_instrument(
+                    event.instrument,
+                    action.modifiers,
+                    f"variation modify add at beat {event.beat_position}",
+                    source_line=action.line,
                 )
                 added_any = False
                 for mod in action.modifiers:
