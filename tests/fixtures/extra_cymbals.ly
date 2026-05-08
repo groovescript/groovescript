@@ -48,7 +48,7 @@ drumPitchNames =
                (hash-table->alist drums-style)))))
 
 \header {
-  title = "Time Signature 12/8"
+  title = "Extra Cymbals Demo"
   tagline = ##f
 }
 
@@ -102,39 +102,29 @@ drumPitchNames =
 
 \score {
 \header {
-  subtitle = "Tempo: 100    Time Signature: 12/8"
+  subtitle = "Tempo: 120    Time Signature: 4/4"
 }
   \new DrumStaff \with {
     drumStyleTable = #my-drums-style
   } {
     \drummode {
       \numericTimeSignature
-      \time 12/8
+      \time 4/4
       \omit Score.MetronomeMark
-      \tempo 8 = 100
+      \tempo 4 = 120
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \column { \fontsize #-1 \concat { \note { 8 } #1 " = 100" } \vspace #0.3 \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "INTRO: 4" } \vspace #0.3 \italic \fontsize #-1 "Play 4x" }
+      \mark \markup \column { \fontsize #-1 \concat { \note { 4 } #1 " = 120" } \vspace #0.3 \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "DEMO: 2" } \vspace #0.3 \italic \fontsize #-1 "Play 2x" }
       \bar ".|:"
-      \repeat volta 4 {
-        <bd hh>8 hh8 hh8 <sn hh>8 hh8 hh8 <bd hh>8 hh8 hh8 <sn hh>8 hh8 hh8 |
-      }
-      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
-      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
-      \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "VERSE: 4" } \vspace #0.3 \italic \fontsize #-1 "Play 2x" }
       \repeat volta 2 {
-        <bd hh>8 hh8 hh8 <sn hh>8 hh8 hh8 <bd hh>8 hh8 hh8 <sn hh>8 hh8 hh8 |
-        <bd hh>8 hh8 hh8 <sn hh>8 hh8 hh8 <bd hh>8 hh8 hh8 <sn hh>8 hh8 <bd hh>8 |
+        <bd hh cyms>8 <hh cymch>8 <sn hh>8 hh8 <bd hh cymcb>8 hh8 <sn hh>8 <hh stcym>8 |
       }
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
-      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "OUTRO: 4" } \vspace #0.3 \italic \fontsize #-1 "Play 4x" }
-      \repeat volta 4 {
-        <bd hh>8 hh8 hh8 <sn hh>8 hh8 hh8 <bd hh>8 hh8 hh8 <sn hh>8 hh8 hh8 |
-      }
+      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "ENDING: 1" }
+      <bd cymc>4->\stopped cyms4\stopped cymch4\stopped <sn cymcb>4->\stopped |
       \label #'lastPage
     }
   }

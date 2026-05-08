@@ -22,6 +22,7 @@ _INSTRUMENT_ALIASES: dict[str, str] = {
     "rb": "RB", "cb": "CB",
     "ft": "FT", "ht": "HT", "mt": "MT",
     "hf": "HF",
+    "sp": "SP", "ch": "CH", "st": "ST", "cr2": "CR2",
     # Long-form aliases
     "bass": "BD", "kick": "BD",
     "snare": "SN",
@@ -36,6 +37,10 @@ _INSTRUMENT_ALIASES: dict[str, str] = {
     "hightom": "HT", "hitom": "HT",
     "midtom": "MT",
     "hihatfoot": "HF", "hi-hat-foot": "HF", "footchick": "HF", "foot-chick": "HF",
+    "splash": "SP",
+    "china": "CH",
+    "stack": "ST",
+    "crash2": "CR2", "secondcrash": "CR2",
 }
 
 

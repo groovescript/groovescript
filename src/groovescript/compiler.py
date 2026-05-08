@@ -228,6 +228,7 @@ _FOOT_INSTRUMENTS: frozenset[str] = frozenset({"BD", "HF"})
 # Instruments that are hand-played — these cannot overlap a snare buzz roll.
 _HAND_INSTRUMENTS: frozenset[str] = frozenset({
     "HH", "OH", "RD", "CR", "RB", "CB", "FT", "HT", "MT", "SCS", "SN",
+    "SP", "CH", "CR2", "ST",
 })
 
 # Instruments that support the flam modifier (grace-note ornament).
@@ -247,10 +248,12 @@ _INSTRUMENT_MUTEX_GROUPS: tuple[frozenset[str], ...] = (
 )
 
 # Instruments that accept the ``choke`` modifier (cymbal chokes — grabbing
-# the cymbal mid-ring to silence it). Hi-hats, cowbell, and the foot chick
-# are excluded: hi-hats already model open/closed via HH/OH, and cowbells
-# don't sustain enough to choke meaningfully.
-_CHOKE_INSTRUMENTS: frozenset[str] = frozenset({"CR", "RD", "RB"})
+# the cymbal mid-ring to silence it). Hi-hats, cowbell, stack, and the foot
+# chick are excluded: hi-hats already model open/closed via HH/OH, cowbells
+# don't sustain enough to choke meaningfully, and stacks are physically
+# pre-muted (two cymbals pressed together) so their attack already dies on
+# its own.
+_CHOKE_INSTRUMENTS: frozenset[str] = frozenset({"CR", "RD", "RB", "SP", "CH", "CR2"})
 
 
 def _parse_buzz_duration(spec: str) -> tuple[int, int]:
@@ -497,10 +500,10 @@ def _validate_choke_instrument(
 
     The ``choke`` modifier represents the drummer grabbing a sustaining
     cymbal mid-ring to silence it. It only makes sense on cymbals that
-    actually ring out — crash, ride, and ride bell. Hi-hats already model
-    closed/open via ``HH``/``OH`` (the closed hat is a continuous choke
-    of the open one), and cowbell / drums don't sustain enough to choke
-    meaningfully.
+    actually ring out — crash (CR / CR2), ride (RD / RB), splash (SP),
+    and china (CH). Hi-hats already model closed/open via ``HH``/``OH``
+    (the closed hat is a continuous choke of the open one), and cowbell,
+    stack, and drums don't sustain enough to choke meaningfully.
     """
     if "choke" not in modifiers:
         return
@@ -508,7 +511,7 @@ def _validate_choke_instrument(
         raise GrooveScriptError(
             message=(
                 f"'choke' modifier is only supported on cymbals "
-                f"(CR, RD, RB) — got {instrument!r} in {context}"
+                f"(CR, CR2, RD, RB, SP, CH) — got {instrument!r} in {context}"
             ),
             line=source_line,
         )

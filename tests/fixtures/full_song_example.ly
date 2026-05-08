@@ -1,21 +1,50 @@
 \version "2.24.0"
 
+% Extend drumPitchNames so the stack cymbal — which has no built-in
+% LilyPond drum-pitch entry — can be referenced as ``stcym`` in the
+% emitter output. The stcym pitch class is then styled below.
+drumPitchNames =
+  #(append drumPitchNames
+           '((stcym . stcym)
+             (stackcymbal . stcym)))
+
 % Custom drum style overrides:
 %   hihat    → cross notehead at position 5 (space above staff, standard notation).
 %   openhihat → xcircle notehead at position 5 (same height as hihat, circle-x style).
 %   ridecymbal → cross notehead at position 4 (top line of the staff, one
 %     position below hihat — conventional ride placement).
+%   ridebell → diamond notehead at position 4 (same line as ride; the diamond
+%     shape distinguishes the bell stroke from the bow).
 %   crashcymbal → plain cross (x) notehead at position 7, the conventional
 %     crash position one ledger above the staff. Distinguished from hihat
 %     (same notehead at position 5) by staff position, not shape.
+%   crashcymbalb → cross notehead at position 6 — second crash drawn one
+%     position below crash 1 to mirror the conventional left/right kit
+%     placement on opposite sides of the drummer.
+%   splashcymbal → diamond notehead at position 8 — small high-pitched
+%     cymbal drawn above crash 1; the diamond shape further distinguishes
+%     it from the surrounding cross-noteheaded cymbals.
+%   chinesecymbal → xcircle notehead at position 9, the highest cymbal on
+%     the staff; the circled-x evokes the trashy ringing character.
+%   stcym (stack) → slash notehead at position 7 — sits on the same line
+%     as crash 1 but the slashed notehead immediately marks it as a
+%     short, choked-by-design stack rather than a ringing crash.
+%   cowbell → triangle notehead at position 6, between hi-hat and crash —
+%     standard PAS / Weinberg position for cowbell on a 5-line drum staff.
 #(define my-drums-style
    (alist->hash-table
      (append
        '((hihat cross #f 5)
          (openhihat xcircle #f 5)
          (ridecymbal cross #f 4)
-         (crashcymbal cross #f 7))
-       (filter (lambda (p) (not (memq (car p) '(hihat openhihat ridecymbal crashcymbal))))
+         (ridebell harmonic #f 4)
+         (crashcymbal cross #f 7)
+         (crashcymbalb cross #f 6)
+         (splashcymbal diamond #f 8)
+         (chinesecymbal xcircle #f 9)
+         (stcym slash #f 7)
+         (cowbell triangle #f 6))
+       (filter (lambda (p) (not (memq (car p) '(hihat openhihat ridecymbal ridebell crashcymbal crashcymbalb splashcymbal chinesecymbal stcym cowbell))))
                (hash-table->alist drums-style)))))
 
 \header {
@@ -86,17 +115,9 @@
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \column { \fontsize #-1 \concat { \note { 4 } #1 " = 126" } \vspace #0.3 \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "INTRO: 8" } \vspace #0.3 \italic \fontsize #-1 "Play 4x" }
+      \mark \markup \column { \fontsize #-1 \concat { \note { 4 } #1 " = 126" } \vspace #0.3 \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "INTRO: 8" } \vspace #0.3 \italic \fontsize #-1 "Play 7x" }
       \bar ".|:"
-      \repeat volta 4 {
-        <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
-      }
-      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
-      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
-      \once \override Score.RehearsalMark.padding = #2
-      \once \override Score.RehearsalMark.outside-staff-priority = #1000
-      \mark \markup \italic \fontsize #-1 "Play 3x"
-      \repeat volta 3 {
+      \repeat volta 7 {
         <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       }
       <bd hh>8 hh8 <sn hh>8 hh8 sn16 sn16 sn16 sn16 <bd cymc>4 |
@@ -111,16 +132,8 @@
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "CHORUS: 16" } \vspace #0.3 \italic \fontsize #-1 "Play 4x" }
-      \repeat volta 4 {
-        <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
-      }
-      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
-      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
-      \once \override Score.RehearsalMark.padding = #2
-      \once \override Score.RehearsalMark.outside-staff-priority = #1000
-      \mark \markup \italic \fontsize #-1 "Play 3x"
-      \repeat volta 3 {
+      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "CHORUS: 16" } \vspace #0.3 \italic \fontsize #-1 "Play 7x" }
+      \repeat volta 7 {
         <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       }
       <bd cymc>8 hh8 <sn hh>8 <hh \parenthesize sn>8 <bd hh>8 hh8 <hh sn>8-> hh8 |
@@ -128,16 +141,8 @@
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
       \once \override Score.RehearsalMark.padding = #2
       \once \override Score.RehearsalMark.outside-staff-priority = #1000
-      \mark \markup \italic \fontsize #-1 "Play 4x"
-      \repeat volta 4 {
-        <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
-      }
-      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
-      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
-      \once \override Score.RehearsalMark.padding = #2
-      \once \override Score.RehearsalMark.outside-staff-priority = #1000
-      \mark \markup \italic \fontsize #-1 "Play 3x"
-      \repeat volta 3 {
+      \mark \markup \italic \fontsize #-1 "Play 7x"
+      \repeat volta 7 {
         <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       }
       <bd hh>8 hh8 <sn hh>8 hh8 sn16 sn16 sn16 sn16 <bd cymc>4 |
@@ -152,16 +157,8 @@
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "CHORUS 2: 16" } \vspace #0.3 \italic \fontsize #-1 "Play 4x" }
-      \repeat volta 4 {
-        <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
-      }
-      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
-      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
-      \once \override Score.RehearsalMark.padding = #2
-      \once \override Score.RehearsalMark.outside-staff-priority = #1000
-      \mark \markup \italic \fontsize #-1 "Play 3x"
-      \repeat volta 3 {
+      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "CHORUS 2: 16" } \vspace #0.3 \italic \fontsize #-1 "Play 7x" }
+      \repeat volta 7 {
         <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       }
       <bd cymc>8 hh8 <sn hh>8 <hh \parenthesize sn>8 <bd hh>8 hh8 <hh sn>8-> hh8 |
@@ -169,16 +166,8 @@
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
       \once \override Score.RehearsalMark.padding = #2
       \once \override Score.RehearsalMark.outside-staff-priority = #1000
-      \mark \markup \italic \fontsize #-1 "Play 4x"
-      \repeat volta 4 {
-        <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
-      }
-      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
-      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
-      \once \override Score.RehearsalMark.padding = #2
-      \once \override Score.RehearsalMark.outside-staff-priority = #1000
-      \mark \markup \italic \fontsize #-1 "Play 3x"
-      \repeat volta 3 {
+      \mark \markup \italic \fontsize #-1 "Play 7x"
+      \repeat volta 7 {
         <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       }
       <bd hh>8 hh8 <sn hh>8 hh8 sn16 sn16 sn16 sn16 <bd cymc>4 |
@@ -195,16 +184,8 @@
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "OUTRO: 8" } \vspace #0.3 \italic \fontsize #-1 "Play 4x" }
-      \repeat volta 4 {
-        <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
-      }
-      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
-      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
-      \once \override Score.RehearsalMark.padding = #2
-      \once \override Score.RehearsalMark.outside-staff-priority = #1000
-      \mark \markup \italic \fontsize #-1 "Play 3x"
-      \repeat volta 3 {
+      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "OUTRO: 8" } \vspace #0.3 \italic \fontsize #-1 "Play 7x" }
+      \repeat volta 7 {
         <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       }
       <bd hh>8 hh8 <sn hh>8 hh8 sn16 sn16 sn16 sn16 <bd cymc>4 |

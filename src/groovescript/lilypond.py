@@ -86,6 +86,10 @@ _INSTRUMENT_TO_LY: dict[str, str] = {
     "RD": "cymr",
     "RB": "rb",     # ride bell (LilyPond alias for ridebell)
     "CR": "cymc",
+    "CR2": "cymcb", # crash cymbal 2 (LilyPond alias for crashcymbalb)
+    "SP": "cyms",   # splash cymbal (LilyPond alias for splashcymbal)
+    "CH": "cymch",  # china cymbal (LilyPond alias for chinesecymbal)
+    "ST": "stcym",  # stack cymbal (custom drum-pitch-name; defined in lilypond_template.ly)
     "CB": "cb",     # cowbell
     "FT": "tomfh",
     "HT": "tomh",
