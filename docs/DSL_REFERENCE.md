@@ -23,7 +23,7 @@ the language, start with [`GETTING_STARTED.md`](GETTING_STARTED.md) or
   - [`*N except` — star exclusion](#star-exclusion-n-except)
   - [Double-digit beat numbers for compound meter](#beat-labels)
 - [Modifiers](#modifiers)
-  - [`ghost`, `accent`, `flam` / `flam:<inst>`, `drag` / `drag:<inst>`](#modifiers)
+  - [`ghost`, `accent`, `choke`, `flam` / `flam:<inst>`, `drag` / `drag:<inst>`](#modifiers)
   - [`double` / `32nd` (double strokes)](#modifiers)
   - [`buzz` / `buzz:N` (buzz rolls)](#buzz-rolls)
 - [Groove](#groove)
@@ -300,11 +300,19 @@ fill `count:` strings (`"1 and 2 and 3 and 4 and"`).
 
 ## Modifiers
 
-Supported modifiers: `ghost`, `accent`, `flam`, `drag`, `double`
+Supported modifiers: `ghost`, `accent`, `choke`, `flam`, `drag`, `double`
 (alias: `32nd`), `buzz`.
 
 - **`ghost`** — parenthesised notehead. Softer / unaccented hit.
 - **`accent`** — `>` above the note.
+- **`choke`** — `+` above the note. Marks a cymbal that is grabbed
+  mid-ring to silence it. Restricted to the cymbals that actually ring
+  out: `CR` (crash), `RD` (ride), `RB` (ride bell). Hi-hats already model
+  closed/open via `HH`/`OH`, and cowbell / drums don't sustain enough to
+  choke meaningfully, so `choke` on those instruments is a compile error.
+  Combines freely with `accent` (a hard stab that's then choked) and with
+  cross-instrument `flam:<inst>` / `drag:<inst>` whose main hit is a
+  cymbal.
 - **`flam`** — rendered as a `\slashedGrace` grace note. By default the
   grace plays on the same instrument as the main hit, so it is only
   supported on the grace-capable drums: snare (`SN`) and toms (`FT`, `HT`,

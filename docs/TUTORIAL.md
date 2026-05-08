@@ -194,7 +194,8 @@ section "chorus":
 Supported actions: `add`, `remove`, `replace`, and `substitute` (wipes
 the bar and replaces it with a count+notes body). Each action can
 target one instrument or a space-separated list. Supported modifiers
-are `ghost`, `accent`, `flam`, `drag`, and `double`.
+are `ghost`, `accent`, `choke` (cymbals only), `flam`, `drag`, and
+`double`.
 
 Other useful refinements at this stage:
 

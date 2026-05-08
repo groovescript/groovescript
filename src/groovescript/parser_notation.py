@@ -438,7 +438,7 @@ def _parse_hit_spec(spec: str) -> list[InstrumentHit]:
     ]
 
 
-_MODIFIER_TOKENS: set[str] = {"ghost", "accent", "flam", "drag", "double", "32nd"}
+_MODIFIER_TOKENS: set[str] = {"ghost", "accent", "choke", "flam", "drag", "double", "32nd"}
 
 _MODIFIER_ALIASES: dict[str, str] = {"32nd": "double"}
 

@@ -63,7 +63,7 @@ syn keyword gsPlacement at bar bars beat placeholder rest from to except
 syn keyword gsAction add remove replace with modify
 
 " -- Hit modifiers ----------------------------------------------------------
-syn keyword gsModifier ghost accent double
+syn keyword gsModifier ghost accent choke double
 " `32nd` is an alias for `double`; starts with a digit so `keyword` won't match.
 syn match   gsModifier "\<32nd\>"
 " `buzz` — snare buzz-roll modifier, optionally with a duration suffix

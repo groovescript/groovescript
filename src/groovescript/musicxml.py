@@ -425,9 +425,16 @@ def _append_note(
         if tie_start:
             SubElement(n, "tied", type="start")
 
-    if show_articulation and "accent" in ev.modifiers:
+    if show_articulation and (
+        "accent" in ev.modifiers or "choke" in ev.modifiers
+    ):
         artic = SubElement(_notations(), "articulations")
-        SubElement(artic, "accent")
+        if "accent" in ev.modifiers:
+            SubElement(artic, "accent")
+        if "choke" in ev.modifiers:
+            # MusicXML's <stopped/> renders as the "+" symbol — the
+            # standard cymbal-choke notation.
+            SubElement(artic, "stopped")
 
 
 def _append_rest(parent: Element, dur: int) -> None:
