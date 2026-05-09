@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from fractions import Fraction
 
 
 # Categories that may be listed after ``like "x" with …`` to opt a child
@@ -49,6 +50,53 @@ class BeatHit(str):
     @property
     def label(self) -> str:
         return str(self)
+
+
+@dataclass
+class TupletSlot:
+    """One hit slot inside a :class:`TupletGroup`.
+
+    ``index`` is 1-indexed (1..N for an N-tuplet). ``modifiers`` and the
+    grace/buzz fields mirror the per-hit decorations used elsewhere in the
+    AST so existing modifier semantics (accent, ghost, flam, drag, …) apply
+    uniformly inside tuplet groups.
+    """
+
+    index: int
+    modifiers: list[str] = field(default_factory=list)
+    buzz_duration: str | None = None
+    grace_instrument: str | None = None
+
+
+# Maps a tuplet-kind keyword to its (actual, normal) ratio. ``actual`` is
+# the count of slots; ``normal`` is the duration unit those slots replace.
+# 7:4 chosen for septuplet (jazz/prog drum convention).
+_TUPLET_RATIOS: dict[str, tuple[int, int]] = {
+    "triplet": (3, 2),
+    "quintuplet": (5, 4),
+    "sextuplet": (6, 4),
+    "septuplet": (7, 4),
+    "nonuplet": (9, 8),
+}
+
+
+@dataclass
+class TupletGroup:
+    """A tuplet group inside a pattern line.
+
+    ``anchor`` is a normalised beat label (``"2"``, ``"2&"``, …) marking
+    where the group starts. ``span`` is in beats: ``Fraction(1)`` for the
+    default whole-beat span, ``Fraction(1, 2)`` when the kind was qualified
+    with ``/8`` (half-beat span). ``ratio`` is the (actual, normal) tuplet
+    ratio resolved from ``kind``.
+    """
+
+    kind: str
+    ratio: tuple[int, int]
+    span: Fraction
+    anchor: str
+    slots: list[TupletSlot] = field(default_factory=list)
+    line: int | None = None
 
 
 class InstrumentHit(str):
@@ -107,23 +155,38 @@ class CrashInSpec:
 
 @dataclass(frozen=True)
 class StarSpec:
-    """A ``*N`` / ``*Nt`` pattern-line value.
+    """A ``*N`` / ``*Nt`` / ``*<kind>`` pattern-line value.
 
-    ``note_value`` is the denominator of the note value (2, 4, 8, or 16),
-    meaning "every 1/note_value note". ``triplet`` is ``True`` for the
-    triplet variant (``*8t`` = 8th-note triplets, ``*4t`` = quarter-note
-    triplets, etc.).
+    Two shapes:
 
-    ``except_beats`` is an optional tuple of beat labels to exclude from the
-    expanded star pattern (e.g. ``*16 except 2a, 4a``).
+    * **Note-value form**: ``note_value`` is the denominator of the note
+      value (2, 4, 8, or 16) and ``triplet`` flips the 3:2 variant —
+      ``*8t`` means 8th-note triplets across the bar.
+    * **Named-tuplet form**: ``tuplet_kind`` names one of
+      ``triplet``/``quintuplet``/``sextuplet``/``septuplet``/``nonuplet``,
+      meaning "fill the bar with one tuplet of that kind per beat".
+      ``tuplet_span`` is in beats (``Fraction(1)`` default, ``Fraction(1, 2)``
+      for ``/8`` half-beat granularity). When ``tuplet_kind`` is set,
+      ``note_value`` and ``triplet`` are unused.
+
+    ``except_beats`` excludes specific beat labels from the expanded pattern.
     """
 
-    note_value: int
+    note_value: int = 0
     triplet: bool = False
     except_beats: tuple[str, ...] = ()
+    tuplet_kind: str | None = None
+    tuplet_span: Fraction = Fraction(1)
 
     def __str__(self) -> str:
-        base = f"*{self.note_value}{'t' if self.triplet else ''}"
+        if self.tuplet_kind is not None:
+            base = f"*{self.tuplet_kind}"
+            if self.tuplet_span == Fraction(1, 2):
+                base = f"{base}/8"
+            elif self.tuplet_span == Fraction(1, 4):
+                base = f"{base}/16"
+        else:
+            base = f"*{self.note_value}{'t' if self.triplet else ''}"
         if self.except_beats:
             return f"{base} except {', '.join(self.except_beats)}"
         return base

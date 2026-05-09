@@ -7,12 +7,14 @@ and constructs :class:`Song` plus its child AST nodes.
 
 import ast as _ast
 import re
+from fractions import Fraction
 from pathlib import Path
 
 from lark import Lark, Transformer, v_args
 
 from .ast_nodes import (
     INHERIT_CATEGORIES,
+    _TUPLET_RATIOS,
     BeatHit,
     CrashInSpec,
     Cue,
@@ -34,6 +36,8 @@ from .ast_nodes import (
     Section,
     Song,
     StarSpec,
+    TupletGroup,
+    TupletSlot,
     Variation,
     VariationAction,
     VariationDef,
@@ -505,6 +509,12 @@ class _GrooveScriptTransformer(Transformer):
 
         When the ``notes:`` line is omitted, every count slot defaults to a
         single snare hit — the most common starting point for a fill.
+
+        Inline ``{kind …}`` tuplet groups in the count string segregate
+        tuplet slots from straight slots: tuplet slots fold into per-instrument
+        TupletGroups carried via ``pattern_lines`` so the existing
+        TupletGroup expansion handles them; straight slots remain as
+        FillLines so ``compile_fill_bar`` keeps its short path.
         """
         count_str = _ast.literal_eval(str(items[0]))
         beat_labels = _parse_count_tokens(count_str)
@@ -517,11 +527,57 @@ class _GrooveScriptTransformer(Transformer):
                 raise ValueError(
                     _format_count_notes_mismatch("fill block", count_str, notes_str)
                 )
-        lines = [
-            FillLine(beat=beat, instruments=instruments)
-            for beat, instruments in zip(beat_labels, note_groups)
-        ]
-        return FillBar(label=count_str, lines=lines)
+
+        from .parser_notation import _decode_tuplet_slot_label
+
+        fill_lines: list[FillLine] = []
+        # (instrument, anchor, ratio) → TupletGroup accumulating slots.
+        tuplet_groups: dict[tuple[str, str, tuple[int, int]], TupletGroup] = {}
+        # Track (instrument, ratio) per group order so we can build per-instrument
+        # PatternLines preserving first-appearance order.
+        per_instr_groups: dict[str, list[TupletGroup]] = {}
+
+        for label, hits in zip(beat_labels, note_groups):
+            decoded = _decode_tuplet_slot_label(label)
+            if decoded is None:
+                fill_lines.append(FillLine(beat=label, instruments=hits))
+                continue
+            anchor, slot_idx, actual, normal = decoded
+            for hit in hits:
+                instrument = str(hit)
+                key = (instrument, anchor, (actual, normal))
+                group = tuplet_groups.get(key)
+                if group is None:
+                    # Look up the kind keyword from the ratio. (Lossless
+                    # because each ratio maps to exactly one keyword.)
+                    kind = next(
+                        k for k, r in _TUPLET_RATIOS.items() if r == (actual, normal)
+                    )
+                    group = TupletGroup(
+                        kind=kind,
+                        ratio=(actual, normal),
+                        span=Fraction(1),
+                        anchor=anchor,
+                        slots=[],
+                    )
+                    tuplet_groups[key] = group
+                    per_instr_groups.setdefault(instrument, []).append(group)
+                group.slots.append(
+                    TupletSlot(
+                        index=slot_idx,
+                        modifiers=list(getattr(hit, "modifiers", []) or []),
+                        buzz_duration=getattr(hit, "buzz_duration", None),
+                        grace_instrument=getattr(hit, "grace_instrument", None),
+                    )
+                )
+
+        pattern_lines: list[PatternLine] = []
+        for instrument, groups in per_instr_groups.items():
+            pattern_lines.append(
+                PatternLine(instrument=instrument, beats=list(groups))
+            )
+
+        return FillBar(label=count_str, lines=fill_lines, pattern_lines=pattern_lines)
 
     def fill_line(self, items):
         beat = _normalize_beat_label(str(items[0]))
@@ -531,11 +587,17 @@ class _GrooveScriptTransformer(Transformer):
     @v_args(meta=True)
     def fill_instr_line(self, meta, items):
         """Instrument→positions line in fill count block: 'BD: 1, 3' or 'BD: *8 except 4&'
-        Normalizes to a list of FillLines (one per beat) or a PatternLine (for star specs)."""
+        Normalizes to a list of FillLines (one per beat) or a PatternLine (for
+        star specs and beat lists that contain a tuplet group)."""
         instrument = _normalize_instrument(str(items[0]))
         value = items[1]  # list of BeatHit from beat_list, or StarSpec from star/star_except
         if isinstance(value, StarSpec):
             return PatternLine(instrument=instrument, beats=value, line=_meta_line(meta))
+        # If the beat list contains any TupletGroup, route through PatternLine
+        # so the existing tuplet-expansion pipeline handles it. Plain beat
+        # lists keep their FillLine fan-out for backward compatibility.
+        if any(isinstance(item, TupletGroup) for item in value):
+            return PatternLine(instrument=instrument, beats=list(value), line=_meta_line(meta))
         result = []
         for beat_hit in value:
             modifiers = getattr(beat_hit, "modifiers", [])
@@ -1259,6 +1321,46 @@ class _GrooveScriptTransformer(Transformer):
         except_beats = tuple(_normalize_beat_label(str(b)) for b in beat_list)
         return StarSpec(note_value=int(digits), triplet=triplet, except_beats=except_beats)
 
+    def tuplet_star(self, items):
+        """Parse ``*<kind>[/N] [except beat_list]`` into a :class:`StarSpec`.
+
+        Reads the kind keyword (and optional ``/N`` qualifier) from the
+        TUPLET_STAR token; pulls excluded beats from the optional ``beat_list``.
+        """
+        token = str(items[0])
+        assert token.startswith("*"), token
+        body = token[1:]
+        if "/" in body:
+            kind, _, qual = body.partition("/")
+            qualifier: int | None = int(qual)
+        else:
+            kind = body
+            qualifier = None
+        if kind not in _TUPLET_RATIOS:
+            raise ValueError(f"unknown tuplet kind in star: {kind!r}")
+        if qualifier is None or qualifier == 4:
+            span = Fraction(1)
+        elif qualifier == 8:
+            span = Fraction(1, 2)
+        elif qualifier == 16:
+            span = Fraction(1, 4)
+        else:
+            raise ValueError(
+                f"*{kind}/{qualifier}: unsupported /N qualifier (supported: "
+                f"/4 = beat, /8 = half-beat, /16 = quarter-beat)"
+            )
+        except_beats: tuple[str, ...] = ()
+        if len(items) > 1:
+            beat_list = items[1]
+            except_beats = tuple(_normalize_beat_label(str(b)) for b in beat_list)
+        return StarSpec(
+            note_value=0,
+            triplet=False,
+            except_beats=except_beats,
+            tuplet_kind=kind,
+            tuplet_span=span,
+        )
+
     def variation_star(self, items):
         """Return the bare ``*`` wildcard for variation action targets.
 
@@ -1269,6 +1371,83 @@ class _GrooveScriptTransformer(Transformer):
 
     def beat_list(self, items):
         return list(items)
+
+    def tuplet_slot(self, items):
+        # items: [INT, *MODIFIER tokens]
+        index = int(items[0])
+        if index < 1:
+            raise ValueError(
+                f"tuplet slot index must be >= 1, got {index}"
+            )
+        raw_mods = [str(m) for m in items[1:]]
+        modifiers, buzz_dur, grace_inst = _extract_modifier_args(raw_mods)
+        return TupletSlot(
+            index=index,
+            modifiers=modifiers,
+            buzz_duration=buzz_dur,
+            grace_instrument=grace_inst,
+        )
+
+    @v_args(meta=True)
+    def tuplet_group(self, meta, items):
+        # items: [BEAT_LABEL, TUPLET_KIND, INT?, TupletSlot+]
+        # The optional INT after TUPLET_KIND comes from the ``/N`` qualifier.
+        anchor = _normalize_beat_label(str(items[0]))
+        kind = str(items[1])
+        idx = 2
+        qualifier: int | None = None
+        # The grammar lifts ``"/" INT`` to a bare INT in items because the
+        # literal slash is anonymous; if items[idx] is a Token of type INT
+        # (rather than a TupletSlot), it's the qualifier.
+        if idx < len(items) and hasattr(items[idx], "type") and items[idx].type == "INT":
+            qualifier = int(items[idx])
+            idx += 1
+        slots = [s for s in items[idx:] if isinstance(s, TupletSlot)]
+        if not slots:
+            raise ValueError(
+                f"tuplet group at beat {anchor!r} has no slot hits"
+            )
+        if kind not in _TUPLET_RATIOS:
+            raise ValueError(f"unknown tuplet kind: {kind!r}")
+        actual, normal = _TUPLET_RATIOS[kind]
+        # Determine span (in beats). Default = 1 (whole beat). ``/8`` = a
+        # half-beat span; ``/16`` = a quarter-beat span (rare but legal).
+        if qualifier is None:
+            span = Fraction(1)
+        elif qualifier == 4:
+            span = Fraction(1)
+        elif qualifier == 8:
+            span = Fraction(1, 2)
+        elif qualifier == 16:
+            span = Fraction(1, 4)
+        else:
+            raise ValueError(
+                f"tuplet group at beat {anchor!r}: unsupported /N qualifier "
+                f"/{qualifier} (supported: /4 = beat, /8 = half-beat, "
+                f"/16 = quarter-beat)"
+            )
+        # Validate slot indices are within range and not duplicated.
+        seen: set[int] = set()
+        for slot in slots:
+            if slot.index > actual:
+                raise ValueError(
+                    f"{kind} at beat {anchor!r}: slot index {slot.index} is out "
+                    f"of range (a {kind} has {actual} slots, indices 1..{actual})"
+                )
+            if slot.index in seen:
+                raise ValueError(
+                    f"{kind} at beat {anchor!r}: slot {slot.index} is listed "
+                    f"more than once"
+                )
+            seen.add(slot.index)
+        return TupletGroup(
+            kind=kind,
+            ratio=(actual, normal),
+            span=span,
+            anchor=anchor,
+            slots=slots,
+            line=_meta_line(meta),
+        )
 
     def beat(self, items):
         label = _normalize_beat_label(str(items[0]))

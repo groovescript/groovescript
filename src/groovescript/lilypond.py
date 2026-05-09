@@ -668,6 +668,194 @@ def _drum_measure_mixed(
     return " ".join(tokens)
 
 
+def _drum_measure_with_tuplets(
+    events,
+    beats_per_bar: int,
+    beat_tuplets: list,
+    cue_map: dict | None = None,
+    placeholder_map: dict | None = None,
+    dynamic_start_map: dict | None = None,
+    dynamic_stop_set: set | None = None,
+) -> str:
+    """Emit LilyPond for a bar that has explicit per-beat tuplet annotations.
+
+    Walks the bar beat-by-beat, consulting ``beat_tuplets[beat_idx]`` to
+    decide how to render that beat. Ratios beyond the legacy 3:2 triplet
+    (5:4, 6:4, 7:4, 9:8) and half-beat tuplet splits are all driven by this
+    annotation rather than position-based inference.
+    """
+    pos_map: dict[Fraction, list[tuple]] = defaultdict(list)
+    for event in events:
+        ly_name = _INSTRUMENT_TO_LY.get(event.instrument, event.instrument.lower())
+        grace_ly = _grace_ly_name(event)
+        pos_map[event.beat_position].append((ly_name, set(event.modifiers), grace_ly))
+
+    def _attach_markup(token: str, pos: Fraction) -> str:
+        return _attach_position_markup(
+            token, pos, cue_map, placeholder_map, dynamic_start_map, dynamic_stop_set
+        )
+
+    def _emit_tuplet_block(
+        actual: int,
+        normal: int,
+        block_start: Fraction,
+        block_span_in_bar: Fraction,
+        ly_duration: str,
+    ) -> str:
+        """Render ``actual`` evenly-spaced slots of ratio actual/normal.
+
+        ``block_start`` is bar-relative; ``block_span_in_bar`` is the span
+        of the whole tuplet block in bar fractions; ``ly_duration`` is the
+        LilyPond duration string for one slot (e.g. ``"8"`` for a triplet
+        eighth or sextuplet 16th over a beat).
+        """
+        slot_tokens: list[str] = []
+        for slot_idx in range(actual):
+            slot_pos = block_start + Fraction(slot_idx, actual) * block_span_in_bar
+            hits = pos_map.get(slot_pos, [])
+            t = _format_hits(hits, ly_duration)
+            t = _attach_markup(t, slot_pos)
+            slot_tokens.append(t)
+        return f"\\tuplet {actual}/{normal} {{ {' '.join(slot_tokens)} }}"
+
+    def _emit_straight_half(half_start: Fraction) -> str:
+        """Render a half-beat as one straight 8th-note slot.
+
+        Used for the non-tuplet half of a half-beat tuplet split. The slot
+        carries a hit chord if any event lands on the half-beat, else a rest.
+        """
+        hits = pos_map.get(half_start, [])
+        if hits:
+            t = _format_hits(hits, "8")
+        else:
+            t = "r8"
+        return _attach_markup(t, half_start)
+
+    def _emit_straight_beat(beat_start: Fraction, beat_idx: int) -> str:
+        """Reuse the existing straight-beat logic for a non-tuplet beat."""
+        beat_end = Fraction(beat_idx + 1, beats_per_bar)
+        beat_positions = [p for p in pos_map if beat_start <= p < beat_end]
+        has_sixteenths = any(
+            _is_sixteenth_only(p, beats_per_bar) for p in beat_positions
+        )
+        if has_sixteenths:
+            sixteenth_grid = beats_per_bar * 4
+            ts: list[str] = []
+            for slot_idx in range(4):
+                slot_pos = beat_start + Fraction(slot_idx, sixteenth_grid)
+                hits = pos_map.get(slot_pos, [])
+                t = _format_hits(hits, "16")
+                t = _attach_markup(t, slot_pos)
+                ts.append(t)
+            return " ".join(ts)
+        # Quarter or two 8ths
+        and_pos = beat_start + Fraction(1, beats_per_bar * 2)
+        hits_on_beat = pos_map.get(beat_start, [])
+        hits_on_and = pos_map.get(and_pos, [])
+        if hits_on_beat and not hits_on_and:
+            t = _format_hits(hits_on_beat, "4")
+            return _attach_markup(t, beat_start)
+        if not hits_on_beat and not hits_on_and:
+            return _attach_markup("r4", beat_start)
+        t1 = _attach_markup(_format_hits(hits_on_beat, "8"), beat_start)
+        t2 = _attach_markup(_format_hits(hits_on_and, "8"), and_pos)
+        return f"{t1} {t2}"
+
+    tokens: list[str] = []
+    for beat_idx in range(beats_per_bar):
+        beat_start = Fraction(beat_idx, beats_per_bar)
+        annot = beat_tuplets[beat_idx] if beat_idx < len(beat_tuplets) else None
+        if annot is None:
+            tokens.append(_emit_straight_beat(beat_start, beat_idx))
+            continue
+        if isinstance(annot, tuple) and annot and annot[0] == "full":
+            _, actual, normal = annot
+            # Slot duration: an N:M tuplet over a beat means N slots in the
+            # time of M ``unit`` notes where unit = beat_unit / 4 of a quarter.
+            # In 4/4 (beat_unit=4), the unit is a quarter; M=4 means slots
+            # are 16ths (4 in a beat), M=2 means slots are 8ths, M=8 means
+            # slots are 32nds.
+            #   triplet 3:2 → unit = 8th  → ly_duration = "8"
+            #   sextuplet 6:4 → unit = 16th → ly_duration = "16"
+            #   septuplet 7:4 → unit = 16th → ly_duration = "16"
+            #   quintuplet 5:4 → unit = 16th → ly_duration = "16"
+            #   nonuplet 9:8 → unit = 32nd → ly_duration = "32"
+            ly_duration = _LY_DURATION_FOR_NORMAL.get(normal, "16")
+            tokens.append(
+                _emit_tuplet_block(
+                    actual=actual,
+                    normal=normal,
+                    block_start=beat_start,
+                    block_span_in_bar=Fraction(1, beats_per_bar),
+                    ly_duration=ly_duration,
+                )
+            )
+            continue
+        if isinstance(annot, tuple) and annot and annot[0] == "halves":
+            _, left, right = annot
+            half_span = Fraction(1, 2 * beats_per_bar)
+            half_mid = beat_start + half_span
+            half_pieces: list[str] = []
+            # Left half
+            if left is None:
+                half_pieces.append(_emit_straight_half(beat_start))
+            else:
+                actual, normal = left
+                # Half-beat span = an 8th note. For an N:M tuplet, slot duration
+                # is M*8th / N * (1/M) → the unit is M's note value scaled.
+                # For half-beat: slots are normal*2 of unit. e.g. triplet/8
+                # 3:2 over an 8th → 3 slots in time of 2 16ths → ly "16".
+                ly_duration = _LY_DURATION_FOR_NORMAL_HALFBEAT.get(normal, "32")
+                half_pieces.append(
+                    _emit_tuplet_block(
+                        actual=actual,
+                        normal=normal,
+                        block_start=beat_start,
+                        block_span_in_bar=half_span,
+                        ly_duration=ly_duration,
+                    )
+                )
+            # Right half
+            if right is None:
+                half_pieces.append(_emit_straight_half(half_mid))
+            else:
+                actual, normal = right
+                ly_duration = _LY_DURATION_FOR_NORMAL_HALFBEAT.get(normal, "32")
+                half_pieces.append(
+                    _emit_tuplet_block(
+                        actual=actual,
+                        normal=normal,
+                        block_start=half_mid,
+                        block_span_in_bar=half_span,
+                        ly_duration=ly_duration,
+                    )
+                )
+            tokens.append(" ".join(half_pieces))
+            continue
+        # Unknown annotation kind — fall back to straight beat.
+        tokens.append(_emit_straight_beat(beat_start, beat_idx))
+
+    return " ".join(tokens)
+
+
+# LilyPond duration string for one slot of an N:M whole-beat tuplet, keyed
+# on M (the "normal-notes" denominator). Triplet 3:2 → 8ths; everything
+# else with M=4 fits in 16th-note slots; nonuplet 9:8 fits in 32nd slots.
+_LY_DURATION_FOR_NORMAL: dict[int, str] = {
+    2: "8",
+    4: "16",
+    8: "32",
+}
+
+# Same idea but for half-beat tuplets (the block spans an 8th note rather
+# than a quarter), so each slot is one note value smaller.
+_LY_DURATION_FOR_NORMAL_HALFBEAT: dict[int, str] = {
+    2: "16",
+    4: "32",
+    8: "64",
+}
+
+
 def _drum_measure(
     events,
     subdivision: int,
@@ -678,12 +866,23 @@ def _drum_measure(
     dynamic_start_map: dict | None = None,
     dynamic_stop_set: set | None = None,
     forced_voice_split_ids: set | None = None,
+    beat_tuplets: list | None = None,
 ) -> str:
     """Emit LilyPond notation for one bar.
 
-    Dispatches to ``_drum_measure_mixed`` when any event sits on a triplet-only
-    position; otherwise uses the straight slot-based approach.
+    Dispatches to ``_drum_measure_with_tuplets`` when ``beat_tuplets``
+    annotates any beat with a non-3:2 ratio or a half-beat split (i.e. the
+    new tuplet-group code path), to ``_drum_measure_mixed`` for the legacy
+    triplet-only code path, otherwise to the straight slot-based approach.
     """
+    has_tuplet_annotations = bool(beat_tuplets) and any(
+        a is not None for a in beat_tuplets
+    )
+    if has_tuplet_annotations:
+        return _drum_measure_with_tuplets(
+            events, beats_per_bar, beat_tuplets,
+            cue_map, placeholder_map, dynamic_start_map, dynamic_stop_set,
+        )
     if any(_is_triplet_only(e.beat_position, beats_per_bar) for e in events):
         return _drum_measure_mixed(events, beats_per_bar, cue_map, placeholder_map, dynamic_start_map, dynamic_stop_set)
     return _drum_measure_straight(
@@ -1200,7 +1399,11 @@ def _group_bars(
             dynamic_stop_set = resolved_stops
 
         num_identical = 1
-        bar_measure = _drum_measure(bar.events, bar.subdivision, state.current_bpb, state.current_beat_unit, cue_map, placeholder_map, dynamic_start_map, dynamic_stop_set, forced_voice_split_ids)
+        bar_measure = _drum_measure(
+            bar.events, bar.subdivision, state.current_bpb, state.current_beat_unit,
+            cue_map, placeholder_map, dynamic_start_map, dynamic_stop_set,
+            forced_voice_split_ids, beat_tuplets=bar.beat_tuplets,
+        )
         if not has_annotations:
             for k in range(1, max_lookahead):
                 next_bar = bars[i + k]
@@ -1217,7 +1420,13 @@ def _group_bars(
                     break
                 if next_bar.dynamic_starts or next_bar.dynamic_stops:
                     break
-                if _drum_measure(next_bar.events, next_bar.subdivision, state.current_bpb, state.current_beat_unit, forced_voice_split_ids=forced_voice_split_ids) != bar_measure:
+                if next_bar.beat_tuplets != bar.beat_tuplets:
+                    break
+                if _drum_measure(
+                    next_bar.events, next_bar.subdivision, state.current_bpb, state.current_beat_unit,
+                    forced_voice_split_ids=forced_voice_split_ids,
+                    beat_tuplets=next_bar.beat_tuplets,
+                ) != bar_measure:
                     break
                 num_identical += 1
 
@@ -1265,6 +1474,7 @@ def _group_bars(
                     _drum_measure(
                         tb.events, tb.subdivision, state.current_bpb, state.current_beat_unit,
                         forced_voice_split_ids=forced_voice_split_ids,
+                        beat_tuplets=tb.beat_tuplets,
                     )
                     for tb in template_bars
                 ]
@@ -1296,9 +1506,13 @@ def _group_bars(
                         if cb.subdivision != template_bars[j].subdivision:
                             cand_ok = False
                             break
+                        if cb.beat_tuplets != template_bars[j].beat_tuplets:
+                            cand_ok = False
+                            break
                         cand_measure = _drum_measure(
                             cb.events, cb.subdivision, state.current_bpb, state.current_beat_unit,
                             forced_voice_split_ids=forced_voice_split_ids,
+                            beat_tuplets=cb.beat_tuplets,
                         )
                         if cand_measure != template_measures[j]:
                             cand_ok = False

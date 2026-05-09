@@ -19,7 +19,12 @@ from xml.etree.ElementTree import Element, SubElement, ElementTree
 
 from .compiler import Event, IRBar, IRGroove, IRSong
 
-_DIVS_PER_BEAT = 24   # divisions per quarter note
+# Divisions per quarter note. The value must be divisible by every tuplet
+# denominator we want to emit cleanly: lcm(8, 3, 5, 6, 7, 9) = 2520. With
+# 2520, a triplet 8th = 840 divs, a sextuplet 16th = 420, a quintuplet 16th =
+# 504, a septuplet 16th = 360, a nonuplet 32nd = 280, a 32nd note = 315 —
+# every tuplet kind we support has integer divisions.
+_DIVS_PER_BEAT = 2520
 _DEFAULT_TEMPO = 120
 _DEFAULT_TS = "4/4"
 
@@ -57,26 +62,67 @@ _DISPLAY: dict[str, tuple[str, int, str, str]] = {
 
 # Duration table: (divisions, type_name, dots, actual_notes, normal_notes)
 # actual/normal != 1/1 signals a tuplet requiring <time-modification>.
-# Sorted largest-first so greedy decomposition picks the biggest fit.
-_DURATION_TABLE: list[tuple[int, str, int, int, int]] = [
-    (96, "whole",   0, 1, 1),
-    (72, "half",    1, 1, 1),   # dotted half
-    (48, "half",    0, 1, 1),
-    (36, "quarter", 1, 1, 1),   # dotted quarter
-    (32, "half",    0, 3, 2),   # triplet half
-    (24, "quarter", 0, 1, 1),
-    (18, "eighth",  1, 1, 1),   # dotted eighth
-    (16, "quarter", 0, 3, 2),   # triplet quarter
-    (12, "eighth",  0, 1, 1),
-    ( 9, "16th",    1, 1, 1),   # dotted 16th
-    ( 8, "eighth",  0, 3, 2),   # triplet eighth
-    ( 6, "16th",    0, 1, 1),
-    ( 4, "16th",    0, 3, 2),   # triplet 16th
-    ( 3, "32nd",    0, 1, 1),
-    ( 2, "32nd",    0, 3, 2),   # triplet 32nd
-]
+# Built programmatically off ``_DIVS_PER_BEAT`` so the table scales when
+# we change divisions to accommodate new tuplet ratios. ``_PB`` = divisions
+# per beat (per quarter note in 4/4); a power-of-2 note value's duration is
+# ``_PB * 4 / N`` (whole=4*_PB, half=2*_PB, quarter=_PB, eighth=_PB/2, …).
+_PB = _DIVS_PER_BEAT
 
+
+def _build_duration_table() -> list[tuple[int, str, int, int, int]]:
+    rows: list[tuple[int, str, int, int, int]] = []
+    base = {
+        "whole":   _PB * 4,
+        "half":    _PB * 2,
+        "quarter": _PB,
+        "eighth":  _PB // 2,
+        "16th":    _PB // 4,
+        "32nd":    _PB // 8,
+    }
+    for type_name, divs in base.items():
+        rows.append((divs, type_name, 0, 1, 1))
+        rows.append((divs * 3 // 2, type_name, 1, 1, 1))            # dotted
+        rows.append((divs * 2 // 3, type_name, 0, 3, 2))            # triplet (3:2)
+    # Tuplet-only entries used by ``_emit_tuplet_beat`` when it picks a
+    # type+ratio for tuplets beyond the legacy 3:2.  Sorted by divs at the
+    # end so the greedy decomposition still works for non-tuplet content.
+    return rows
+
+
+_DURATION_TABLE: list[tuple[int, str, int, int, int]] = _build_duration_table()
 _DUR_BY_SIZE = sorted(_DURATION_TABLE, key=lambda x: x[0], reverse=True)
+
+
+# Slot duration (in divisions) for one slot of an N:M whole-beat tuplet,
+# keyed on (actual, normal). A whole-beat tuplet's slot duration is
+# ``_PB * normal // actual / actual`` … actually slot_duration =
+# beat / actual where beat = _PB. So slot = _PB // actual when actual divides
+# _PB; with _PB = 2520 every supported tuplet has integer slot durations.
+_TUPLET_SLOT_DIVS_FULL: dict[tuple[int, int], int] = {
+    (3, 2): _PB // 3,
+    (5, 4): _PB // 5,
+    (6, 4): _PB // 6,
+    (7, 4): _PB // 7,
+    (9, 8): _PB // 9,
+}
+
+# Same idea for half-beat tuplets (slot_duration = (_PB / 2) / actual).
+_TUPLET_SLOT_DIVS_HALF: dict[tuple[int, int], int] = {
+    (3, 2): (_PB // 2) // 3,
+    (5, 4): (_PB // 2) // 5,
+    (6, 4): (_PB // 2) // 6,
+    (7, 4): (_PB // 2) // 7,
+    (9, 8): (_PB // 2) // 9,
+}
+
+# Printed type for one slot of a tuplet — what the engraving looks like
+# when the time-modification is applied.  Determined by the "normal" side
+# of the ratio:
+#   normal = 2 → printed eighth  (3:2 fits in two 8ths = a quarter)
+#   normal = 4 → printed 16th    (5:4, 6:4, 7:4 fit in four 16ths = a quarter)
+#   normal = 8 → printed 32nd    (9:8 fits in eight 32nds = a quarter)
+_TUPLET_PRINTED_TYPE_FULL: dict[int, str] = {2: "eighth", 4: "16th", 8: "32nd"}
+_TUPLET_PRINTED_TYPE_HALF: dict[int, str] = {2: "16th", 4: "32nd", 8: "64th"}
 
 
 # ---------------------------------------------------------------------------
@@ -221,10 +267,15 @@ def _fill_part(
             _add_rehearsal(measure, bar.section_name)
 
         bar_divs = _bar_total_divs(ts)
+        beats_per_bar = int(ts.split("/")[0])
         if bar.is_rest:
             _add_whole_rest(measure, bar_divs)
         else:
-            _add_notes(measure, bar.events, bar_divs)
+            _add_notes(
+                measure, bar.events, bar_divs,
+                beats_per_bar=beats_per_bar,
+                beat_tuplets=bar.beat_tuplets,
+            )
 
         cur_ts = ts
         cur_bpm = bpm
@@ -238,6 +289,7 @@ def _musicxml_from_groove(groove: IRGroove) -> bytes:
     ts = _DEFAULT_TS
     bpm = _DEFAULT_TEMPO
     bar_divs = _bar_total_divs(ts)
+    beats_per_bar = int(ts.split("/")[0])
 
     root = _score_root(groove.name)
     root.find("part-list").append(_score_part("P1", "Drumset"))  # type: ignore[union-attr]
@@ -262,7 +314,16 @@ def _musicxml_from_groove(groove: IRGroove) -> bytes:
             SubElement(clef, "sign").text = "percussion"
             _add_tempo_direction(measure, bpm)
 
-        _add_notes(measure, events, bar_divs)
+        bar_tuplets = (
+            groove.bar_beat_tuplets[bar_num - 1]
+            if bar_num - 1 < len(groove.bar_beat_tuplets)
+            else []
+        )
+        _add_notes(
+            measure, events, bar_divs,
+            beats_per_bar=beats_per_bar,
+            beat_tuplets=bar_tuplets,
+        )
 
     return _serialize(root)
 
@@ -271,18 +332,29 @@ def _musicxml_from_groove(groove: IRGroove) -> bytes:
 # Note / rest emission
 # ---------------------------------------------------------------------------
 
-def _add_notes(parent: Element, events: list[Event], bar_divs: int) -> None:
+def _add_notes(
+    parent: Element,
+    events: list[Event],
+    bar_divs: int,
+    beats_per_bar: int = 4,
+    beat_tuplets: list | None = None,
+) -> None:
     """Append <note> elements covering the full measure duration.
 
     Slot durations that cannot be expressed by a single MusicXML note type
     are split into a tied chain so that <duration> and <type> always agree
     (e.g. a 60-division gap becomes a half tied to an eighth, not a single
     note with duration=60 and type='half').
+
+    When ``beat_tuplets`` annotates a beat with an ``("full", a, n)`` or
+    ``("halves", left, right)`` tuple, that beat is rendered slot-by-slot
+    inside a tuplet block (one note per slot, with explicit time-modification),
+    rather than going through the straight-grid greedy decomposition.
     """
     # Skip tied-from-prev events (buzz continuations started in the prior bar)
     active = [ev for ev in events if not ev.tied_from_prev]
 
-    if not active:
+    if not active and not (beat_tuplets and any(beat_tuplets)):
         _add_whole_rest(parent, bar_divs)
         return
 
@@ -292,11 +364,92 @@ def _add_notes(parent: Element, events: list[Event], bar_divs: int) -> None:
         onset = int(ev.beat_position * bar_divs)
         by_onset.setdefault(onset, []).append(ev)
 
+    has_tuplets = bool(beat_tuplets) and any(a is not None for a in beat_tuplets)
+    if not has_tuplets:
+        # Legacy fast path: one greedy pass over the bar.
+        _add_notes_straight(parent, by_onset, bar_divs)
+        return
+
+    # Tuplet-aware path: walk beat by beat. For straight beats, fall back to
+    # straight emission within that beat's range. For tuplet beats, emit
+    # slot-by-slot with explicit time-modification.
+    pos = 0
+    beat_divs = bar_divs // beats_per_bar
+    for beat_idx in range(beats_per_bar):
+        beat_start = beat_idx * beat_divs
+        beat_end = beat_start + beat_divs
+        annot = (
+            beat_tuplets[beat_idx] if beat_tuplets and beat_idx < len(beat_tuplets) else None
+        )
+        if annot is None:
+            # Straight beat — emit any events landing in this beat using the
+            # standard greedy decomposition, capped at the beat boundary.
+            beat_onsets = {
+                o: evs for o, evs in by_onset.items() if beat_start <= o < beat_end
+            }
+            pos = _emit_straight_range(
+                parent, beat_onsets, beat_start, beat_end, pos
+            )
+            continue
+        if annot[0] == "full":
+            _, actual, normal = annot
+            pos = _emit_tuplet_block(
+                parent, by_onset, beat_start, beat_divs,
+                actual, normal,
+                slot_divs=_TUPLET_SLOT_DIVS_FULL[(actual, normal)],
+                printed_type=_TUPLET_PRINTED_TYPE_FULL[normal],
+                pos=pos,
+            )
+            continue
+        if annot[0] == "halves":
+            _, left, right = annot
+            half_divs = beat_divs // 2
+            half_mid = beat_start + half_divs
+            for half_start, ratio in (
+                (beat_start, left),
+                (half_mid, right),
+            ):
+                half_end = half_start + half_divs
+                if ratio is None:
+                    half_onsets = {
+                        o: evs for o, evs in by_onset.items()
+                        if half_start <= o < half_end
+                    }
+                    pos = _emit_straight_range(
+                        parent, half_onsets, half_start, half_end, pos
+                    )
+                else:
+                    actual, normal = ratio
+                    pos = _emit_tuplet_block(
+                        parent, by_onset, half_start, half_divs,
+                        actual, normal,
+                        slot_divs=_TUPLET_SLOT_DIVS_HALF[(actual, normal)],
+                        printed_type=_TUPLET_PRINTED_TYPE_HALF[normal],
+                        pos=pos,
+                    )
+            continue
+        # Unknown annotation — skip this beat as straight.
+        beat_onsets = {
+            o: evs for o, evs in by_onset.items() if beat_start <= o < beat_end
+        }
+        pos = _emit_straight_range(parent, beat_onsets, beat_start, beat_end, pos)
+
+    if pos < bar_divs:
+        for rest_divs in _split_duration(bar_divs - pos):
+            _append_rest(parent, rest_divs)
+
+
+def _add_notes_straight(
+    parent: Element,
+    by_onset: dict[int, list[Event]],
+    bar_divs: int,
+) -> None:
+    """Original straight-grid emission path — preserved verbatim for the
+    common case where no beat in the bar carries a tuplet annotation."""
     onsets = sorted(by_onset.keys())
     pos = 0
 
     for idx, onset in enumerate(onsets):
-        # Fill gap before this onset with rests
         if onset > pos:
             for rest_divs in _split_duration(onset - pos):
                 _append_rest(parent, rest_divs)
@@ -307,8 +460,6 @@ def _add_notes(parent: Element, events: list[Event], bar_divs: int) -> None:
         n_parts = len(parts)
         chord_evs = by_onset[onset]
 
-        # Grace notes (flam/drag) appear once before the chord, on the
-        # first split-part only.
         for ev in chord_evs:
             _append_grace_notes(parent, ev)
 
@@ -326,10 +477,150 @@ def _add_notes(parent: Element, events: list[Event], bar_divs: int) -> None:
 
         pos = next_onset
 
-    # Final rest to close out the measure
     if pos < bar_divs:
         for rest_divs in _split_duration(bar_divs - pos):
             _append_rest(parent, rest_divs)
+
+
+def _emit_straight_range(
+    parent: Element,
+    by_onset: dict[int, list[Event]],
+    start: int,
+    end: int,
+    pos: int,
+) -> int:
+    """Emit straight-grid notes/rests covering ``[start, end)``.
+
+    Returns the new ``pos`` cursor (always equal to ``end``).
+    """
+    if pos < start:
+        for rest_divs in _split_duration(start - pos):
+            _append_rest(parent, rest_divs)
+        pos = start
+
+    onsets = sorted(by_onset.keys())
+    for idx, onset in enumerate(onsets):
+        if onset > pos:
+            for rest_divs in _split_duration(onset - pos):
+                _append_rest(parent, rest_divs)
+        next_onset = onsets[idx + 1] if idx + 1 < len(onsets) else end
+        slot_dur = max(next_onset - onset, 1)
+        parts = _split_duration(slot_dur)
+        n_parts = len(parts)
+        chord_evs = by_onset[onset]
+        for ev in chord_evs:
+            _append_grace_notes(parent, ev)
+        for part_idx, part_dur in enumerate(parts):
+            is_first_part = part_idx == 0
+            is_last_part = part_idx == n_parts - 1
+            for chord_idx, ev in enumerate(chord_evs):
+                _append_note(
+                    parent, ev, part_dur,
+                    chord=(chord_idx > 0),
+                    split_tie_start=not is_last_part,
+                    split_tie_stop=not is_first_part,
+                    show_articulation=is_first_part,
+                )
+        pos = next_onset
+    if pos < end:
+        for rest_divs in _split_duration(end - pos):
+            _append_rest(parent, rest_divs)
+        pos = end
+    return pos
+
+
+def _emit_tuplet_block(
+    parent: Element,
+    by_onset: dict[int, list[Event]],
+    block_start: int,
+    block_divs: int,
+    actual: int,
+    normal: int,
+    slot_divs: int,
+    printed_type: str,
+    pos: int,
+) -> int:
+    """Emit one tuplet block — ``actual`` slots, each printed as
+    ``printed_type`` with ``<time-modification>actual/normal</time-modification>``.
+
+    Each slot is one note (or one rest), regardless of whether the next
+    slot is empty: this gives a clean, tuplet-bracketed engraving.
+    """
+    if pos < block_start:
+        for rest_divs in _split_duration(block_start - pos):
+            _append_rest(parent, rest_divs)
+        pos = block_start
+
+    for slot_idx in range(actual):
+        slot_onset = block_start + slot_idx * slot_divs
+        chord_evs = by_onset.get(slot_onset, [])
+        if not chord_evs:
+            _append_tuplet_rest(parent, slot_divs, printed_type, actual, normal)
+            continue
+        for ev in chord_evs:
+            _append_grace_notes(parent, ev)
+        for chord_idx, ev in enumerate(chord_evs):
+            _append_tuplet_note(
+                parent, ev, slot_divs, printed_type, actual, normal,
+                chord=(chord_idx > 0),
+            )
+    return block_start + block_divs
+
+
+def _append_tuplet_rest(
+    parent: Element, dur: int, type_name: str, actual: int, normal: int
+) -> None:
+    note = SubElement(parent, "note")
+    SubElement(note, "rest")
+    SubElement(note, "duration").text = str(dur)
+    SubElement(note, "type").text = type_name
+    tm = SubElement(note, "time-modification")
+    SubElement(tm, "actual-notes").text = str(actual)
+    SubElement(tm, "normal-notes").text = str(normal)
+
+
+def _append_tuplet_note(
+    parent: Element,
+    ev: Event,
+    dur: int,
+    type_name: str,
+    actual: int,
+    normal: int,
+    *,
+    chord: bool,
+) -> None:
+    """Append one tuplet-slot note with explicit time-modification."""
+    disp = _DISPLAY.get(ev.instrument)
+    if disp is None:
+        return
+
+    step, octave, notehead, stem_dir = disp
+    note = SubElement(parent, "note")
+    if chord:
+        SubElement(note, "chord")
+    unp = SubElement(note, "unpitched")
+    SubElement(unp, "display-step").text = step
+    SubElement(unp, "display-octave").text = str(octave)
+    SubElement(note, "duration").text = str(dur)
+    SubElement(note, "type").text = type_name
+    tm = SubElement(note, "time-modification")
+    SubElement(tm, "actual-notes").text = str(actual)
+    SubElement(tm, "normal-notes").text = str(normal)
+    SubElement(note, "stem").text = stem_dir
+    notehead_el = SubElement(note, "notehead")
+    notehead_el.text = notehead
+    if "ghost" in ev.modifiers:
+        notehead_el.set("parentheses", "yes")
+    if "accent" in ev.modifiers or "choke" in ev.modifiers or "fermata" in ev.modifiers:
+        notations = SubElement(note, "notations")
+        if "accent" in ev.modifiers or "choke" in ev.modifiers:
+            artic = SubElement(notations, "articulations")
+            if "accent" in ev.modifiers:
+                SubElement(artic, "accent")
+            if "choke" in ev.modifiers:
+                SubElement(artic, "stopped")
+        if "fermata" in ev.modifiers:
+            SubElement(notations, "fermata")
 
 
 def _append_grace_notes(parent: Element, ev: Event) -> None:

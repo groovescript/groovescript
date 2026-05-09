@@ -72,6 +72,245 @@ def _normalize_beat_label(label: str) -> str:
 _POSITIONAL_BEAT_RE = re.compile(r"^([1-9][0-9]?)(trip|let|and|[e&atl])?$")
 
 
+_TUPLET_RATIOS_NOTATION: dict[str, tuple[int, int]] = {
+    "triplet": (3, 2),
+    "quintuplet": (5, 4),
+    "sextuplet": (6, 4),
+    "septuplet": (7, 4),
+    "nonuplet": (9, 8),
+}
+
+
+def _encode_tuplet_slot_label(
+    anchor: str, slot: int, actual: int, normal: int
+) -> str:
+    """Encode a tuplet slot inside a count string as a synthetic label.
+
+    Format: ``~T<anchor>_<slot>_<actual>_<normal>``. The leading ``~T`` is
+    a sentinel so :func:`_beat_label_to_fraction` (and the bar-classifier
+    in ``compiler.py``) can detect tuplet-slot labels without ambiguity.
+    Whole-beat span only — half-beat tuplet groups inside count strings
+    are not supported at this level.
+    """
+    return f"~T{anchor}_{slot}_{actual}_{normal}"
+
+
+def _decode_tuplet_slot_label(
+    label: str,
+) -> tuple[str, int, int, int] | None:
+    """Inverse of :func:`_encode_tuplet_slot_label`. Returns ``None`` for
+    plain (non-tuplet) labels.
+    """
+    if not label.startswith("~T"):
+        return None
+    body = label[2:]
+    parts = body.split("_")
+    if len(parts) != 4:
+        return None
+    anchor, slot_s, actual_s, normal_s = parts
+    try:
+        return anchor, int(slot_s), int(actual_s), int(normal_s)
+    except ValueError:
+        return None
+
+
+def _normalize_count_anchor(prefix: str, count_str: str) -> str:
+    """Validate and canonicalise a count-string anchor prefix.
+
+    Accepts ``"3"`` / ``"3&"`` / ``"3and"`` / ``"3trip"`` / etc. Returns the
+    canonical short form (``"3"`` / ``"3&"`` / ``"3t"`` / …). Raises
+    ``ValueError`` if the prefix isn't a valid beat label.
+    """
+    if not prefix:
+        raise ValueError(
+            f"Tuplet group has no anchor in count string: {count_str!r}"
+        )
+    if prefix.isdigit() and 1 <= int(prefix) <= 99:
+        return prefix
+    match = _POSITIONAL_BEAT_RE.match(prefix)
+    if match is None:
+        raise ValueError(
+            f"Invalid tuplet anchor {prefix!r} in count string: {count_str!r}"
+        )
+    digits = match.group(1)
+    suffix = match.group(2) or ""
+    if suffix == "trip":
+        return digits + "t"
+    if suffix == "let":
+        return digits + "l"
+    if suffix == "and":
+        return digits + "&"
+    return digits + suffix
+
+
+def _strip_anchor_to_digits(anchor: str) -> str:
+    """Extract the digits-only part of an anchor for ``current_beat`` tracking."""
+    match = _POSITIONAL_BEAT_RE.match(anchor)
+    if match is None:
+        return anchor
+    return match.group(1)
+
+
+def _parse_count_tuplet_group(
+    raw: str,
+) -> tuple[str, int, int, list[int]]:
+    """Parse a ``{kind <slots>}`` token from a count string into
+    ``(kind, actual, normal, slot_indices)``. The slot indices are
+    1-based.
+
+    Half-beat or quarter-beat ``/N`` qualifiers are not currently
+    supported inside count strings — count slots are anchored on whole
+    beats.
+    """
+    inner = raw[1:-1].strip()
+    parts = [p for p in inner.replace(",", " ").split() if p]
+    if not parts:
+        raise ValueError(f"Empty tuplet group in count string: {raw!r}")
+    kind_part = parts[0]
+    if "/" in kind_part:
+        raise ValueError(
+            f"Half-beat tuplet ``{kind_part}`` is not supported inside count "
+            f"strings (anchor sub-beats explicitly instead)"
+        )
+    if kind_part not in _TUPLET_RATIOS_NOTATION:
+        raise ValueError(
+            f"Unknown tuplet kind {kind_part!r} in count group {raw!r}"
+        )
+    actual, normal = _TUPLET_RATIOS_NOTATION[kind_part]
+    slots: list[int] = []
+    for slot_tok in parts[1:]:
+        if not slot_tok.isdigit():
+            raise ValueError(
+                f"Non-integer slot {slot_tok!r} in count group {raw!r}"
+            )
+        slot = int(slot_tok)
+        if slot < 1 or slot > actual:
+            raise ValueError(
+                f"Slot index {slot} out of range for {kind_part} "
+                f"(must be 1..{actual}) in {raw!r}"
+            )
+        if slot in slots:
+            raise ValueError(
+                f"Slot {slot} listed more than once in {raw!r}"
+            )
+        slots.append(slot)
+    if not slots:
+        raise ValueError(f"Tuplet group {raw!r} has no slots")
+    return kind_part, actual, normal, slots
+
+
+def _expand_count_tuplet_group(
+    raw: str, anchor: str, count_str: str
+) -> list[str]:
+    """Expand a count-string tuplet group into synthetic slot labels
+    anchored at ``anchor``."""
+    _, actual, normal, slots = _parse_count_tuplet_group(raw)
+    return [
+        _encode_tuplet_slot_label(anchor, slot, actual, normal)
+        for slot in slots
+    ]
+
+
+def _extract_count_tuplet_groups(
+    count_str: str,
+) -> list[tuple[str, str, int, int, list[int]]]:
+    """Pull every tuplet group from a count string.
+
+    Returns a list of ``(anchor, kind, actual, normal, slot_indices)``
+    tuples — one per occurrence. Used by the groove/fill compilers to
+    build per-bar tuplet annotations from count+notes input.
+    """
+    out: list[tuple[str, str, int, int, list[int]]] = []
+    tokens = _split_count_tokens_with_tuplets(count_str)
+    current_beat: str | None = None
+    for token in tokens:
+        brace_open = token.find("{")
+        if brace_open > 0 and token.endswith("}"):
+            anchor_label = _normalize_count_anchor(token[:brace_open], count_str)
+            current_beat = _strip_anchor_to_digits(anchor_label)
+            kind, actual, normal, slots = _parse_count_tuplet_group(token[brace_open:])
+            out.append((anchor_label, kind, actual, normal, slots))
+            continue
+        if token.startswith("{") and token.endswith("}"):
+            if current_beat is None:
+                raise ValueError(
+                    f"Tuplet group {token!r} has no preceding beat number in: "
+                    f"{count_str!r}"
+                )
+            kind, actual, normal, slots = _parse_count_tuplet_group(token)
+            out.append((current_beat, kind, actual, normal, slots))
+            continue
+        if token.isdigit() and 1 <= int(token) <= 99:
+            current_beat = token
+        else:
+            match = _POSITIONAL_BEAT_RE.match(token)
+            if match:
+                current_beat = match.group(1)
+    return out
+
+
+def _split_count_tokens_with_tuplets(count_str: str) -> list[str]:
+    """Tokenise a count string while keeping ``{kind …}`` groups atomic.
+
+    A brace group becomes a single token. When it's immediately preceded by
+    a beat-number prefix (``2{sextuplet 1, 4}``), the prefix is captured in
+    the same token so the parser treats the leading number as the tuplet's
+    anchor — exactly like the pattern-line ``2{sextuplet …}`` form. Other
+    runs split on whitespace and commas as usual.
+    """
+    out: list[str] = []
+    i, n = 0, len(count_str)
+    while i < n:
+        c = count_str[i]
+        if c.isspace() or c == ",":
+            i += 1
+            continue
+        if c == "{":
+            depth = 0
+            j = i
+            while j < n:
+                if count_str[j] == "{":
+                    depth += 1
+                elif count_str[j] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        j += 1
+                        break
+                j += 1
+            out.append(count_str[i:j])
+            i = j
+            continue
+        j = i
+        while j < n and not count_str[j].isspace() and count_str[j] != "," and count_str[j] != "{":
+            j += 1
+        token = count_str[i:j]
+        i = j
+        # If the token is a bare beat label and the *very next* non-space
+        # character is ``{``, fuse the brace group onto this token so the
+        # author's anchor binds explicitly.
+        if token and (token.isdigit() or _POSITIONAL_BEAT_RE.match(token)):
+            k = i
+            while k < n and count_str[k].isspace():
+                k += 1
+            if k < n and count_str[k] == "{":
+                depth = 0
+                m = k
+                while m < n:
+                    if count_str[m] == "{":
+                        depth += 1
+                    elif count_str[m] == "}":
+                        depth -= 1
+                        if depth == 0:
+                            m += 1
+                            break
+                    m += 1
+                token = token + count_str[k:m]
+                i = m
+        if token:
+            out.append(token)
+    return out
+
+
 def _parse_count_tokens(count_str: str) -> list[str]:
     """Convert a count string like '3 e & a 4' into beat labels.
 
@@ -81,6 +320,10 @@ def _parse_count_tokens(count_str: str) -> list[str]:
         - and               : long-form alias for "&"
         - trip / let        : 8th-note triplet suffixes ("t"/"l")
         - 1e, 1and, 1trip…  : positional forms (also 10e, 12&, 11trip, …)
+        - ``{kind 1, 2, …}``: tuplet group (whole-beat span). Each listed
+          slot index becomes a synthetic label encoded by
+          :func:`_encode_tuplet_slot_label`. The anchor is the most recent
+          beat label seen before the group.
 
     Examples::
         "3 e & a 4"     → ["3", "3e", "3&", "3a", "4"]
@@ -89,12 +332,45 @@ def _parse_count_tokens(count_str: str) -> list[str]:
         "3 trip let 4"  → ["3", "3t", "3l", "4"]
         "1 1trip 1let"  → ["1", "1t", "1l"]
         "10 11 12"      → ["10", "11", "12"]
+        "1 {sextuplet 1, 2, 3, 4, 5, 6} 3 4"
+                       → ["1",
+                          "~T1_1_6_4", "~T1_2_6_4", "~T1_3_6_4",
+                          "~T1_4_6_4", "~T1_5_6_4", "~T1_6_6_4",
+                          "3", "4"]
+
+    The ``{kind …}`` group attaches to the most recently seen beat number,
+    matching the way ``trip``/``let`` already attach. A group at the start
+    of a count string with no preceding number raises ``ValueError``.
     """
-    tokens = count_str.split()
+    tokens = _split_count_tokens_with_tuplets(count_str)
     result: list[str] = []
     current_beat: str | None = None
 
     for token in tokens:
+        # Fused anchor + brace group: ``2{sextuplet 1, 4}``. Strip the anchor
+        # prefix and feed the brace group with that anchor.
+        brace_open = token.find("{")
+        if brace_open > 0 and token.endswith("}"):
+            anchor_prefix = token[:brace_open]
+            brace_part = token[brace_open:]
+            anchor_label = _normalize_count_anchor(anchor_prefix, count_str)
+            current_beat = _strip_anchor_to_digits(anchor_label)
+            result.extend(
+                _expand_count_tuplet_group(
+                    brace_part, anchor=anchor_label, count_str=count_str
+                )
+            )
+            continue
+        if token.startswith("{") and token.endswith("}"):
+            if current_beat is None:
+                raise ValueError(
+                    f"Tuplet group {token!r} has no preceding beat number in: "
+                    f"{count_str!r}"
+                )
+            result.extend(
+                _expand_count_tuplet_group(token, anchor=current_beat, count_str=count_str)
+            )
+            continue
         if token.isdigit() and 1 <= int(token) <= 99:
             current_beat = token
             result.append(token)

@@ -22,6 +22,8 @@ from .ast_nodes import (
     Section,
     Song,
     StarSpec,
+    TupletGroup,
+    TupletSlot,
     Variation,
     VariationAction,
     VariationDef,
@@ -103,6 +105,10 @@ class IRGroove:
     # groove bar ``i + 1``. Used so multi-bar grooves can vary their grid
     # across bars (e.g. triplet bar followed by 16th bar).
     bar_subdivisions: list[int] = field(default_factory=list)
+    # Per-bar tuplet annotations matching IRBar.beat_tuplets shape; empty
+    # when the bar has no tuplet groups. ``bar_beat_tuplets[i]`` maps to
+    # groove bar ``i + 1``.
+    bar_beat_tuplets: list[list[object]] = field(default_factory=list)
 
 
 @dataclass
@@ -148,6 +154,16 @@ class IRBar:
     # respecting phrase alignment so it never emits a B-A rotation.
     phrase_position: int | None = None
     phrase_length: int | None = None
+    # Per-beat tuplet annotations. ``beat_tuplets[beat_idx]`` (0-indexed) is
+    # one of:
+    #   - ``None``                        → straight beat (no tuplet wrapping)
+    #   - ``("full", actual, normal)``    → whole-beat tuplet (ratio actual/normal)
+    #   - ``("halves", left, right)``     → half-beat split; each side is
+    #                                       ``None`` (straight) or
+    #                                       ``(actual, normal)`` for that half
+    # Empty list means "no tuplet content in this bar" — equivalent to all
+    # ``None`` entries — and lets the emitter fall back to the legacy path.
+    beat_tuplets: list[object] = field(default_factory=list)
 
 
 @dataclass
@@ -191,7 +207,22 @@ def _beat_label_to_fraction(label: str, subdivision: int, beats_per_bar: int = 4
     beat, so triplet and straight labels can coexist in the same bar regardless
     of the bar's overall subdivision.  The *subdivision* parameter is accepted
     for backward compatibility but is no longer used.
+
+    Synthetic ``~T<anchor>_<slot>_<actual>_<normal>`` labels (emitted by the
+    count-string parser for inline tuplet groups) are decoded by computing
+    the slot's evenly-spaced position within the beat anchored at <anchor>.
     """
+    # Synthetic tuplet-slot label produced by ``_parse_count_tokens``.
+    if label.startswith("~T"):
+        from .parser_notation import _decode_tuplet_slot_label
+        decoded = _decode_tuplet_slot_label(label)
+        if decoded is None:
+            raise ValueError(f"Malformed tuplet-slot label: {label!r}")
+        anchor, slot, actual, _normal = decoded
+        anchor_pos = _beat_label_to_fraction(anchor, subdivision, beats_per_bar)
+        # Whole-beat span only at this layer.
+        span_in_bar = Fraction(1, beats_per_bar)
+        return anchor_pos + Fraction(slot - 1, actual) * span_in_bar
     # Handle verbose triplet suffixes: 1trip, 1let
     if label.endswith("trip"):
         beat_num = int(label[:-4])
@@ -559,12 +590,29 @@ def _validate_flam_instrument(
 def _star_hits_per_bar(
     star: StarSpec, beats_per_bar: int, beat_unit: int, context: str
 ) -> int:
-    """Return the number of hits a ``*N``/``*Nt`` produces in one bar.
+    """Return the number of hits a ``*N``/``*Nt``/``*<kind>`` produces in one bar.
 
     Raises :class:`ValueError` if the star is incompatible with the time
     signature (e.g. ``*2`` in 6/8 produces a non-integer number of half-notes
     per bar).
     """
+    if star.tuplet_kind is not None:
+        actual, _ = _tuplet_ratio_for_kind(star.tuplet_kind)
+        # Each beat carries one tuplet of ``actual`` slots when span = 1
+        # beat; two when span = 1/2; four when span = 1/4. Total hits =
+        # beats_per_bar * actual / span_in_beats.
+        span_in_beats = star.tuplet_span
+        if span_in_beats <= 0 or beats_per_bar % 1 != 0:
+            raise ValueError(
+                f"{star}: invalid span {star.tuplet_span} in {context}"
+            )
+        # tuplets per bar = beats_per_bar / span_in_beats; this must be an integer
+        per_bar = Fraction(beats_per_bar) / span_in_beats
+        if per_bar.denominator != 1:
+            raise ValueError(
+                f"{star} does not divide {beats_per_bar}/{beat_unit} evenly in {context}"
+            )
+        return int(per_bar) * actual
     n = star.note_value
     if star.triplet:
         numerator = beats_per_bar * n * 3
@@ -579,12 +627,33 @@ def _star_hits_per_bar(
     return numerator // denominator
 
 
+def _tuplet_ratio_for_kind(kind: str) -> tuple[int, int]:
+    """Look up the (actual, normal) ratio for a named tuplet kind."""
+    from .ast_nodes import _TUPLET_RATIOS
+    if kind not in _TUPLET_RATIOS:
+        raise ValueError(f"unknown tuplet kind: {kind!r}")
+    return _TUPLET_RATIOS[kind]
+
+
 def _star_min_slots_per_beat(star: StarSpec, beat_unit: int) -> int:
     """Smallest slots-per-beat that can place every hit of ``star`` on a slot.
 
     For straight ``*N``: min = N / gcd(N, beat_unit).
     For triplet ``*Nt``: min = 3N / gcd(2*beat_unit, 3N).
+    For named-tuplet ``*<kind>``: actual slots over the span. Whole-beat
+    tuplet → ``actual``; half-beat tuplet → ``2*actual``.
     """
+    if star.tuplet_kind is not None:
+        actual, _ = _tuplet_ratio_for_kind(star.tuplet_kind)
+        if star.tuplet_span == Fraction(1):
+            return actual
+        if star.tuplet_span == Fraction(1, 2):
+            return actual * 2
+        if star.tuplet_span == Fraction(1, 4):
+            return actual * 4
+        raise ValueError(
+            f"{star}: unsupported span {star.tuplet_span}"
+        )
     n = star.note_value
     if star.triplet:
         return (3 * n) // gcd(2 * beat_unit, 3 * n)
@@ -594,10 +663,18 @@ def _star_min_slots_per_beat(star: StarSpec, beat_unit: int) -> int:
 def _label_min_slots_per_beat(label: str) -> int:
     """Smallest slots-per-beat needed to place a beat label on a slot.
 
-    Plain digit → 1, ``&`` → 2, ``e``/``a`` → 4, ``t``/``l`` → 3.
+    Plain digit → 1, ``&`` → 2, ``e``/``a`` → 4, ``t``/``l`` → 3. Synthetic
+    tuplet-slot labels (``~T…``) contribute the tuplet's ``actual`` slots
+    per beat.
     """
     if not label:
         return 1
+    if label.startswith("~T"):
+        from .parser_notation import _decode_tuplet_slot_label
+        decoded = _decode_tuplet_slot_label(label)
+        if decoded is not None:
+            _anchor, _slot, actual, _normal = decoded
+            return actual
     last = label[-1]
     if last == "&":
         return 2
@@ -656,6 +733,202 @@ def _buzz_min_slots_per_beat(
     return per_beat.denominator
 
 
+def _tuplet_anchor_offset(anchor: str, beats_per_bar: int) -> Fraction:
+    """Convert a tuplet group's anchor label to a bar-relative ``Fraction``.
+
+    Reuses :func:`_beat_label_to_fraction`, which already handles every
+    suffix variant (``2&``, ``3a``, ``1t``, …). The ``subdivision`` argument
+    is ignored by that function.
+    """
+    return _beat_label_to_fraction(anchor, subdivision=0, beats_per_bar=beats_per_bar)
+
+
+def _tuplet_slot_offset(
+    group: TupletGroup,
+    slot_index: int,
+    beats_per_bar: int,
+) -> Fraction:
+    """Bar-relative position of a TupletGroup slot, as a ``Fraction``.
+
+    A tuplet's slots are evenly spaced over its ``span`` (in beats), starting
+    at the anchor label. Slot index is 1-based.
+    """
+    anchor = _tuplet_anchor_offset(group.anchor, beats_per_bar)
+    actual, _ = group.ratio
+    # span is in beats; convert to bar-relative by dividing by beats_per_bar.
+    span_in_bar = group.span / beats_per_bar
+    return anchor + Fraction(slot_index - 1, actual) * span_in_bar
+
+
+def _collect_tuplet_groups(
+    lines: list[PatternLine],
+    beats_per_bar: int,
+) -> list[TupletGroup]:
+    """Pull every TupletGroup that appears in the bar's pattern lines.
+
+    Also synthesises TupletGroups from any ``*<kind>[/N]`` StarSpec, so
+    downstream tuplet validation/annotation runs over a uniform set of
+    groups regardless of whether the author wrote them inline or via the
+    star shorthand.
+    """
+    out: list[TupletGroup] = []
+    for line in lines:
+        if isinstance(line.beats, StarSpec):
+            star = line.beats
+            if star.tuplet_kind is None:
+                continue
+            actual, normal = _tuplet_ratio_for_kind(star.tuplet_kind)
+            span = star.tuplet_span
+            # Walk every (beat, half) anchor that the star covers and emit a
+            # synthetic TupletGroup at each. Slots are 1..actual.
+            tuplets_per_beat = int(Fraction(1) / span)
+            for beat_idx in range(beats_per_bar):
+                for sub_idx in range(tuplets_per_beat):
+                    anchor_beat = beat_idx + 1
+                    if span == Fraction(1):
+                        anchor = str(anchor_beat)
+                    elif span == Fraction(1, 2):
+                        anchor = f"{anchor_beat}&" if sub_idx == 1 else str(anchor_beat)
+                    else:
+                        # /16 span — unusual, label by 16th-grid suffix.
+                        suffix_for_idx = ["", "e", "&", "a"]
+                        anchor = f"{anchor_beat}{suffix_for_idx[sub_idx]}"
+                    out.append(
+                        TupletGroup(
+                            kind=star.tuplet_kind,
+                            ratio=(actual, normal),
+                            span=span,
+                            anchor=anchor,
+                            slots=[],  # slots aren't needed for classification
+                            line=line.line,
+                        )
+                    )
+            continue
+        for item in line.beats:
+            if isinstance(item, TupletGroup):
+                out.append(item)
+    return out
+
+
+def _classify_bar_tuplets(
+    lines: list[PatternLine],
+    beats_per_bar: int,
+    context: str,
+) -> list[object]:
+    """Build the per-beat tuplet annotation for ``IRBar.beat_tuplets``.
+
+    Walks every TupletGroup in the bar, slots it into the right beat
+    (and half-beat for ``/8`` qualifier), and rejects any conflict where
+    two groups would land on the same slot with different ratios.
+
+    Returns a list of length ``beats_per_bar`` whose entries are either
+    ``None`` (straight beat), a ``("full", actual, normal)`` tuple, or a
+    ``("halves", left, right)`` tuple. Returns an empty list if the bar
+    contains no tuplet groups.
+    """
+    groups = _collect_tuplet_groups(lines, beats_per_bar)
+    if not groups:
+        return []
+
+    # beat_idx (0-based) -> "full" tuplet ratio
+    full: dict[int, tuple[int, int]] = {}
+    # (beat_idx, "left"|"right") -> half-beat tuplet ratio
+    halves: dict[tuple[int, str], tuple[int, int]] = {}
+
+    for group in groups:
+        anchor_pos = _tuplet_anchor_offset(group.anchor, beats_per_bar)  # bar-relative
+        beat_offset = anchor_pos * beats_per_bar  # in beats
+        beat_idx_frac = beat_offset
+        beat_idx = int(beat_idx_frac)
+        within_beat = beat_idx_frac - beat_idx
+        if group.span == Fraction(1):
+            if within_beat != 0:
+                raise GrooveScriptError(
+                    message=(
+                        f"whole-beat {group.kind} group must anchor on a beat "
+                        f"downbeat (got anchor {group.anchor!r}) in {context}; "
+                        f"use ``/8`` for a half-beat tuplet"
+                    ),
+                    line=group.line,
+                )
+            if (beat_idx, "left") in halves or (beat_idx, "right") in halves:
+                raise GrooveScriptError(
+                    message=(
+                        f"beat {beat_idx + 1}: cannot mix a whole-beat tuplet "
+                        f"with a half-beat tuplet on the same beat in {context}"
+                    ),
+                    line=group.line,
+                )
+            existing = full.get(beat_idx)
+            if existing is not None and existing != group.ratio:
+                raise GrooveScriptError(
+                    message=(
+                        f"beat {beat_idx + 1}: declared as both {existing[0]}:"
+                        f"{existing[1]} and {group.ratio[0]}:{group.ratio[1]} "
+                        f"by different lines in {context} (only one tuplet "
+                        f"kind per beat is supported)"
+                    ),
+                    line=group.line,
+                )
+            full[beat_idx] = group.ratio
+        elif group.span == Fraction(1, 2):
+            if within_beat == 0:
+                half = "left"
+            elif within_beat == Fraction(1, 2):
+                half = "right"
+            else:
+                raise GrooveScriptError(
+                    message=(
+                        f"half-beat {group.kind} group must anchor on a "
+                        f"downbeat or its 8th-note offbeat (got anchor "
+                        f"{group.anchor!r}) in {context}"
+                    ),
+                    line=group.line,
+                )
+            if beat_idx in full:
+                raise GrooveScriptError(
+                    message=(
+                        f"beat {beat_idx + 1}: cannot mix a whole-beat tuplet "
+                        f"with a half-beat tuplet on the same beat in {context}"
+                    ),
+                    line=group.line,
+                )
+            existing = halves.get((beat_idx, half))
+            if existing is not None and existing != group.ratio:
+                raise GrooveScriptError(
+                    message=(
+                        f"beat {beat_idx + 1} {half} half: declared as both "
+                        f"{existing[0]}:{existing[1]} and {group.ratio[0]}:"
+                        f"{group.ratio[1]} by different lines in {context}"
+                    ),
+                    line=group.line,
+                )
+            halves[(beat_idx, half)] = group.ratio
+        else:
+            # /16 = quarter-beat span, etc. Not supported in this iteration.
+            raise GrooveScriptError(
+                message=(
+                    f"{group.kind} with span {group.span} beats is not "
+                    f"supported (currently /4 = whole beat and /8 = half beat) "
+                    f"in {context}"
+                ),
+                line=group.line,
+            )
+
+    annotations: list[object] = []
+    for beat_idx in range(beats_per_bar):
+        if beat_idx in full:
+            actual, normal = full[beat_idx]
+            annotations.append(("full", actual, normal))
+        elif (beat_idx, "left") in halves or (beat_idx, "right") in halves:
+            left = halves.get((beat_idx, "left"))
+            right = halves.get((beat_idx, "right"))
+            annotations.append(("halves", left, right))
+        else:
+            annotations.append(None)
+    return annotations
+
+
 def _infer_bar_subdivision(
     lines: list[PatternLine],
     beats_per_bar: int,
@@ -664,15 +937,15 @@ def _infer_bar_subdivision(
 ) -> int:
     """Infer the slot grid for a bar of pattern lines.
 
-    Picks a single ``slots_per_beat`` from the set ``{1, 2, 3, 4}`` that
-    accommodates every explicit label and every ``*N``/``*Nt`` star in the
-    bar. Raises :class:`ValueError` if no grid fits — e.g. when triplet
-    labels/stars coexist with 16th labels/stars in the same bar, or when a
-    ``*N`` produces a non-integer number of hits in the time signature.
+    Picks a single ``slots_per_beat`` that accommodates every explicit
+    label, every ``*N``/``*Nt`` star, and every TupletGroup in the bar.
+    Raises :class:`ValueError` if no grid fits — e.g. when a ``*N`` produces
+    a non-integer number of hits in the time signature.
     """
     straight_needed = 1  # plain beats
     has_triplet_content = False
     has_straight_content = False  # any straight label or *N
+    tuplet_actuals: list[int] = []  # additional tuplet ratios to LCM in
 
     for line in lines:
         if isinstance(line.beats, StarSpec):
@@ -692,6 +965,16 @@ def _infer_bar_subdivision(
                 )
             continue
         for beat in line.beats:
+            if isinstance(beat, TupletGroup):
+                actual, _ = beat.ratio
+                # Half-beat tuplets need actual*2 slots per beat; whole-beat
+                # tuplets need actual slots per beat. /16 would need actual*4
+                # but isn't reached here (rejected upstream).
+                slots_for_group = (
+                    actual if beat.span == Fraction(1) else actual * 2
+                )
+                tuplet_actuals.append(slots_for_group)
+                continue
             label = str(beat)
             need = _label_min_slots_per_beat(label)
             if need == 3:
@@ -717,12 +1000,17 @@ def _infer_bar_subdivision(
         # Minimum usable grid is 2 per beat (so ``&`` suffixes have a slot).
         slots_per_beat = max(2, straight_needed)
 
-    # Final sanity check for *Nt triplets that need slots_per_beat > 3
-    # (e.g. *16t on a beat_unit=4 needs 6 slots/beat — not supported).
+    # Fold in any TupletGroup ratios. ``lcm(*[])`` is 1, so a bar without
+    # tuplets keeps the legacy grid exactly.
+    if tuplet_actuals:
+        slots_per_beat = lcm(slots_per_beat, *tuplet_actuals)
+
+    # Final sanity check for *Nt triplets that need more slots than the
+    # tuplet-extended grid can provide.
     for line in lines:
         if isinstance(line.beats, StarSpec):
             need = _star_min_slots_per_beat(line.beats, beat_unit)
-            if need > slots_per_beat:
+            if need > slots_per_beat and slots_per_beat % need != 0:
                 raise GrooveScriptError(
                     message=(
                         f"{line.beats} requires {need} slots per beat, which is "
@@ -744,6 +1032,38 @@ def _expand_pattern_line(
 ) -> list[Event]:
     if isinstance(line.beats, StarSpec):
         star = line.beats
+        # Compute positions to exclude (from the ``except`` clause).
+        except_positions: set[Fraction] = set()
+        if star.except_beats:
+            for label in star.except_beats:
+                except_positions.add(
+                    _beat_label_to_fraction(label, subdivision, beats_per_bar)
+                )
+        if star.tuplet_kind is not None:
+            actual, _ = _tuplet_ratio_for_kind(star.tuplet_kind)
+            span = star.tuplet_span
+            tuplets_per_beat = int(Fraction(1) / span)
+            events: list[Event] = []
+            for beat_idx in range(beats_per_bar):
+                for sub_idx in range(tuplets_per_beat):
+                    anchor_pos = (
+                        Fraction(beat_idx, beats_per_bar)
+                        + Fraction(sub_idx) * (span / beats_per_bar)
+                    )
+                    span_in_bar = span / beats_per_bar
+                    for slot in range(actual):
+                        pos = anchor_pos + Fraction(slot, actual) * span_in_bar
+                        if pos in except_positions:
+                            continue
+                        events.append(
+                            Event(
+                                bar=bar,
+                                beat_position=pos,
+                                instrument=line.instrument,
+                                source_line=line.line,
+                            )
+                        )
+            return events
         try:
             hits = _star_hits_per_bar(star, beats_per_bar, beat_unit, f"instrument {line.instrument!r}")
         except ValueError as exc:
@@ -757,13 +1077,6 @@ def _expand_pattern_line(
                 line=line.line,
             )
         step = subdivision // hits
-        # Compute positions to exclude (from the ``except`` clause).
-        except_positions: set[Fraction] = set()
-        if star.except_beats:
-            for label in star.except_beats:
-                except_positions.add(
-                    _beat_label_to_fraction(label, subdivision, beats_per_bar)
-                )
         return [
             Event(
                 bar=bar,
@@ -776,6 +1089,54 @@ def _expand_pattern_line(
         ]
     events = []
     for b in line.beats:
+        if isinstance(b, TupletGroup):
+            # Each slot expands to one Event at its evenly-spaced position
+            # within the tuplet's span, with the slot's own modifiers.
+            for slot in b.slots:
+                pos = _tuplet_slot_offset(b, slot.index, beats_per_bar)
+                mods = list(slot.modifiers)
+                ctx = (
+                    f"instrument {line.instrument!r} at "
+                    f"{b.kind} slot {slot.index} (anchor {b.anchor!r})"
+                )
+                if mods:
+                    _validate_buzz_modifier_compat(mods, ctx, source_line=line.line)
+                    _validate_flam_instrument(
+                        line.instrument, mods, ctx,
+                        source_line=line.line,
+                        grace_instrument=slot.grace_instrument,
+                    )
+                    _validate_choke_instrument(
+                        line.instrument, mods, ctx, source_line=line.line
+                    )
+                    if "double" in mods:
+                        # 'double' is defined as a slot's worth = two 32nds;
+                        # inside a tuplet this stops being meaningful.
+                        raise GrooveScriptError(
+                            message=(
+                                f"'double' modifier is not allowed inside a "
+                                f"tuplet group ({ctx})"
+                            ),
+                            line=line.line,
+                        )
+                duration: Fraction | None = None
+                if "buzz" in mods:
+                    duration = _buzz_span(
+                        slot.buzz_duration or "4", beats_per_bar, beat_unit
+                    )
+                events.append(
+                    Event(
+                        bar=bar,
+                        beat_position=pos,
+                        instrument=line.instrument,
+                        modifiers=mods,
+                        duration=duration,
+                        buzz_duration=slot.buzz_duration if duration is not None else None,
+                        grace_instrument=slot.grace_instrument,
+                        source_line=line.line,
+                    )
+                )
+            continue
         position = _beat_label_to_fraction(str(b), subdivision, beats_per_bar)
         mods = getattr(b, "modifiers", [])
         buzz_dur_str = getattr(b, "buzz_duration", None)
@@ -807,11 +1168,15 @@ def _expand_groove_count_notes(
     count_str: str,
     notes_str: str,
     beats_per_bar: int,
-) -> tuple[int, list[PatternLine]]:
-    """Expand a groove's count+notes body into (subdivision, pattern lines).
+) -> tuple[int, list[PatternLine], list[object]]:
+    """Expand a groove's count+notes body into (subdivision, pattern lines,
+    beat tuplets).
 
     Uses the same count/notes tokenisers as fills and groups the resulting
     hits by instrument so they can be stored as ``PatternLine`` objects.
+    Inline ``{kind …}`` tuplet groups in ``count_str`` produce per-beat
+    tuplet annotations that the LilyPond / MusicXML emitters use to
+    bracket the slots correctly.
     """
     # Deferred import to avoid a circular dependency (compiler ↔ parser).
     from .parser import (
@@ -819,6 +1184,7 @@ def _expand_groove_count_notes(
         _parse_count_tokens,
         _parse_notes_tokens,
     )
+    from .parser_notation import _extract_count_tuplet_groups
 
     beat_labels = _parse_count_tokens(count_str)
     note_groups = _parse_notes_tokens(notes_str)
@@ -840,7 +1206,53 @@ def _expand_groove_count_notes(
             mods = getattr(hit, "modifiers", []) or []
             by_instrument[instrument].append(BeatHit(label, list(mods) if mods else None))
     lines = [PatternLine(instrument=inst, beats=by_instrument[inst]) for inst in order]
-    return subdivision, lines
+
+    # Build per-beat tuplet annotations from the count string itself.
+    beat_tuplets = _build_beat_tuplets_from_count(count_str, beats_per_bar)
+    return subdivision, lines, beat_tuplets
+
+
+def _build_beat_tuplets_from_count(
+    count_str: str, beats_per_bar: int
+) -> list[object]:
+    """Produce a per-beat tuplet annotation list from the inline ``{kind …}``
+    groups in a count string. Empty list if the count string has no tuplet
+    groups; otherwise length ``beats_per_bar`` with ``None`` for non-tuplet
+    beats and ``("full", actual, normal)`` for tuplet beats.
+    """
+    from .parser_notation import _extract_count_tuplet_groups
+
+    groups = _extract_count_tuplet_groups(count_str)
+    if not groups:
+        return []
+    annotations: list[object] = [None] * beats_per_bar
+    for anchor, _kind, actual, normal, _slots in groups:
+        try:
+            anchor_pos = _beat_label_to_fraction(anchor, 0, beats_per_bar)
+        except ValueError as exc:
+            raise GrooveScriptError(message=str(exc)) from None
+        beat_offset = anchor_pos * beats_per_bar
+        beat_idx = int(beat_offset)
+        if beat_offset != beat_idx:
+            raise GrooveScriptError(
+                message=(
+                    f"count tuplet group anchored at {anchor!r} must start on "
+                    f"a beat downbeat (use the inline pattern-line form for "
+                    f"sub-beat tuplets)"
+                )
+            )
+        existing = annotations[beat_idx]
+        new = ("full", actual, normal)
+        if existing is not None and existing != new:
+            raise GrooveScriptError(
+                message=(
+                    f"beat {beat_idx + 1}: declared as both {existing[1]}:"
+                    f"{existing[2]} and {actual}:{normal} by different count "
+                    f"groups"
+                )
+            )
+        annotations[beat_idx] = new
+    return annotations
 
 
 def compile_groove(
@@ -859,14 +1271,24 @@ def compile_groove(
     """
     if groove.count_notes is not None:
         count_str, notes_str = groove.count_notes
-        subdivision, lines = _expand_groove_count_notes(count_str, notes_str, beats_per_bar)
+        subdivision, lines, count_beat_tuplets = _expand_groove_count_notes(
+            count_str, notes_str, beats_per_bar
+        )
         bars = [lines]
         per_bar_subdivisions = [subdivision]
+        per_bar_beat_tuplets: list[list[object]] = [count_beat_tuplets]
     else:
         bars = groove.bars
         per_bar_subdivisions = [
             _infer_bar_subdivision(
                 lines, beats_per_bar, beat_unit,
+                f"groove {groove.name!r} bar {bar_idx + 1}",
+            )
+            for bar_idx, lines in enumerate(bars)
+        ]
+        per_bar_beat_tuplets = [
+            _classify_bar_tuplets(
+                lines, beats_per_bar,
                 f"groove {groove.name!r} bar {bar_idx + 1}",
             )
             for bar_idx, lines in enumerate(bars)
@@ -948,6 +1370,7 @@ def compile_groove(
         bars=len(bars),
         events=events,
         bar_subdivisions=list(per_bar_subdivisions),
+        bar_beat_tuplets=list(per_bar_beat_tuplets),
     )
 
 
@@ -957,6 +1380,10 @@ class IRFillBar:
 
     events: list[Event]
     subdivision: int
+    # Per-beat tuplet annotations (same shape as IRBar.beat_tuplets). Empty
+    # when the fill has no tuplet groups; passed through to IRBar via
+    # ``_apply_fill_overlay`` so the emitter brackets the fill correctly.
+    beat_tuplets: list[object] = field(default_factory=list)
 
 
 def _resolve_placeholder_position(placeholder: FillPlaceholder, subdivision: int, beats_per_bar: int) -> Fraction:
@@ -1063,7 +1490,45 @@ def compile_fill_bar(fill_bar: FillBar, beats_per_bar: int = 4, beat_unit: int =
     _validate_buzz_overlap(events, fill_bar_desc)
     _validate_instrument_mutex(events, fill_bar_desc)
     events.sort(key=lambda e: e.beat_position)
-    return IRFillBar(events=events, subdivision=subdivision)
+    # Build the per-beat tuplet annotation from the pattern_lines (the only
+    # place TupletGroups can appear in a fill body).
+    beat_tuplets = _classify_bar_tuplets(
+        fill_bar.pattern_lines, beats_per_bar,
+        f"fill {fill_bar.label!r}" if fill_bar.label else "fill",
+    )
+    return IRFillBar(events=events, subdivision=subdivision, beat_tuplets=beat_tuplets)
+
+
+def _merge_fill_beat_tuplets(
+    groove_tuplets: list,
+    fill_tuplets: list,
+    start_position: Fraction,
+    beats_per_bar: int,
+) -> list:
+    """Merge a fill's per-beat tuplet annotations into the groove's, taking
+    effect from ``start_position`` (a bar-relative ``Fraction``) onward.
+
+    The fill's annotation for a given beat overrides the groove's; beats
+    before ``start_position`` keep the groove's annotation. When neither
+    side annotates a tuplet for a particular beat the result is None.
+    """
+    if not fill_tuplets and not groove_tuplets:
+        return []
+    base = list(groove_tuplets) if groove_tuplets else [None] * beats_per_bar
+    # Pad both lists out to beats_per_bar so indexing is uniform.
+    while len(base) < beats_per_bar:
+        base.append(None)
+    fill_padded = list(fill_tuplets) if fill_tuplets else [None] * beats_per_bar
+    while len(fill_padded) < beats_per_bar:
+        fill_padded.append(None)
+    start_beat = int(start_position * beats_per_bar)
+    merged: list = []
+    for beat_idx in range(beats_per_bar):
+        if beat_idx < start_beat:
+            merged.append(base[beat_idx])
+        else:
+            merged.append(fill_padded[beat_idx])
+    return merged
 
 
 def _apply_fill_overlay(
@@ -2415,6 +2880,11 @@ def compile_song(song: Song) -> IRSong:
             groove_bar_number = (section_bar_offset % groove.bars) + 1
             template_events = groove_events_by_bar[groove_bar_number]
             groove_bar_subdivision = groove.bar_subdivisions[groove_bar_number - 1]
+            groove_bar_tuplets: list[object] = (
+                groove.bar_beat_tuplets[groove_bar_number - 1]
+                if groove_bar_number - 1 < len(groove.bar_beat_tuplets)
+                else []
+            )
             arranged_events = [
                 Event(
                     bar=absolute_bar,
@@ -2433,6 +2903,11 @@ def compile_song(song: Song) -> IRSong:
                 fill_bar, start_pos = fill_coverage[section_bar_offset]
                 arranged_events = _apply_fill_overlay(arranged_events, fill_bar, start_pos, absolute_bar)
                 bar_subdivision = max(groove_bar_subdivision, fill_bar.subdivision)
+                # Merge fill tuplet annotations: a fill placed at beat N onward
+                # replaces the groove's annotation for those beats.
+                groove_bar_tuplets = _merge_fill_beat_tuplets(
+                    groove_bar_tuplets, fill_bar.beat_tuplets, start_pos, bpb
+                )
             else:
                 bar_subdivision = groove_bar_subdivision
 
@@ -2486,6 +2961,7 @@ def compile_song(song: Song) -> IRSong:
                     dynamic_stops=dyn_stops.get(section_bar_offset, []),
                     phrase_position=groove_bar_number,
                     phrase_length=groove.bars,
+                    beat_tuplets=list(groove_bar_tuplets),
                 )
             )
         return new_bars, ir_section

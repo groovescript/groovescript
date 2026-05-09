@@ -104,9 +104,14 @@ syn match gsBeatLabel "\<\(trip\|let\|and\)\>"
 
 " -- Star (`*N` / `*Nt` — hit on every Nth note, straight or triplet) ------
 " e.g. `*2`, `*4`, `*8`, `*16`, `*4t`, `*8t`. Also matches the bare `*`
-" used in variation actions (`remove HH at *`).
+" used in variation actions (`remove HH at *`), and the named-tuplet star
+" form ``*sextuplet[/N]`` (and quintuplet/septuplet/nonuplet/triplet).
 syn match gsStar "\*\(2\|4\|8\|16\)t\?"
+syn match gsStar "\*\(triplet\|quintuplet\|sextuplet\|septuplet\|nonuplet\)\(/\d\+\)\?"
 syn match gsStar "\*"
+
+" -- Tuplet group keywords (inside ``2{sextuplet 1, 4}`` etc.) -------------
+syn keyword gsTuplet triplet quintuplet sextuplet septuplet nonuplet
 
 " -- Time signatures --------------------------------------------------------
 " Defined after gsNumber / gsBeatLabel so it wins at the shared start
@@ -130,5 +135,6 @@ hi def link gsModifier         Special
 hi def link gsInstrument       Identifier
 hi def link gsBeatLabel        Constant
 hi def link gsStar             Operator
+hi def link gsTuplet           Type
 
 let b:current_syntax = "groovescript"

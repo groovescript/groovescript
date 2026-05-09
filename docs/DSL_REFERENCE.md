@@ -19,7 +19,9 @@ the language, start with [`GETTING_STARTED.md`](GETTING_STARTED.md) or
 - [Beat labels](#beat-labels)
   - [16th-note suffixes `e`, `&` / `and`, `a`](#beat-labels)
   - [Triplet suffixes `trip` / `let` (`t` / `l`)](#beat-labels)
+  - [Tuplet groups `<beat>{<kind> <slots>}`](#tuplet-groups)
   - [`*N` / `*Nt` — hit on every Nth note (straight or triplet)](#beat-labels)
+  - [`*<kind>` — fill the bar with one named tuplet per beat](#tuplet-groups)
   - [`*N except` — star exclusion](#star-exclusion-n-except)
   - [Double-digit beat numbers for compound meter](#beat-labels)
 - [Modifiers](#modifiers)
@@ -180,6 +182,92 @@ groove "mixed":
     SN: 2, 4
     HH: 1, 1&, 2, 2&, 3trip, 3let, 4trip, 4let
 ```
+
+### Tuplet groups
+
+Beyond 8th-note triplets (which the `Nt` / `Nl` suffixes already cover),
+GrooveScript supports **named tuplet groups** anchored to a beat:
+
+```groovescript
+HH: 1, 2{sextuplet 1, 2, 3, 4, 5, 6}, 3, 4
+```
+
+`<beat>{<kind> <slots>}` reads as "at `<beat>`, play these slots of a
+`<kind>` tuplet". The recognized kinds are:
+
+| keyword       | ratio  | LilyPond bracket  | typical use                       |
+| ---           | ---    | ---               | ---                               |
+| `triplet`     | 3:2    | `\tuplet 3/2`     | sextuplets via two halves; 16ths  |
+| `quintuplet`  | 5:4    | `\tuplet 5/4`     | five-stroke ornaments             |
+| `sextuplet`   | 6:4    | `\tuplet 6/4`     | groove sextuplets, double-time    |
+| `septuplet`   | 7:4    | `\tuplet 7/4`     | jazz / prog displaced runs        |
+| `nonuplet`    | 9:8    | `\tuplet 9/8`     | dense ornaments                   |
+
+Slot indices inside the group are 1-based and may carry the same
+modifiers as ordinary beat hits (`accent`, `ghost`, `flam`, etc.):
+
+```groovescript
+HH: 2{sextuplet 1 accent, 4 accent}, 4
+SN: 2{sextuplet 1 ghost, 3 ghost, 5 ghost}
+```
+
+Slots that aren't listed are silent (rests inside the bracket), exactly
+matching the "list only what hits" convention of regular beat lists.
+
+**Half-beat tuplets** use a `/8` qualifier on the kind. Each beat then
+splits into two halves; each half can independently be a tuplet or a
+straight 8th note. 16th-note triplets — three 16ths in the time of two
+16ths — are written as `triplet/8`:
+
+```groovescript
+HH: 1, 2, 3{triplet/8 1, 2, 3}, 3&{triplet/8 1, 2, 3}, 4
+```
+
+The two `triplet/8` groups occupy beat 3 as two separate triplet
+brackets (slot 1 of each group is `3` and `3&` respectively).
+
+Only **one tuplet kind per beat** is allowed across all instruments —
+mixing a sextuplet on hi-hat with a quintuplet on snare in the same
+beat is rejected at compile time. The polyrhythmic alternative isn't
+supported.
+
+#### `*<kind>` star shorthand
+
+To fill an entire bar with one named tuplet per beat, use the star
+shorthand:
+
+```groovescript
+HH: *sextuplet            # 4 sextuplets, one per beat
+HH: *triplet              # 4 triplets, one per beat (equivalent to *8t)
+HH: *quintuplet           # 4 quintuplets per bar
+HH: *triplet/8            # eight 16th-note triplets per bar (two per beat)
+```
+
+The `*<kind>` form is a direct analogue of `*N` / `*Nt` for the named
+tuplet kinds. As with `*N`, an `except` clause excludes specific beat
+labels from the expansion.
+
+#### Tuplet groups in count-form fills
+
+The count+notes fill body accepts the same brace syntax inline. Each
+slot in the group is a positional count entry that aligns with one
+instrument group in the `notes:` line — perfect for a "tom-tour" fill:
+
+```groovescript
+fill "tom run":
+    count: "1 2{sextuplet 1, 2, 3, 4, 5, 6} 3 4"
+    notes: "BD HT MT FT BD HT MT BD (BD CR)"
+```
+
+The 6 sextuplet slots become positions 3..8 of the count, taking the
+six instrument groups `HT MT FT BD HT MT` from the notes string. The
+plain `2` token before the brace acts as the tuplet's anchor — its
+slot 1 lands at the same position as a bare `2` would, but the brace
+group's slots are evenly spaced inside the beat.
+
+The count-form is restricted to whole-beat anchors (no `/8` qualifier
+inside count strings). For sub-beat tuplets, write the slots out as a
+pattern line inside `count "label": …` instead.
 
 Time signatures 4/4, 3/4, 6/8, 12/8, and generally any `N/M` with a
 numerator from 1–99 are supported.
