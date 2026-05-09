@@ -40,6 +40,10 @@ const ACTION_KWS = new Set(['add','remove','replace','modify']);
 
 const BARE_BEAT_WORDS = new Set(['trip','let','and']);
 
+const TUPLET_KINDS = new Set([
+  'triplet','quintuplet','sextuplet','septuplet','nonuplet',
+]);
+
 // Negative lookahead (?!\d) prevents matching 3-digit numbers like 120 as beat labels.
 const BEAT_LABEL_RE = /^[1-9][0-9]?(?:trip|let|and|[e&atl])?(?!\d)/;
 
@@ -74,10 +78,29 @@ export function token(stream, _state) {
     return 'string';
   }
 
-  // Star operator: *, *8, *16t, etc.
+  // Star operator: *, *8, *16t, *sextuplet, *triplet/8, etc.
   if (ch === '*') {
     stream.next();
-    stream.match(/^(2|4|8|16|32)(t)?/);
+    // Try the named-tuplet form first (longer match) so *triplet doesn't
+    // get truncated to a bare *.
+    if (!stream.match(/^(triplet|quintuplet|sextuplet|septuplet|nonuplet)(\/\d+)?/)) {
+      stream.match(/^(2|4|8|16|32)(t)?/);
+    }
+    return 'operator';
+  }
+
+  // Tuplet group braces: { and } — render as a punctuation/operator hint so
+  // mismatched braces don't quietly disappear into "no match" advance-one.
+  if (ch === '{' || ch === '}') {
+    stream.next();
+    return 'operator';
+  }
+
+  // Slash inside a tuplet kind qualifier: ``triplet/8``. The kind word and
+  // the integer are tokenised separately by the word/digit branches below;
+  // the slash itself just advances and renders as punctuation.
+  if (ch === '/') {
+    stream.next();
     return 'operator';
   }
 
@@ -115,6 +138,9 @@ export function token(stream, _state) {
 
     // Bare beat label words
     if (BARE_BEAT_WORDS.has(word)) return 'constant';
+
+    // Named tuplet kinds (inside ``{kind …}`` groups and ``*<kind>`` stars).
+    if (TUPLET_KINDS.has(word)) return 'typeName';
 
     if (INSTRUMENTS.has(word)) return 'typeName';
     if (MODIFIERS.has(word)) return 'modifier';
