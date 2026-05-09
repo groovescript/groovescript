@@ -161,6 +161,49 @@ test('star operator *16t', () => {
   assert.equal(toks[0].text, '*16t');
 });
 
+test('star operator *sextuplet', () => {
+  const toks = tokenizeLine('*sextuplet');
+  assert.equal(toks[0].type, 'operator');
+  assert.equal(toks[0].text, '*sextuplet');
+});
+
+test('star operator *triplet/8', () => {
+  const toks = tokenizeLine('*triplet/8');
+  assert.equal(toks[0].type, 'operator');
+  assert.equal(toks[0].text, '*triplet/8');
+});
+
+test('tuplet kind keywords', () => {
+  for (const kind of ['triplet', 'quintuplet', 'sextuplet', 'septuplet', 'nonuplet']) {
+    const toks = tokenizeLine(kind);
+    assert.equal(toks[0].type, 'typeName', `expected typeName for "${kind}"`);
+    assert.equal(toks[0].text, kind);
+  }
+});
+
+test('tuplet group braces tokenise as punctuation', () => {
+  const toks = tokenizeLine('2{sextuplet 1, 4}');
+  // We expect: beat 2, '{', kind sextuplet, slot 1, slot 4, '}'.
+  const types = toks.map(t => t.type);
+  assert.ok(types.includes('constant'), 'beat label is constant');
+  assert.ok(types.filter(t => t === 'operator').length >= 2, 'two brace operators');
+  const sx = toks.find(t => t.text === 'sextuplet');
+  assert.ok(sx, 'sextuplet token found');
+  assert.equal(sx.type, 'typeName');
+});
+
+test('tuplet group with /8 qualifier', () => {
+  const toks = tokenizeLine('2&{triplet/8 1, 3}');
+  const tr = toks.find(t => t.text === 'triplet');
+  const slash = toks.find(t => t.text === '/');
+  const eight = toks.filter(t => t.text === '8');
+  assert.ok(tr, 'triplet kind found');
+  assert.equal(tr.type, 'typeName');
+  assert.ok(slash, 'slash separator found');
+  assert.equal(slash.type, 'operator');
+  assert.ok(eight.length >= 1, 'integer 8 token found');
+});
+
 test('definition keyword groove', () => {
   const toks = tokenizeLine('groove');
   assert.equal(toks[0].type, 'def');
