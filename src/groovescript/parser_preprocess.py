@@ -91,6 +91,124 @@ def _strip_trailing_comment(line: str) -> tuple[str, str]:
     return line, ""
 
 
+_TUPLET_KIND_TOKENS: frozenset[str] = frozenset(
+    {"triplet", "quintuplet", "sextuplet", "septuplet", "nonuplet"}
+)
+
+
+def _commafy_tuplet_slots(inner: str) -> str:
+    """Insert commas between adjacent slot items inside a tuplet group body.
+
+    ``inner`` is the text between ``{`` and ``}`` of a tuplet group, e.g.
+    ``"sextuplet 1 accent 4 ghost"``. The leading kind keyword (and an
+    optional ``/N`` qualifier) is preserved verbatim; the rest is treated as
+    a comma-or-whitespace list of ``slot MODIFIER*`` items, just like an
+    ordinary beat list — except slots are pure positive integers (no
+    ``e``/``&``/``trip`` variants).
+    """
+    stripped = inner.strip()
+    if not stripped:
+        return stripped
+    # Tokenise on whitespace/commas so commas stay optional.
+    tokens = [t for t in stripped.replace(",", " ").split() if t]
+    if not tokens:
+        return stripped
+    # The leading token is the tuplet kind, optionally fused with a ``/N``
+    # qualifier (``triplet/8``). Recognise both forms; if neither matches,
+    # leave the body alone so Lark raises a clean parse error.
+    head_tok = tokens[0]
+    kind = head_tok
+    fused_qualifier: str | None = None
+    if "/" in head_tok:
+        kind_part, _, qual_part = head_tok.partition("/")
+        if kind_part in _TUPLET_KIND_TOKENS and qual_part.isdigit():
+            kind = kind_part
+            fused_qualifier = "/" + qual_part
+    if kind not in _TUPLET_KIND_TOKENS:
+        return stripped
+    head: list[str] = [tokens[0]]
+    i = 1
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok == "/" and i + 1 < len(tokens) and tokens[i + 1].isdigit():
+            head.extend([tok, tokens[i + 1]])
+            i += 2
+        elif tok.startswith("/") and tok[1:].isdigit():
+            head.append(tok)
+            i += 1
+        else:
+            break
+    items: list[str] = []
+    current: list[str] = []
+    for tok in tokens[i:]:
+        if _is_modifier_token(tok):
+            if _is_buzz_token(tok) or _is_grace_token(tok):
+                norm_tok = tok
+            else:
+                norm_tok = _normalize_modifier(tok)
+            if current:
+                current.append(norm_tok)
+            else:
+                items.append(norm_tok)
+            continue
+        if current:
+            items.append(" ".join(current))
+        current = [tok]
+    if current:
+        items.append(" ".join(current))
+    if not items:
+        return " ".join(head)
+    return f"{' '.join(head)} {', '.join(items)}"
+
+
+def _extract_tuplet_groups(rhs: str) -> tuple[str, list[str]]:
+    """Replace ``<beat>{<inner>}`` runs in ``rhs`` with opaque placeholders.
+
+    The outer comma-insertion pass treats each placeholder as a single
+    primary token (so the surrounding beat list commafies correctly). After
+    the outer pass, the caller calls :func:`_restore_tuplet_groups` to
+    re-insert the commafied tuplet bodies.
+    """
+    placeholders: list[str] = []
+    out: list[str] = []
+    i, n = 0, len(rhs)
+    while i < n:
+        c = rhs[i]
+        if c == "{":
+            depth = 0
+            j = i
+            while j < n:
+                if rhs[j] == "{":
+                    depth += 1
+                elif rhs[j] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        j += 1
+                        break
+                j += 1
+            inner = rhs[i + 1 : j - 1] if j - 1 > i else ""
+            commafied_inner = _commafy_tuplet_slots(inner)
+            full = "{" + commafied_inner + "}"
+            placeholders.append(full)
+            out.append(f"\x00TUP{len(placeholders) - 1}\x00")
+            i = j
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out), placeholders
+
+
+def _restore_tuplet_groups(text: str, placeholders: list[str]) -> str:
+    """Substitute tuplet placeholders back into ``text`` after outer
+    comma insertion. Each placeholder is preceded by its anchor BEAT_LABEL
+    in the outer text; the placeholder restores the ``{...}`` body verbatim
+    so the LALR grammar sees a single ``BEAT_LABEL "{" ... "}"`` sequence.
+    """
+    for idx, body in enumerate(placeholders):
+        text = text.replace(f"\x00TUP{idx}\x00", body)
+    return text
+
+
 def _group_list_items(rhs: str, allow_bare_suffix: bool = False) -> str:
     """Group a space-or-comma-delimited list of ``primary MODIFIER*`` items
     with explicit commas between items.
@@ -104,6 +222,11 @@ def _group_list_items(rhs: str, allow_bare_suffix: bool = False) -> str:
     beat digit plus that suffix — same semantics as ``_parse_count_tokens``
     for count strings. So ``1 and 2 and`` → ``1, 1&, 2, 2&``.
 
+    Tuplet groups (``2{sextuplet 1, 4}``) are extracted into placeholders
+    before tokenisation, commafied internally, and substituted back after
+    the outer pass — so the outer pass sees ``2<placeholder>`` as a single
+    primary token without trying to lex inside the braces.
+
     Leaves the RHS unchanged when it contains a string literal (e.g. a
     ``groove: "name"`` line that the caller passed in by mistake) so we
     never corrupt a quoted value.
@@ -111,10 +234,15 @@ def _group_list_items(rhs: str, allow_bare_suffix: bool = False) -> str:
     stripped = rhs.strip()
     if not stripped:
         return stripped
-    # ``*N`` / ``*Nt`` star-value RHS: pass through untouched, unless it
-    # contains an ``except`` clause whose beat list needs comma insertion.
+    # ``*N`` / ``*Nt`` / ``*<kind>[/N]`` star-value RHS: pass through
+    # untouched, unless it contains an ``except`` clause whose beat list
+    # needs comma insertion.
     if stripped.startswith("*"):
-        except_match = re.match(r"(\*(?:2|4|8|16)t?)\s+except\s+(.*)", stripped)
+        except_match = re.match(
+            r"(\*(?:2|4|8|16)t?|\*(?:triplet|quintuplet|sextuplet|septuplet|nonuplet)"
+            r"(?:/[0-9]+)?)\s+except\s+(.*)",
+            stripped,
+        )
         if except_match:
             star_part = except_match.group(1)
             beat_rhs = except_match.group(2)
@@ -123,7 +251,10 @@ def _group_list_items(rhs: str, allow_bare_suffix: bool = False) -> str:
         return stripped
     if '"' in stripped:
         return stripped
-    tokens = [t for t in stripped.replace(",", " ").split() if t]
+    # Pull tuplet groups out of the way so the tokeniser sees a single
+    # primary per group rather than splitting on whitespace inside braces.
+    extracted_rhs, tuplet_placeholders = _extract_tuplet_groups(stripped)
+    tokens = [t for t in extracted_rhs.replace(",", " ").split() if t]
     if not tokens:
         return stripped
     items: list[str] = []
@@ -164,7 +295,10 @@ def _group_list_items(rhs: str, allow_bare_suffix: bool = False) -> str:
                 last_beat_digits = m.group(0)
     if current:
         items.append(" ".join(current))
-    return ", ".join(items)
+    result = ", ".join(items)
+    if tuplet_placeholders:
+        result = _restore_tuplet_groups(result, tuplet_placeholders)
+    return result
 
 
 def _rewrite_rhs_list(line: str) -> str:

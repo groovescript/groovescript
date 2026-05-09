@@ -23,19 +23,20 @@ from groovescript.parser import parse
 # ---------------------------------------------------------------------------
 
 def test_bar_total_divs_4_4():
-    assert _bar_total_divs("4/4") == 96  # 4 beats * 24 divs/beat
+    assert _bar_total_divs("4/4") == 4 * _DIVS_PER_BEAT
 
 
 def test_bar_total_divs_6_8():
-    assert _bar_total_divs("6/8") == 72  # 6 eighth-notes * 12 divs each
+    # 6 eighth-notes per bar; one eighth = _DIVS_PER_BEAT // 2
+    assert _bar_total_divs("6/8") == 6 * (_DIVS_PER_BEAT // 2)
 
 
 def test_bar_total_divs_3_4():
-    assert _bar_total_divs("3/4") == 72
+    assert _bar_total_divs("3/4") == 3 * _DIVS_PER_BEAT
 
 
 def test_bar_total_divs_12_8():
-    assert _bar_total_divs("12/8") == 144
+    assert _bar_total_divs("12/8") == 12 * (_DIVS_PER_BEAT // 2)
 
 
 # ---------------------------------------------------------------------------
@@ -43,32 +44,34 @@ def test_bar_total_divs_12_8():
 # ---------------------------------------------------------------------------
 
 def test_duration_attrs_quarter():
-    t, dots, actual, normal = _duration_attrs(24)
+    t, dots, actual, normal = _duration_attrs(_DIVS_PER_BEAT)
     assert t == "quarter"
     assert dots == 0
     assert actual == normal == 1
 
 
 def test_duration_attrs_eighth():
-    t, dots, actual, normal = _duration_attrs(12)
+    t, dots, actual, normal = _duration_attrs(_DIVS_PER_BEAT // 2)
     assert t == "eighth"
     assert dots == 0
 
 
 def test_duration_attrs_16th():
-    t, dots, actual, normal = _duration_attrs(6)
+    t, dots, actual, normal = _duration_attrs(_DIVS_PER_BEAT // 4)
     assert t == "16th"
     assert dots == 0
 
 
 def test_duration_attrs_dotted_quarter():
-    t, dots, actual, normal = _duration_attrs(36)
+    t, dots, actual, normal = _duration_attrs(_DIVS_PER_BEAT * 3 // 2)
     assert t == "quarter"
     assert dots == 1
 
 
 def test_duration_attrs_triplet_eighth():
-    t, dots, actual, normal = _duration_attrs(8)
+    # Triplet eighth = (eighth_divs * 2 / 3) when normal eighth = _DIVS_PER_BEAT/2.
+    triplet_eighth = (_DIVS_PER_BEAT // 2) * 2 // 3
+    t, dots, actual, normal = _duration_attrs(triplet_eighth)
     assert t == "eighth"
     assert actual == 3
     assert normal == 2
@@ -79,24 +82,32 @@ def test_duration_attrs_triplet_eighth():
 # ---------------------------------------------------------------------------
 
 def test_split_duration_quarter():
-    assert _split_duration(24) == [24]
+    assert _split_duration(_DIVS_PER_BEAT) == [_DIVS_PER_BEAT]
 
 
 def test_split_duration_dotted_half():
-    assert _split_duration(72) == [72]
+    dotted_half = _DIVS_PER_BEAT * 3
+    assert _split_duration(dotted_half) == [dotted_half]
 
 
 def test_split_duration_sum_arbitrary():
-    divs = 30  # quarter + 16th
+    divs = _DIVS_PER_BEAT + _DIVS_PER_BEAT // 4  # quarter + 16th
     parts = _split_duration(divs)
     assert sum(parts) == divs
 
 
 def test_split_duration_sum_always_correct():
-    # All values must be representable by the duration table (minimum is 2 divs = triplet 32nd)
-    for divs in [2, 3, 6, 8, 9, 12, 18, 24, 36, 48, 72, 96]:
+    # All values must be representable by the duration table.
+    for multiplier in [1, 2, 4, 8, 16, 32]:
+        # Whole-number multiples of the smallest table entry (a 32nd) always
+        # decompose cleanly.
+        divs = (_DIVS_PER_BEAT // 8) * multiplier
+        if divs <= 0:
+            continue
         parts = _split_duration(divs)
-        assert sum(parts) == divs, f"split_duration({divs}) = {parts} does not sum to {divs}"
+        assert sum(parts) == divs, (
+            f"split_duration({divs}) = {parts} does not sum to {divs}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -610,23 +621,33 @@ section "A":
 # (divs, type) entries the emitter is allowed to produce.  Anything else is a
 # bug: MusicXML consumers will render the visual type but allocate the
 # numeric duration, leading to barred-but-mismatched output.
-_VALID_DUR_TYPE = {
-    (96, "whole"),
-    (72, "half"),    # dotted half (with <dot/>)
-    (48, "half"),
-    (36, "quarter"), # dotted quarter
-    (32, "half"),    # triplet half
-    (24, "quarter"),
-    (18, "eighth"),  # dotted eighth
-    (16, "quarter"), # triplet quarter
-    (12, "eighth"),
-    ( 9, "16th"),    # dotted 16th
-    ( 8, "eighth"),  # triplet eighth
-    ( 6, "16th"),
-    ( 4, "16th"),    # triplet 16th
-    ( 3, "32nd"),
-    ( 2, "32nd"),    # triplet 32nd
-}
+#
+# Built off ``_DIVS_PER_BEAT`` so the set scales whenever divisions change.
+def _build_valid_dur_type() -> set[tuple[int, str]]:
+    Q = _DIVS_PER_BEAT  # divisions per quarter note
+    types = {
+        "whole":   Q * 4,
+        "half":    Q * 2,
+        "quarter": Q,
+        "eighth":  Q // 2,
+        "16th":    Q // 4,
+        "32nd":    Q // 8,
+    }
+    out: set[tuple[int, str]] = set()
+    for type_name, divs in types.items():
+        out.add((divs, type_name))
+        out.add((divs * 3 // 2, type_name))     # dotted
+        out.add((divs * 2 // 3, type_name))     # triplet (3:2)
+    # Tuplet variants supported by the new tuplet-group code path.
+    for type_name, divs in types.items():
+        for actual, normal in [(5, 4), (6, 4), (7, 4), (9, 8)]:
+            scaled = divs * normal // actual
+            if scaled > 0:
+                out.add((scaled, type_name))
+    return out
+
+
+_VALID_DUR_TYPE = _build_valid_dur_type()
 
 
 def test_duration_and_type_always_agree():

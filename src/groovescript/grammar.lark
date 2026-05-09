@@ -176,15 +176,33 @@ modify_action: "modify" "add" MODIFIER+ "to" INSTRUMENT "at" variation_target   
 
 ?pattern_value: STAR_VALUE "except" beat_list -> star_except
               | STAR_VALUE -> star
+              | TUPLET_STAR ("except" beat_list)? -> tuplet_star
               | beat_list
+
+// ``*<kind>[/N]`` — fill the bar with one tuplet of the named kind per
+// beat. The ``/8`` qualifier (and rare ``/16``) makes each beat carry two
+// (or four) half-beat tuplets back-to-back; bare ``*<kind>`` defaults to
+// one whole-beat tuplet per beat.
+TUPLET_STAR: /\*(triplet|quintuplet|sextuplet|septuplet|nonuplet)(\/[0-9]+)?/
 
 // Variation actions accept a bare ``*`` as "all beats" in addition to a beat list.
 ?variation_target: BARE_STAR -> variation_star
                  | beat_list
 BARE_STAR: "*"
 
-beat_list: beat ("," beat)*
+beat_list: beat_or_tuplet ("," beat_or_tuplet)*
+?beat_or_tuplet: beat | tuplet_group
 beat: BEAT_LABEL MODIFIER*
+
+// Tuplet group: a beat-list entry that anchors at a beat label and
+// expands into N evenly-spaced slots over the beat (or a half-beat span
+// when the kind is qualified with ``/8``). Slot indices inside are 1..N
+// with optional modifiers, comma-separated like an ordinary beat list.
+//   2{sextuplet 1, 2, 3, 4, 5, 6}     → six even hits across beat 2
+//   2&{triplet/8 1, 3}                → two hits inside beat 2&'s 8th-note triplet
+tuplet_group: BEAT_LABEL "{" TUPLET_KIND ("/" INT)? tuplet_slot ("," tuplet_slot)* "}"
+tuplet_slot: INT MODIFIER*
+TUPLET_KIND: "triplet" | "quintuplet" | "sextuplet" | "septuplet" | "nonuplet"
 
 // Canonical abbreviations plus common long-form and lowercase aliases.
 // Longer alternatives must precede any of their prefixes in the alternation
