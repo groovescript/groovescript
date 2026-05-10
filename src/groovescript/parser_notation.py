@@ -170,7 +170,10 @@ def _parse_count_tuplet_group(
     if "/" in kind_part:
         raise ValueError(
             f"Half-beat tuplet ``{kind_part}`` is not supported inside count "
-            f"strings (anchor sub-beats explicitly instead)"
+            f"strings; count-form anchors are restricted to whole beats. For "
+            f"sub-beat tuplets, write the slots out as a pattern line — e.g. "
+            f"``SN: 2&{{{kind_part} 1, 2, 3}}`` inside a ``count \"label\":`` "
+            f"block."
         )
     if kind_part not in _TUPLET_RATIOS_NOTATION:
         raise ValueError(

@@ -671,6 +671,7 @@ def _drum_measure_mixed(
 def _drum_measure_with_tuplets(
     events,
     beats_per_bar: int,
+    beat_unit: int,
     beat_tuplets: list,
     cue_map: dict | None = None,
     placeholder_map: dict | None = None,
@@ -718,18 +719,35 @@ def _drum_measure_with_tuplets(
             slot_tokens.append(t)
         return f"\\tuplet {actual}/{normal} {{ {' '.join(slot_tokens)} }}"
 
-    def _emit_straight_half(half_start: Fraction) -> str:
-        """Render a half-beat as one straight 8th-note slot.
+    def _emit_straight_half(half_start: Fraction, half_span: Fraction) -> str:
+        """Render the non-tuplet half of a half-beat tuplet split.
 
-        Used for the non-tuplet half of a half-beat tuplet split. The slot
-        carries a hit chord if any event lands on the half-beat, else a rest.
+        Recognises one of three shapes inside the half:
+          * empty                            → ``r{half}``
+          * single hit on ``half_start``     → one half-beat note
+          * hits at ``half_start`` (and/or
+            ``half_start + half_span/2``)    → two 16th-of-beat notes
+
+        Anything finer is rejected upstream by ``_validate_tuplet_grid_alignment``.
         """
-        hits = pos_map.get(half_start, [])
-        if hits:
-            t = _format_hits(hits, "8")
-        else:
-            t = "r8"
-        return _attach_markup(t, half_start)
+        eighth_dur = _ly_eighth_duration(beat_unit)
+        half_mid = half_start + half_span / 2
+        hits_on_start = pos_map.get(half_start, [])
+        hits_on_mid = pos_map.get(half_mid, [])
+        if not hits_on_mid:
+            t = _format_hits(hits_on_start, eighth_dur) if hits_on_start else f"r{eighth_dur}"
+            return _attach_markup(t, half_start)
+        sixteenth_dur = _ly_sixteenth_duration(beat_unit)
+        t1 = _format_hits(hits_on_start, sixteenth_dur) if hits_on_start else f"r{sixteenth_dur}"
+        t2 = _format_hits(hits_on_mid, sixteenth_dur) if hits_on_mid else f"r{sixteenth_dur}"
+        t1 = _attach_markup(t1, half_start)
+        t2 = _attach_markup(t2, half_mid)
+        return f"{t1} {t2}"
+
+    # Note-value durations relative to the bar's beat unit.
+    quarter_dur = str(beat_unit)                         # 1 beat
+    eighth_dur = _ly_eighth_duration(beat_unit)          # 1/2 beat
+    sixteenth_dur = _ly_sixteenth_duration(beat_unit)    # 1/4 beat
 
     def _emit_straight_beat(beat_start: Fraction, beat_idx: int) -> str:
         """Reuse the existing straight-beat logic for a non-tuplet beat."""
@@ -744,7 +762,7 @@ def _drum_measure_with_tuplets(
             for slot_idx in range(4):
                 slot_pos = beat_start + Fraction(slot_idx, sixteenth_grid)
                 hits = pos_map.get(slot_pos, [])
-                t = _format_hits(hits, "16")
+                t = _format_hits(hits, sixteenth_dur)
                 t = _attach_markup(t, slot_pos)
                 ts.append(t)
             return " ".join(ts)
@@ -753,12 +771,12 @@ def _drum_measure_with_tuplets(
         hits_on_beat = pos_map.get(beat_start, [])
         hits_on_and = pos_map.get(and_pos, [])
         if hits_on_beat and not hits_on_and:
-            t = _format_hits(hits_on_beat, "4")
+            t = _format_hits(hits_on_beat, quarter_dur)
             return _attach_markup(t, beat_start)
         if not hits_on_beat and not hits_on_and:
-            return _attach_markup("r4", beat_start)
-        t1 = _attach_markup(_format_hits(hits_on_beat, "8"), beat_start)
-        t2 = _attach_markup(_format_hits(hits_on_and, "8"), and_pos)
+            return _attach_markup(f"r{quarter_dur}", beat_start)
+        t1 = _attach_markup(_format_hits(hits_on_beat, eighth_dur), beat_start)
+        t2 = _attach_markup(_format_hits(hits_on_and, eighth_dur), and_pos)
         return f"{t1} {t2}"
 
     tokens: list[str] = []
@@ -770,17 +788,9 @@ def _drum_measure_with_tuplets(
             continue
         if isinstance(annot, tuple) and annot and annot[0] == "full":
             _, actual, normal = annot
-            # Slot duration: an N:M tuplet over a beat means N slots in the
-            # time of M ``unit`` notes where unit = beat_unit / 4 of a quarter.
-            # In 4/4 (beat_unit=4), the unit is a quarter; M=4 means slots
-            # are 16ths (4 in a beat), M=2 means slots are 8ths, M=8 means
-            # slots are 32nds.
-            #   triplet 3:2 → unit = 8th  → ly_duration = "8"
-            #   sextuplet 6:4 → unit = 16th → ly_duration = "16"
-            #   septuplet 7:4 → unit = 16th → ly_duration = "16"
-            #   quintuplet 5:4 → unit = 16th → ly_duration = "16"
-            #   nonuplet 9:8 → unit = 32nd → ly_duration = "32"
-            ly_duration = _LY_DURATION_FOR_NORMAL.get(normal, "16")
+            # M of the slot's printed value fill the block (= one beat
+            # = 1/beat_unit note). So slot value = 1/(M * beat_unit).
+            ly_duration = _ly_slot_duration(normal, beat_unit, half_beat=False)
             tokens.append(
                 _emit_tuplet_block(
                     actual=actual,
@@ -798,14 +808,10 @@ def _drum_measure_with_tuplets(
             half_pieces: list[str] = []
             # Left half
             if left is None:
-                half_pieces.append(_emit_straight_half(beat_start))
+                half_pieces.append(_emit_straight_half(beat_start, half_span))
             else:
                 actual, normal = left
-                # Half-beat span = an 8th note. For an N:M tuplet, slot duration
-                # is M*8th / N * (1/M) → the unit is M's note value scaled.
-                # For half-beat: slots are normal*2 of unit. e.g. triplet/8
-                # 3:2 over an 8th → 3 slots in time of 2 16ths → ly "16".
-                ly_duration = _LY_DURATION_FOR_NORMAL_HALFBEAT.get(normal, "32")
+                ly_duration = _ly_slot_duration(normal, beat_unit, half_beat=True)
                 half_pieces.append(
                     _emit_tuplet_block(
                         actual=actual,
@@ -817,10 +823,10 @@ def _drum_measure_with_tuplets(
                 )
             # Right half
             if right is None:
-                half_pieces.append(_emit_straight_half(half_mid))
+                half_pieces.append(_emit_straight_half(half_mid, half_span))
             else:
                 actual, normal = right
-                ly_duration = _LY_DURATION_FOR_NORMAL_HALFBEAT.get(normal, "32")
+                ly_duration = _ly_slot_duration(normal, beat_unit, half_beat=True)
                 half_pieces.append(
                     _emit_tuplet_block(
                         actual=actual,
@@ -838,22 +844,30 @@ def _drum_measure_with_tuplets(
     return " ".join(tokens)
 
 
-# LilyPond duration string for one slot of an N:M whole-beat tuplet, keyed
-# on M (the "normal-notes" denominator). Triplet 3:2 → 8ths; everything
-# else with M=4 fits in 16th-note slots; nonuplet 9:8 fits in 32nd slots.
-_LY_DURATION_FOR_NORMAL: dict[int, str] = {
-    2: "8",
-    4: "16",
-    8: "32",
-}
+def _ly_slot_duration(normal: int, beat_unit: int, half_beat: bool) -> str:
+    """LilyPond duration string for one slot of an N:M tuplet.
 
-# Same idea but for half-beat tuplets (the block spans an 8th note rather
-# than a quarter), so each slot is one note value smaller.
-_LY_DURATION_FOR_NORMAL_HALFBEAT: dict[int, str] = {
-    2: "16",
-    4: "32",
-    8: "64",
-}
+    The block span equals one beat (whole-beat tuplet) or half a beat
+    (half-beat tuplet). M slots of the printed value fill the block, so
+    the slot's printed value is ``2*normal*beat_unit`` for a half-beat
+    tuplet, ``normal*beat_unit`` for a whole-beat one. In 4/4 (beat_unit=4)
+    that reproduces the quarter-note assumptions: triplet 3:2 → 8th,
+    sextuplet 6:4 → 16th, nonuplet 9:8 → 32nd.
+    """
+    factor = 2 if half_beat else 1
+    return str(factor * normal * beat_unit)
+
+
+def _ly_eighth_duration(beat_unit: int) -> str:
+    """Duration string for a half-beat (the natural unit of a non-tuplet
+    half inside a half-beat tuplet split). 1/(2*beat_unit) note."""
+    return str(2 * beat_unit)
+
+
+def _ly_sixteenth_duration(beat_unit: int) -> str:
+    """Duration string for a quarter-beat (a 16th-of-the-beat). Used inside
+    a non-tuplet half-beat that carries two events."""
+    return str(4 * beat_unit)
 
 
 def _drum_measure(
@@ -880,7 +894,7 @@ def _drum_measure(
     )
     if has_tuplet_annotations:
         return _drum_measure_with_tuplets(
-            events, beats_per_bar, beat_tuplets,
+            events, beats_per_bar, beat_unit, beat_tuplets,
             cue_map, placeholder_map, dynamic_start_map, dynamic_stop_set,
         )
     if any(_is_triplet_only(e.beat_position, beats_per_bar) for e in events):

@@ -42,6 +42,7 @@ from .ast_nodes import (
     VariationAction,
     VariationDef,
 )
+from .errors import GrooveScriptError
 from .parser_notation import (
     _extract_modifier_args,
     _format_count_notes_mismatch,
@@ -1192,12 +1193,36 @@ class _GrooveScriptTransformer(Transformer):
         modifiers, buzz_dur, grace_inst = _extract_modifier_args(raw_mods)
         return (instrument, modifiers, buzz_dur, grace_inst)
 
+    @staticmethod
+    def _reject_tuplet_in_variation_target(beats, action_kind: str, line: int | None) -> None:
+        """Reject ``<beat>{<kind> …}`` groups in a variation action target.
+
+        Tuplet groups are not yet supported as variation targets — the
+        compiler has no way to address an individual tuplet slot for an
+        ``add``/``remove``/``replace``/``modify`` action. Catch this at the
+        transformer so the user sees a clean diagnostic instead of an
+        ``AttributeError`` deep in the compiler.
+        """
+        if isinstance(beats, list):
+            for item in beats:
+                if isinstance(item, TupletGroup):
+                    raise GrooveScriptError(
+                        message=(
+                            f"variation {action_kind} cannot target a tuplet "
+                            f"group ({item.kind} at beat {item.anchor!r}); "
+                            f"variations operate on whole-beat / 8th / 16th / "
+                            f"triplet positions only"
+                        ),
+                        line=line,
+                    )
+
     @v_args(meta=True)
     def add_action(self, meta, items):
         # items: [(instrument, modifiers, buzz_duration, grace_instrument)+, pattern_value]
         beats = items[-1]
         specs = items[:-1]
         source_line = _meta_line(meta)
+        self._reject_tuplet_in_variation_target(beats, "add", source_line)
         return [
             VariationAction(
                 action="add",
@@ -1217,6 +1242,7 @@ class _GrooveScriptTransformer(Transformer):
         beats = items[-1]
         instruments = [_normalize_instrument(str(tok)) for tok in items[:-1]]
         source_line = _meta_line(meta)
+        self._reject_tuplet_in_variation_target(beats, "remove", source_line)
         return [
             VariationAction(
                 action="remove", instrument=instrument, beats=beats, line=source_line
@@ -1242,6 +1268,7 @@ class _GrooveScriptTransformer(Transformer):
                 f"match number of target instruments ({len(targets)})"
             )
         source_line = _meta_line(meta)
+        self._reject_tuplet_in_variation_target(beats, "replace", source_line)
         return [
             VariationAction(
                 action="replace",
@@ -1274,6 +1301,8 @@ class _GrooveScriptTransformer(Transformer):
         instrument = _normalize_instrument(str(items[-2]))
         raw_mods = [str(m) for m in items[:-2]]
         modifiers, buzz_dur, grace_inst = _extract_modifier_args(raw_mods)
+        source_line = _meta_line(meta)
+        self._reject_tuplet_in_variation_target(beats, "modify add", source_line)
         return VariationAction(
             action="modify_add",
             instrument=instrument,
@@ -1281,7 +1310,7 @@ class _GrooveScriptTransformer(Transformer):
             modifiers=list(modifiers),
             buzz_duration=buzz_dur,
             grace_instrument=grace_inst,
-            line=_meta_line(meta),
+            line=source_line,
         )
 
     @v_args(meta=True)
@@ -1291,6 +1320,8 @@ class _GrooveScriptTransformer(Transformer):
         instrument = _normalize_instrument(str(items[-2]))
         raw_mods = [str(m) for m in items[:-2]]
         modifiers, buzz_dur, grace_inst = _extract_modifier_args(raw_mods)
+        source_line = _meta_line(meta)
+        self._reject_tuplet_in_variation_target(beats, "modify remove", source_line)
         return VariationAction(
             action="modify_remove",
             instrument=instrument,
@@ -1298,7 +1329,7 @@ class _GrooveScriptTransformer(Transformer):
             modifiers=list(modifiers),
             buzz_duration=buzz_dur,
             grace_instrument=grace_inst,
-            line=_meta_line(meta),
+            line=source_line,
         )
 
     def star(self, items):

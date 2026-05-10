@@ -384,8 +384,12 @@ HH: *triplet/8            # eight 16th-note triplets per bar (two per beat)
 ```
 
 The `*<kind>` form is a direct analogue of `*N` / `*Nt` for the named
-tuplet kinds. As with `*N`, an `except` clause excludes specific beat
-labels from the expansion.
+tuplet kinds. As with `*N`, an `except` clause excludes individual hit
+**positions** from the expansion — *not* whole beats. So
+`*sextuplet except 1, 3` keeps the sextuplet bracket on beats 1 and 3
+but drops the slot-1 hit in each (the hit on the downbeat). To revert
+specific beats to straight quarters, write the pattern out explicitly
+instead of using the star.
 
 #### Tuplet groups in count-form fills
 
