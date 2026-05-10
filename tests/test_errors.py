@@ -422,3 +422,113 @@ def test_fill_internal_cresc_out_of_range_reports_line() -> None:
     assert err.line == 11, f"expected line 11 (the cresc), got {err.line}"
     assert "cresc" in err.message
     assert "fill-internal" in err.hint
+
+
+# ── repeat: validation ─────────────────────────────────────────────────────
+#
+# ``repeat: N`` divides ``bars`` into N identical phrases. If N is greater
+# than ``bars`` or ``bars`` isn't divisible by N the compiler used to either
+# crash with a Python ZeroDivisionError or silently emit malformed nested
+# repeat blocks. Both shapes now raise a ``GrooveScriptError``.
+
+
+def test_repeat_greater_than_bars_raises_clean_error() -> None:
+    """Regression: ``repeat: N > bars`` used to cause ``phrase_length = bars
+    // repeat = 0`` and crash with ``ZeroDivisionError`` deep inside
+    ``_process_groove_section``. Should now raise GrooveScriptError."""
+    src = (
+        'groove "g":\n'
+        '    HH: *4\n'
+        '    BD: 1, 3\n'
+        'section "s":\n'
+        '    bars: 2\n'
+        '    groove: "g"\n'
+        '    repeat: 3\n'
+    )
+    song = parse(src, filename="song.gs")
+    with pytest.raises(GrooveScriptError) as excinfo:
+        compile_song(song)
+    assert "repeat" in str(excinfo.value)
+    assert "exceed" in str(excinfo.value) or "shorter" in str(excinfo.value)
+
+
+def test_repeat_not_dividing_bars_raises_clean_error() -> None:
+    """Regression: ``repeat: 2`` with ``bars: 5`` used to silently emit three
+    nested ``\\repeat volta 2`` blocks for a section that only holds 5 bars.
+    The phrase length must divide the bar count evenly."""
+    src = (
+        'groove "g":\n'
+        '    HH: *4\n'
+        '    BD: 1, 3\n'
+        'section "s":\n'
+        '    bars: 5\n'
+        '    groove: "g"\n'
+        '    repeat: 2\n'
+    )
+    song = parse(src, filename="song.gs")
+    with pytest.raises(GrooveScriptError) as excinfo:
+        compile_song(song)
+    assert "divisible" in str(excinfo.value)
+
+
+def test_repeat_zero_raises_clean_error() -> None:
+    """Regression: ``repeat: 0`` is meaningless and used to fall through to a
+    crash. Reject it with a clear message."""
+    src = (
+        'groove "g":\n'
+        '    HH: *4\n'
+        '    BD: 1, 3\n'
+        'section "s":\n'
+        '    bars: 4\n'
+        '    groove: "g"\n'
+        '    repeat: 0\n'
+    )
+    song = parse(src, filename="song.gs")
+    with pytest.raises(GrooveScriptError) as excinfo:
+        compile_song(song)
+    assert "repeat" in str(excinfo.value)
+
+
+def test_repeat_evenly_divides_compiles() -> None:
+    """Sanity: a valid repeat (bars % repeat == 0) still compiles."""
+    src = (
+        'groove "g":\n'
+        '    HH: *4\n'
+        '    BD: 1, 3\n'
+        'section "s":\n'
+        '    bars: 4\n'
+        '    groove: "g"\n'
+        '    repeat: 2\n'
+    )
+    song = parse(src, filename="song.gs")
+    ir = compile_song(song)
+    assert len(ir.bars) == 4
+
+
+# ── Transformer exception wrapping ─────────────────────────────────────────
+#
+# Lark's VisitError wraps any exception raised by a Transformer method.
+# parse() previously only translated GrooveScriptError and ValueError,
+# letting KeyError / IndexError / AttributeError leak as raw Python
+# tracebacks — violating the "no tracebacks, only GrooveScriptError"
+# contract. The wrapper now broadens to those three classes too.
+
+
+def test_transformer_keyerror_wrapped_as_groovescript_error(monkeypatch) -> None:
+    """Regression: simulate a transformer bug that raises KeyError. Should
+    produce a GrooveScriptError, not a Python traceback."""
+    from lark import Tree
+    from lark.exceptions import VisitError
+
+    from groovescript.parser_transformer import _GrooveScriptTransformer
+
+    def explode(self, items):
+        raise KeyError("simulated transformer bug")
+
+    monkeypatch.setattr(_GrooveScriptTransformer, "metadata_line", explode)
+
+    src = 'tempo: 120\ngroove "g":\n    BD: 1\nsection "s":\n    bars: 1\n    groove: "g"\n'
+    with pytest.raises(GrooveScriptError) as excinfo:
+        parse(src, filename="song.gs")
+    assert "internal parser error" in str(excinfo.value)
+    assert "KeyError" in str(excinfo.value)

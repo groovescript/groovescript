@@ -379,3 +379,83 @@ section "verse 2":
     bar7 = ir.bars[6]  # 0-indexed: bar 7 = verse 2's bar 3
     assert len(bar7.dynamic_starts) == 1
     assert bar7.dynamic_starts[0][1] == "cresc"
+
+
+def test_dynamic_span_in_base_groove_survives_extend():
+    """Regression: a hairpin declared inside a base groove used to be silently
+    dropped when another groove ``extend:``-ed the base, because the merged
+    Groove object was constructed without the ``dynamic_spans`` field."""
+    src = """\
+groove "base":
+    HH: *8
+    BD: 1, 3
+    SN: 2, 4
+    cresc from bar 1 to bar 1
+
+groove "ext":
+    extend: "base"
+        CR: 1
+
+section "s":
+    bars: 1
+    groove: "ext"
+"""
+    song = parse(src)
+    ir = compile_song(song)
+    ly = emit_lilypond(ir)
+    # The cresc from the base must reach the emitted score even after extend.
+    assert "\\<" in ly
+    assert "\\!" in ly
+
+
+def test_dynamic_span_on_extending_groove_emits():
+    """Regression: a hairpin declared inside the extending groove (not the
+    base) was also dropped because the extend resolver omitted dynamic_spans
+    entirely from the merged Groove."""
+    src = """\
+groove "base":
+    HH: *8
+    BD: 1, 3
+    SN: 2, 4
+
+groove "ext":
+    extend: "base"
+        CR: 1
+    cresc from bar 1 to bar 1
+
+section "s":
+    bars: 1
+    groove: "ext"
+"""
+    song = parse(src)
+    ir = compile_song(song)
+    ly = emit_lilypond(ir)
+    assert "\\<" in ly
+    assert "\\!" in ly
+
+
+def test_dynamic_span_survives_chained_extends():
+    """A hairpin in groove A travels through B (extend A) and C (extend B)."""
+    src = """\
+groove "a":
+    HH: *8
+    BD: 1, 3
+    cresc from bar 1 to bar 1
+
+groove "b":
+    extend: "a"
+        SN: 2, 4
+
+groove "c":
+    extend: "b"
+        CR: 1
+
+section "s":
+    bars: 1
+    groove: "c"
+"""
+    song = parse(src)
+    ir = compile_song(song)
+    ly = emit_lilypond(ir)
+    assert "\\<" in ly
+    assert "\\!" in ly

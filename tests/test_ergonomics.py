@@ -531,6 +531,62 @@ section "s":
         assert "BD" in instruments
         assert "HH" in instruments
 
+    def test_compile_extend_count_notes_base_preserves_pattern(self):
+        """Regression: extending a count+notes-defined base used to silently
+        drop the entire base pattern because ``base.bars`` was empty until
+        ``compile_groove`` expanded ``count_notes``. The merged groove must
+        contain both the base's count+notes hits and the extending lines."""
+        song = parse("""\
+groove "base cn":
+  count: 1 e and a 2 e and a 3 e and a 4 e and a
+  notes: BD, HH, SN, HH, BD, HH, SN, HH, BD, HH, SN, HH, BD, HH, SN, HH
+
+groove "base cn with crash":
+  extend: "base cn"
+    CR: 1
+
+section "s":
+  bars: 1
+  groove: "base cn with crash"
+""")
+        ir = compile_song(song)
+        instruments = {e.instrument for e in ir.bars[0].events}
+        # The base contributes BD/HH/SN; the override contributes CR.
+        assert instruments == {"BD", "HH", "SN", "CR"}
+        # Sanity-check the BD count: count+notes places BD on every downbeat.
+        bd_positions = sorted(
+            e.beat_position for e in ir.bars[0].events if e.instrument == "BD"
+        )
+        assert bd_positions == [
+            Fraction(0), Fraction(1, 4), Fraction(1, 2), Fraction(3, 4),
+        ]
+
+    def test_compile_extend_count_notes_with_tuplets_preserves_tuplets(self):
+        """Regression: count+notes bases can contain inline tuplet groups
+        (``2{sextuplet 1, 2, 3, 4, 5, 6}``). Extending such a base must
+        preserve the per-beat tuplet annotation so the LilyPond emitter still
+        emits ``\\tuplet 6/4`` for that beat."""
+        song = parse("""\
+groove "base tup":
+  count: 1 e and a 2{sextuplet 1, 2, 3, 4, 5, 6} 3 e and a 4 e and a
+  notes: BD, HH, SN, HH, SN, HH, SN, HH, SN, HH, BD, HH, SN, HH, BD, HH, SN, HH
+
+groove "tup with crash":
+  extend: "base tup"
+    CR: 1
+
+section "s":
+  bars: 1
+  groove: "tup with crash"
+""")
+        ir = compile_song(song)
+        # The sextuplet beat (beat 2) lives on the bar's beat_tuplets
+        # annotation; the rest of the bar is straight.
+        bar = ir.bars[0]
+        assert bar.beat_tuplets[1] == ("full", 6, 4)
+        ly = emit_lilypond(ir)
+        assert "\\tuplet 6/4" in ly
+
     def test_compile_extend_preserves_base_unchanged(self):
         """Using extend does not mutate the base groove."""
         song = parse("""\

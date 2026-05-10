@@ -1401,6 +1401,25 @@ def compile_groove(
         subdivision, lines, count_beat_tuplets = _expand_groove_count_notes(
             count_str, notes_str, beats_per_bar
         )
+        # When ``groove.bars`` is also populated, the groove was produced by
+        # ``_resolve_groove_extends`` extending a count+notes base. The
+        # extending groove's pattern lines live in ``bars`` and need to be
+        # merged on top of the count+notes expansion so newly-added
+        # instruments survive while the base pattern (and its tuplet
+        # annotations) is preserved.
+        if groove.bars:
+            overlay_lines = groove.bars[0]
+            merged: dict[str, PatternLine] = {pl.instrument: pl for pl in lines}
+            for pl in overlay_lines:
+                merged[pl.instrument] = pl
+            lines = list(merged.values())
+            # Re-infer subdivision so a 16th-note overlay on an 8th-note
+            # count+notes base bumps the grid (and vice versa).
+            overlay_subdivision = _infer_bar_subdivision(
+                lines, beats_per_bar, beat_unit,
+                f"groove {groove.name!r} bar 1",
+            )
+            subdivision = max(subdivision, overlay_subdivision)
         bars = [lines]
         per_bar_subdivisions = [subdivision]
         per_bar_beat_tuplets: list[list[object]] = [count_beat_tuplets]
@@ -1895,11 +1914,13 @@ def _apply_variation_actions(
         elif action.action == "modify_add":
             # Add each modifier to the named instrument's events at the target
             # positions, skipping modifiers the event already carries.
+            matched_positions: set[Fraction] = set()
             for event in result:
                 if event.beat_position not in positions:
                     continue
                 if event.instrument != action.instrument:
                     continue
+                matched_positions.add(event.beat_position)
                 # Resolve the effective grace instrument: explicit on the
                 # action wins; otherwise inherit whatever the event already
                 # carried.
@@ -1936,6 +1957,27 @@ def _apply_variation_actions(
                 # newly-stamped modifier is what can create notation conflicts.
                 if added_any and action.line is not None:
                     event.source_line = action.line
+            # Enforce that explicitly named beats actually contained a hit for
+            # the targeted instrument. ``*`` (all beats) intentionally tolerates
+            # gaps — it means "wherever that instrument plays". An explicit
+            # beat list is almost always a typo when nothing matches.
+            if action.beats != "*":
+                missing = positions - matched_positions
+                if missing:
+                    missing_labels = ", ".join(
+                        _beat_label_for(pos, beats_per_bar) for pos in sorted(missing)
+                    )
+                    raise GrooveScriptError(
+                        message=(
+                            f"variation modify add to {action.instrument!r} "
+                            f"at {missing_labels} (bar {absolute_bar}): no "
+                            f"{action.instrument!r} hit found at "
+                            f"{'that beat' if len(missing) == 1 else 'those beats'} "
+                            f"— modify add can only decorate existing hits, "
+                            f"use 'add' to introduce a new note"
+                        ),
+                        line=action.line,
+                    )
         elif action.action == "modify_remove":
             # Drop each listed modifier from the named instrument's events at
             # the target positions. Silently tolerates modifiers that aren't
@@ -2393,9 +2435,22 @@ def _resolve_groove_extends(
                     merged[pl.instrument] = pl
                 merged_bars.append(list(merged.values()))
 
+        # Carry the base's count_notes through extend resolution when present.
+        # ``compile_groove`` will expand the count string and overlay the
+        # ``merged_bars`` pattern lines on top, so a groove that extends a
+        # count+notes base preserves the base's tuplet annotations and per-beat
+        # subdivision (which can't be reconstructed from raw pattern lines).
+        merged_count_notes = base.count_notes
+
         # Merge bar_texts: base first, then overlay extending groove's texts.
         merged_texts = dict(base.bar_texts)
         merged_texts.update(groove.bar_texts)
+
+        # Carry dynamic spans through extend so a hairpin declared inside the
+        # base groove (or the extending groove) survives to the emitter.
+        merged_dynamic_spans = (
+            list(base.dynamic_spans) + list(groove.dynamic_spans)
+        )
 
         # Chain extend_variations: the resolved base already has any of its
         # own variations flattened into ``base.extend_variations``, so we
@@ -2407,7 +2462,11 @@ def _resolve_groove_extends(
         # Validate that every scoped block targets a bar that actually exists
         # in the merged groove. Catching this at extend-resolution time gives
         # a clear error before the groove is compiled to events.
-        max_bar = len(merged_bars)
+        # When ``merged_count_notes`` is set the bar count comes from the
+        # count+notes expansion (always one bar today); ``merged_bars`` holds
+        # only the extending overlay so its length isn't the user-visible bar
+        # count and we shouldn't validate against it.
+        max_bar = 1 if merged_count_notes is not None else len(merged_bars)
         for ev in merged_extend_variations:
             if ev.bars is None:
                 continue
@@ -2422,7 +2481,9 @@ def _resolve_groove_extends(
             name=name,
             bars=merged_bars,
             bar_texts=merged_texts,
+            count_notes=merged_count_notes,
             extend=None,  # mark as resolved
+            dynamic_spans=merged_dynamic_spans,
             extend_variations=merged_extend_variations,
         )
         groove_bar_texts_map[name] = merged_texts
@@ -3001,6 +3062,30 @@ def compile_song(song: Song) -> IRSong:
         ir_section = IRSection(name=section.name, start_bar=start_bar_number, bars=section.bars, tempo=effective_tempo)
 
         repeat_times = section.repeat
+        if repeat_times is not None:
+            if repeat_times < 1:
+                raise GrooveScriptError(
+                    message=(
+                        f"Section {section.name!r}: repeat must be at least 1, "
+                        f"got {repeat_times}"
+                    ),
+                )
+            if repeat_times > section.bars:
+                raise GrooveScriptError(
+                    message=(
+                        f"Section {section.name!r}: repeat ({repeat_times}) "
+                        f"cannot exceed the section's bar count ({section.bars}) "
+                        f"— the phrase would be shorter than one bar"
+                    ),
+                )
+            if section.bars % repeat_times != 0:
+                raise GrooveScriptError(
+                    message=(
+                        f"Section {section.name!r}: bars ({section.bars}) is "
+                        f"not divisible by repeat ({repeat_times}); the section "
+                        f"must contain a whole number of identical phrases"
+                    ),
+                )
         phrase_length = (section.bars // repeat_times) if repeat_times else None
 
         fill_coverage, variation_coverage = _build_coverage_maps(section, fill_map, section.bars, bpb, beat_unit, variation_map)

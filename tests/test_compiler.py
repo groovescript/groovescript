@@ -713,6 +713,71 @@ def test_compile_variation_modify_add_flam_attaches_to_existing_hits():
         assert "flam" not in event.modifiers
 
 
+def test_compile_variation_modify_add_to_missing_explicit_beat_raises():
+    """Regression: ``modify add`` with an explicit beat list used to silently
+    no-op when the named instrument had no hit at the requested beat. The
+    typo case (e.g. ``modify add accent to SN at 1`` when SN is on 2 & 4)
+    now raises a clear error pointing at the variation line. The ``*`` form
+    intentionally still tolerates gaps because it means "all existing hits"."""
+    from groovescript.errors import GrooveScriptError
+
+    snare_groove = Groove(
+        name="snare on 2 and 4",
+        bars=[[
+            PatternLine(instrument="BD", beats=["1", "3"]),
+            PatternLine(instrument="SN", beats=["2", "4"]),
+        ]],
+    )
+    bad_variation = Variation(
+        name="typo",
+        bars=[1],
+        actions=[
+            VariationAction(
+                action="modify_add",
+                instrument="SN",
+                modifiers=["accent"],
+                beats=["1"],  # SN has no hit on beat 1
+            ),
+        ],
+    )
+    song = Song(
+        metadata=Metadata(),
+        grooves=[snare_groove],
+        sections=[Section(name="verse", bars=1, groove="snare on 2 and 4", variations=[bad_variation])],
+    )
+    with pytest.raises(GrooveScriptError) as excinfo:
+        compile_song(song)
+    msg = str(excinfo.value)
+    assert "modify add" in msg
+    assert "SN" in msg
+    assert "no" in msg
+
+    # The ``*`` form must still succeed even though it sweeps over slots
+    # that have no SN hit.
+    star_variation = Variation(
+        name="all snare",
+        bars=[1],
+        actions=[
+            VariationAction(
+                action="modify_add",
+                instrument="SN",
+                modifiers=["accent"],
+                beats="*",
+            ),
+        ],
+    )
+    song_star = Song(
+        metadata=Metadata(),
+        grooves=[snare_groove],
+        sections=[Section(name="verse", bars=1, groove="snare on 2 and 4", variations=[star_variation])],
+    )
+    ir = compile_song(song_star)
+    sn_events = [e for e in ir.bars[0].events if e.instrument == "SN"]
+    assert sn_events
+    for event in sn_events:
+        assert "accent" in event.modifiers
+
+
 def test_compile_variation_modify_remove_strips_modifier_from_existing_hits():
     """``modify remove accent from bass at 1`` drops only the named modifier
     from the named instrument's hit, leaving the event itself (and any other
