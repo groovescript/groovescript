@@ -95,6 +95,25 @@ def parse(source: str, *, filename: str | None = None) -> Song:
                 column=column,
                 length=1,
             ) from None
+        # Defence-in-depth: a transformer bug that surfaces as KeyError /
+        # IndexError / AttributeError would otherwise leak as a Python
+        # traceback, breaking the "no tracebacks, only GrooveScriptError"
+        # contract documented in CLAUDE.md. Wrap such surprises in a
+        # diagnostic that still points at the offending source location.
+        if isinstance(inner, (KeyError, IndexError, AttributeError)):
+            line, column = _location_from_tree(exc.obj)
+            line, column = _remap_location(line, column, col_maps)
+            raise GrooveScriptError(
+                message=(
+                    f"internal parser error ({type(inner).__name__}: {inner}) "
+                    f"— please report this with the offending source"
+                ),
+                filename=filename,
+                source=source,
+                line=line,
+                column=column,
+                length=1,
+            ) from None
         raise
 
     # DSL version gate: a file may omit dsl_version (treated as "current"),

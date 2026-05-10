@@ -614,6 +614,15 @@ groove "rock copy":
 Chains work: `C` can extend `B`, which extends `A`. The base groove can
 also be a built-in library groove (e.g. `extend: "rock"`).
 
+Extending a count+notes-defined groove works the same way as extending a
+pattern-line groove: the count+notes hits become the base, and the
+extending groove's pattern lines layer on top by instrument. Any inline
+tuplet groups inside the count string survive to the merged groove.
+
+Dynamic spans (`cresc` / `decresc` declared inside a groove body) travel
+through `extend:` — both spans on the base and spans declared inside the
+extending groove reach the emitted score.
+
 **Applying variation actions in `extend:`** — in addition to (or instead of)
 pattern-line overrides, the extend body accepts the same action syntax used
 by section variations (`add`, `remove`, `replace`, `substitute`, `modify add`,
@@ -1161,6 +1170,12 @@ section "name":
     replace HH with CR at 1
 ```
 
+`repeat: N` divides the section's `bars` into N identical phrases and
+emits a `\repeat volta N { … }` block in LilyPond. The phrase length is
+`bars / N`, which must be a whole number; `bars: 4 repeat: 2` produces two
+two-bar phrases. `repeat` greater than `bars`, equal to zero, or not
+dividing `bars` evenly is an error.
+
 Inline fills accept the same `count …:` and `count:`/`notes:` block
 forms as top-level `fill` definitions, and — as with top-level fills —
 the `count "…"` header is optional whenever the lines pin each hit to a
@@ -1564,7 +1579,12 @@ variation at bar 4:
 Both forms accept multiple modifiers (`modify add flam accent to snare at
 2`) and either a comma-separated beat list, `*` for every beat in the bar,
 or a bare `at *`. `modify remove` silently ignores modifiers that aren't
-on the named instrument's event, so sweeping removals are safe.
+on the named instrument's event, so sweeping removals are safe. `modify
+add`, by contrast, requires that an explicit beat list actually contain a
+hit for the named instrument — `modify add accent to snare at 1` raises an
+error if the snare has no hit on beat 1, so typos surface immediately. The
+`*` form still tolerates gaps because it's defined as "wherever the
+instrument plays".
 
 Bar lists in `variation at bars …:` may be comma- or space-separated —
 `variation at bars 1 5:` parses the same as `variation at bars 1, 5:`.

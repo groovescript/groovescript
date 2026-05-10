@@ -259,7 +259,7 @@ class _GrooveScriptTransformer(Transformer):
         if rest and isinstance(rest[0], dict) and "bars" in rest[0]:
             content = rest[0]
             bars = content["bars"]
-            bar_texts = content["bar_texts"]
+            bar_texts = content.get("bar_texts", {})
             dynamic_spans = list(content.get("dynamic_spans", []))
             rest = rest[1:]
 
