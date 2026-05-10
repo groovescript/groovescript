@@ -94,6 +94,24 @@ section "chorus":
   groove: "money beat"
 ```
 
+GrooveScript also supports named tuplet groups for sextuplet, quintuplet,
+septuplet, and nonuplet patterns — both inline and as a star shorthand:
+
+```groovescript
+groove "sextuplet beat":
+  HH: 1, 2{sextuplet 1 accent, 2, 3, 4 accent, 5, 6}, 3, 4
+  SN: 2, 4
+  BD: 1, 3
+
+groove "fast 16th triplets":
+  HH: 1, 2, 3{triplet/8 1, 2, 3}, 3&{triplet/8 1, 2, 3}, 4
+
+groove "tour de sextuplet":
+  HH: *sextuplet            # sextuplets on every beat
+```
+
+See `tests/fixtures/tuplets_showcase.{gs,pdf}` for a rendered demo.
+
 More complete fixtures live under `tests/fixtures/`, each with its compiled
 `.ly` and rendered `.pdf` committed alongside the `.gs` source.
 

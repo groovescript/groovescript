@@ -397,3 +397,215 @@ def test_showcase_fixture_compiles_cleanly():
     assert "\\tuplet 9/8 {" in ly       # nonuplet beats
     # MusicXML round-trip parses without errors.
     assert emit_musicxml(ir)
+
+
+# ---------------------------------------------------------------------------
+# Regression tests for bugs found in the post-merge review
+# ---------------------------------------------------------------------------
+
+def test_tuplet_in_play_block_propagates_to_emitter():
+    """Regression: ``play:`` blocks used to drop tuplet annotations,
+    causing sextuplet bars to render as triplets in LilyPond/MusicXML."""
+    src = """\
+groove "sext":
+    HH: 1, 2{sextuplet 1, 2, 3, 4, 5, 6}, 3, 4
+    BD: 1, 3
+section "play":
+    play:
+        groove "sext" x2
+"""
+    ly = emit_lilypond(compile_song(parse(src)))
+    assert "\\tuplet 6/4 {" in ly, "play-block tuplet not rendered"
+    assert "\\tuplet 3/2 {" not in ly, (
+        "play-block tuplet collapsed into triplet path (the original bug)"
+    )
+
+
+def test_tuplet_in_inline_play_bar_propagates():
+    """Regression: inline ``bar "X":`` inside ``play:`` lost tuplet info too."""
+    src = """\
+section "s":
+    play:
+        bar "A":
+            HH: 1, 2{sextuplet 1, 2, 3, 4, 5, 6}, 3, 4
+"""
+    ly = emit_lilypond(compile_song(parse(src)))
+    assert "\\tuplet 6/4 {" in ly
+
+
+def test_tuplet_in_6_8_uses_correct_slot_durations_in_lilypond():
+    """Regression: 6/8 (beat_unit=8) tuplets used to emit quarter-based slot
+    durations, producing a bar whose engraved length disagreed with the
+    time signature."""
+    src = """\
+title: "x"
+time_signature: 6/8
+groove "g":
+    HH: 1{quintuplet 1, 2, 3, 4, 5}, 2, 3, 4, 5, 6
+section "s":
+    bars: 1
+    groove: "g"
+"""
+    ly = emit_lilypond(compile_song(parse(src)))
+    # In 6/8 the beat is an 8th note, so 5:4 quintuplet slots are 32nds
+    # (5 in the time of 4 32nds = an 8th).
+    assert "\\tuplet 5/4 { hh32 hh32 hh32 hh32 hh32 }" in ly
+    assert "hh8" in ly  # remaining beats render as 8th-note quarters
+    assert "hh4" not in ly  # no quarter-note leakage
+
+
+def test_tuplet_in_6_8_uses_correct_slot_divs_in_musicxml():
+    """Regression: same bug for MusicXML — divisions per slot must shrink
+    when beat_unit shifts from 4 to 8."""
+    src = """\
+time_signature: 6/8
+groove "g":
+    HH: 1{quintuplet 1, 2, 3, 4, 5}, 2, 3, 4, 5, 6
+section "s":
+    bars: 1
+    groove: "g"
+"""
+    xml = emit_musicxml(compile_song(parse(src))).decode("utf-8")
+    # 1260 = 8th note (= 1 beat in 6/8); 252 = 1260/5 = quintuplet slot.
+    assert "<duration>252</duration>" in xml
+    # The 8th-note remainder beats should appear as <type>eighth</type>.
+    assert "<type>eighth</type>" in xml
+    # Tuplet bracket markers are emitted alongside the time-modification.
+    assert 'type="start"' in xml and "<tuplet" in xml
+    assert 'type="stop"' in xml
+
+
+def test_off_tuplet_hit_on_tuplet_beat_is_rejected():
+    """Regression: silent data loss — a 16th-note hit on a beat that has
+    a sextuplet annotation used to disappear from LilyPond/MusicXML
+    because the emitters only enumerate slot positions."""
+    src = """\
+groove "g":
+    HH: 2{sextuplet 1, 2, 3, 4, 5, 6}
+    SN: 2, 2e, 2&, 2a
+section "s":
+    bars: 1
+    groove: "g"
+"""
+    with pytest.raises(GrooveScriptError, match="not on one of its slot positions"):
+        compile_song(parse(src))
+
+
+def test_off_tuplet_extend_add_is_rejected():
+    """Regression: ``add SN at 2e`` over a sextuplet beat used to silently
+    drop the SN hit because position 5/16 is not on the sextuplet grid."""
+    src = """\
+groove "base":
+    HH: 2{sextuplet 1, 2, 3, 4, 5, 6}
+groove "ext":
+    extend: "base"
+    add SN at 2e
+section "s":
+    bars: 1
+    groove: "ext"
+"""
+    with pytest.raises(GrooveScriptError, match="not on one of its slot positions"):
+        compile_song(parse(src))
+
+
+def test_variation_with_tuplet_target_rejected_cleanly():
+    """Regression: ``add CR at 2{sextuplet 1, 2}`` used to crash with
+    ``AttributeError: 'TupletGroup' object has no attribute 'startswith'``
+    instead of producing a clean diagnostic."""
+    src = """\
+groove "g":
+    HH: 1, 2, 3, 4
+section "s":
+    bars: 1
+    groove: "g"
+    variation at bar 1:
+        add CR at 2{sextuplet 1, 2}
+"""
+    with pytest.raises(GrooveScriptError, match="cannot target a tuplet group"):
+        compile_song(parse(src))
+
+
+def test_modify_add_with_tuplet_target_rejected_cleanly():
+    src = """\
+groove "g":
+    HH: 2{sextuplet 1, 2, 3, 4, 5, 6}
+section "s":
+    bars: 1
+    groove: "g"
+    variation at bar 1:
+        modify add accent to HH at 2{sextuplet 1}
+"""
+    with pytest.raises(GrooveScriptError, match="cannot target a tuplet group"):
+        compile_song(parse(src))
+
+
+def test_buzz_inside_tuplet_slot_rejected():
+    """Regression: ``SN: 2{sextuplet 1 buzz, …}`` used to silently
+    downgrade buzz to a plain hit because the tuplet emitter has no
+    tremolo path."""
+    src = """\
+groove "g":
+    SN: 2{sextuplet 1 buzz:16, 4 buzz:16}
+section "s":
+    bars: 1
+    groove: "g"
+"""
+    with pytest.raises(GrooveScriptError, match="'buzz' modifier is not allowed inside a tuplet group"):
+        compile_song(parse(src))
+
+
+def test_fill_placed_mid_tuplet_beat_rejected():
+    """Regression: a fill placed at e.g. ``beat 3a`` over a groove with a
+    sextuplet on beat 3 used to corrupt the merged annotation, which
+    then routed the bar through the legacy triplet emitter and dropped
+    most of the sextuplet hits."""
+    src = """\
+groove "g":
+    HH: 1, 2, 3{sextuplet 1, 2, 3, 4, 5, 6}, 4
+fill "f":
+    count: "3a 4"
+    notes: "(BD CR) SN"
+section "s":
+    bars: 1
+    groove: "g"
+    fill "f" at bar 1 beat 3a
+"""
+    with pytest.raises(GrooveScriptError, match="falls inside a tuplet"):
+        compile_song(parse(src))
+
+
+def test_half_beat_tuplet_right_half_with_16th_renders_two_16ths():
+    """Regression: the non-tuplet half of a half-beat tuplet split used
+    to emit a single 8th-note slot, dropping any 16th-grid hit in the
+    other 16th of the half. With the fix, the half emits two 16ths
+    when there's a hit at the half's 16th-mid."""
+    src = """\
+groove "g":
+    HH: 1, 2, 3{triplet/8 1, 2, 3}, 3a, 4
+section "s":
+    bars: 1
+    groove: "g"
+"""
+    ly = emit_lilypond(compile_song(parse(src)))
+    # Left half = the triplet, right half = two 16ths (the 3& position
+    # and the 3a position, with a rest on 3&).
+    assert "\\tuplet 3/2 { hh16 hh16 hh16 } r16 hh16" in ly
+
+
+def test_count_form_half_beat_error_points_to_pattern_line_form():
+    """Regression: the count-form half-beat-tuplet error message used to
+    just say ``anchor sub-beats explicitly instead`` without telling
+    the user what the alternative looks like."""
+    src = """\
+groove "g":
+    HH: *4
+fill "f":
+    count: "1 2{triplet/8 1, 2, 3} 3 4"
+    notes: "BD BD BD BD BD BD BD"
+section "s":
+    bars: 1
+    groove: "g"
+    fill "f" at bar 1
+"""
+    with pytest.raises(GrooveScriptError, match=r"pattern line"):
+        compile_song(parse(src))

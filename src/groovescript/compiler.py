@@ -929,6 +929,128 @@ def _classify_bar_tuplets(
     return annotations
 
 
+def _tuplet_slot_positions(
+    annot, beat_idx: int, beats_per_bar: int
+) -> set[Fraction]:
+    """Bar-relative positions where events are allowed inside a beat with
+    annotation ``annot``.
+
+    For ``("full", actual, normal)``: the ``actual`` evenly-spaced slot
+    positions across the beat. For ``("halves", left, right)``: each half's
+    slot positions (or the half-start and half-mid for a non-tuplet half).
+    """
+    beat_start = Fraction(beat_idx, beats_per_bar)
+    beat_span = Fraction(1, beats_per_bar)
+    out: set[Fraction] = set()
+    if annot is None:
+        return out
+    if isinstance(annot, tuple) and annot and annot[0] == "full":
+        _, actual, _ = annot
+        for k in range(actual):
+            out.add(beat_start + Fraction(k, actual) * beat_span)
+        return out
+    if isinstance(annot, tuple) and annot and annot[0] == "halves":
+        _, left, right = annot
+        half_span = beat_span / 2
+        for half_start, ratio in (
+            (beat_start, left),
+            (beat_start + half_span, right),
+        ):
+            if ratio is None:
+                # Non-tuplet half — allow the half-start and the 16th-of-beat
+                # midpoint of the half (matching the engraver's two-event
+                # straight-half handling).
+                out.add(half_start)
+                out.add(half_start + half_span / 2)
+            else:
+                actual, _ = ratio
+                for k in range(actual):
+                    out.add(half_start + Fraction(k, actual) * half_span)
+        return out
+    return out
+
+
+def _validate_tuplet_grid_alignment(
+    events,
+    beat_tuplets: list,
+    beats_per_bar: int,
+    context: str,
+) -> None:
+    """Reject events that fall inside a tuplet beat at a non-slot position.
+
+    Without this check, the LilyPond and MusicXML emitters would silently
+    drop the off-tuplet hit because they walk only the slot positions.
+    """
+    if not beat_tuplets or not any(beat_tuplets):
+        return
+    for event in events:
+        beat_idx_frac = event.beat_position * beats_per_bar
+        beat_idx = int(beat_idx_frac)
+        if beat_idx < 0 or beat_idx >= len(beat_tuplets):
+            continue
+        annot = beat_tuplets[beat_idx]
+        if annot is None:
+            continue
+        allowed = _tuplet_slot_positions(annot, beat_idx, beats_per_bar)
+        if event.beat_position in allowed:
+            continue
+        # Build a friendly diagnostic naming the tuplet kind on the beat.
+        if isinstance(annot, tuple) and annot[0] == "full":
+            _, actual, normal = annot
+            kind_desc = f"{actual}:{normal} tuplet"
+        elif isinstance(annot, tuple) and annot[0] == "halves":
+            kind_desc = "half-beat tuplet"
+        else:
+            kind_desc = "tuplet"
+        raise GrooveScriptError(
+            message=(
+                f"{event.instrument} hit at beat position {event.beat_position} "
+                f"falls inside a {kind_desc} on beat {beat_idx + 1} but is not "
+                f"on one of its slot positions ({context}); place the hit on "
+                f"a tuplet slot or remove the tuplet annotation"
+            ),
+            line=getattr(event, "source_line", None),
+        )
+
+
+def _validate_fill_not_inside_tuplet(
+    bar_beat_tuplets: list,
+    start_position: Fraction,
+    beats_per_bar: int,
+    context: str,
+) -> None:
+    """Reject a fill whose start position falls inside an existing tuplet
+    beat at a non-slot position.
+
+    The merge logic that overlays a fill on a groove bar can't represent
+    "first half of a tuplet beat from the groove + fill content from the
+    middle of the same tuplet beat onward". Either move the fill to a
+    beat boundary, or remove the tuplet on that beat.
+    """
+    if not bar_beat_tuplets:
+        return
+    beat_idx_frac = start_position * beats_per_bar
+    beat_idx = int(beat_idx_frac)
+    within_beat = beat_idx_frac - beat_idx
+    if within_beat == 0:
+        return  # fill starts at a beat boundary — clean replacement
+    if beat_idx < 0 or beat_idx >= len(bar_beat_tuplets):
+        return
+    annot = bar_beat_tuplets[beat_idx]
+    if annot is None:
+        return
+    allowed = _tuplet_slot_positions(annot, beat_idx, beats_per_bar)
+    if start_position in allowed:
+        return
+    raise GrooveScriptError(
+        message=(
+            f"fill placement at beat-position {start_position} falls inside "
+            f"a tuplet on beat {beat_idx + 1} ({context}); place the fill "
+            f"on a beat boundary or on a tuplet slot"
+        ),
+    )
+
+
 def _infer_bar_subdivision(
     lines: list[PatternLine],
     beats_per_bar: int,
@@ -1119,19 +1241,24 @@ def _expand_pattern_line(
                             ),
                             line=line.line,
                         )
-                duration: Fraction | None = None
-                if "buzz" in mods:
-                    duration = _buzz_span(
-                        slot.buzz_duration or "4", beats_per_bar, beat_unit
-                    )
+                    if "buzz" in mods:
+                        # The tuplet emitter renders one note per slot and has
+                        # no path for the buzz tremolo decoration; previously
+                        # the buzz was silently downgraded to a plain hit.
+                        raise GrooveScriptError(
+                            message=(
+                                f"'buzz' modifier is not allowed inside a "
+                                f"tuplet group ({ctx}); the tremolo would not "
+                                f"be rendered"
+                            ),
+                            line=line.line,
+                        )
                 events.append(
                     Event(
                         bar=bar,
                         beat_position=pos,
                         instrument=line.instrument,
                         modifiers=mods,
-                        duration=duration,
-                        buzz_duration=slot.buzz_duration if duration is not None else None,
                         grace_instrument=slot.grace_instrument,
                         source_line=line.line,
                     )
@@ -1355,9 +1482,13 @@ def compile_groove(
         _validate_buzz_event(event, beats_per_bar, f"groove {groove.name!r}")
     for bar_number in range(1, len(bars) + 1):
         bar_events = [e for e in events if e.bar == bar_number]
-        _validate_buzz_overlap(bar_events, f"groove {groove.name!r} bar {bar_number}")
-        _validate_grace_uniqueness(bar_events, f"groove {groove.name!r} bar {bar_number}")
-        _validate_instrument_mutex(bar_events, f"groove {groove.name!r} bar {bar_number}")
+        bar_ctx = f"groove {groove.name!r} bar {bar_number}"
+        _validate_buzz_overlap(bar_events, bar_ctx)
+        _validate_grace_uniqueness(bar_events, bar_ctx)
+        _validate_instrument_mutex(bar_events, bar_ctx)
+        _validate_tuplet_grid_alignment(
+            bar_events, per_bar_beat_tuplets[bar_number - 1], beats_per_bar, bar_ctx
+        )
 
     events.sort(key=lambda e: (e.bar, e.beat_position))
 
@@ -1496,6 +1627,7 @@ def compile_fill_bar(fill_bar: FillBar, beats_per_bar: int = 4, beat_unit: int =
         fill_bar.pattern_lines, beats_per_bar,
         f"fill {fill_bar.label!r}" if fill_bar.label else "fill",
     )
+    _validate_tuplet_grid_alignment(events, beat_tuplets, beats_per_bar, fill_bar_desc)
     return IRFillBar(events=events, subdivision=subdivision, beat_tuplets=beat_tuplets)
 
 
@@ -2055,11 +2187,12 @@ def _compile_play_bar_events(
     beats_per_bar: int,
     beat_unit: int,
     context: str,
-) -> tuple[list[Event], int]:
-    """Compile a one-off play bar's pattern lines into (events, subdivision).
+) -> tuple[list[Event], int, list[object]]:
+    """Compile a one-off play bar's pattern lines into
+    ``(events, subdivision, beat_tuplets)``.
 
-    Infers the bar's subdivision from its pattern lines and returns both
-    the event list (positions bar=1-relative) and the resolved subdivision.
+    Infers the bar's subdivision from its pattern lines and classifies
+    any tuplet groups so the emitter can wrap each tuplet beat correctly.
     """
     subdivision = _infer_bar_subdivision(pattern, beats_per_bar, beat_unit, context)
     events: list[Event] = []
@@ -2068,7 +2201,8 @@ def _compile_play_bar_events(
             _expand_pattern_line(line, subdivision, bar=1, beats_per_bar=beats_per_bar, beat_unit=beat_unit)
         )
     events.sort(key=lambda e: e.beat_position)
-    return events, subdivision
+    beat_tuplets = _classify_bar_tuplets(pattern, beats_per_bar, context)
+    return events, subdivision, beat_tuplets
 
 
 def _whole_bar_rest_subdivision(beats_per_bar: int) -> int:
@@ -2655,7 +2789,7 @@ def compile_song(song: Song) -> IRSong:
         # (``"Verse groove 1"``, ``"Verse groove 2"``, …) so they can be
         # told apart on the page.
         nameless_first_offsets = [
-            i for i, (_, _, _, ph, _, _) in enumerate(expanded)
+            i for i, (_, _, _, ph, _, _, _) in enumerate(expanded)
             if ph is not None and ph[0] is None and ph[1]
         ]
         display_name = full_section_name[:1].upper() + full_section_name[1:]
@@ -2673,7 +2807,7 @@ def compile_song(song: Song) -> IRSong:
         dyn_starts, dyn_stops = _resolve_dynamic_spans(all_spans, total_bars, bpb)
 
         new_bars: list[IRBar] = []
-        for section_bar_offset, (template_events, base_subdivision, is_rest, placeholder_info, phrase_position, phrase_length) in enumerate(expanded):
+        for section_bar_offset, (template_events, base_subdivision, is_rest, placeholder_info, phrase_position, phrase_length, base_beat_tuplets) in enumerate(expanded):
             absolute_bar = start_bar_number + section_bar_offset
 
             if placeholder_info is not None:
@@ -2730,11 +2864,19 @@ def compile_song(song: Song) -> IRSong:
                 for event in template_events
             ]
             bar_subdivision = base_subdivision
+            bar_beat_tuplets: list[object] = list(base_beat_tuplets)
 
             if section_bar_offset in fill_coverage:
                 fill_bar, start_pos = fill_coverage[section_bar_offset]
+                _validate_fill_not_inside_tuplet(
+                    bar_beat_tuplets, start_pos, bpb,
+                    f"section {section.name!r} bar {section_bar_offset + 1}",
+                )
                 arranged_events = _apply_fill_overlay(arranged_events, fill_bar, start_pos, absolute_bar)
                 bar_subdivision = max(bar_subdivision, fill_bar.subdivision)
+                bar_beat_tuplets = _merge_fill_beat_tuplets(
+                    bar_beat_tuplets, fill_bar.beat_tuplets, start_pos, bpb
+                )
                 is_rest = False  # fill replaces a rest bar entirely
 
             if section_bar_offset in variation_coverage:
@@ -2765,6 +2907,7 @@ def compile_song(song: Song) -> IRSong:
             _validate_buzz_overlap(arranged_events, context)
             _validate_grace_uniqueness(arranged_events, context)
             _validate_instrument_mutex(arranged_events, context)
+            _validate_tuplet_grid_alignment(arranged_events, bar_beat_tuplets, bpb, context)
 
             new_bars.append(
                 IRBar(
@@ -2782,6 +2925,7 @@ def compile_song(song: Song) -> IRSong:
                     dynamic_stops=dyn_stops.get(section_bar_offset, []),
                     phrase_position=phrase_position,
                     phrase_length=phrase_length,
+                    beat_tuplets=bar_beat_tuplets,
                 )
             )
         return new_bars, ir_section
@@ -2901,6 +3045,10 @@ def compile_song(song: Song) -> IRSong:
 
             if section_bar_offset in fill_coverage:
                 fill_bar, start_pos = fill_coverage[section_bar_offset]
+                _validate_fill_not_inside_tuplet(
+                    groove_bar_tuplets, start_pos, bpb,
+                    f"section {section.name!r} bar {section_bar_offset + 1}",
+                )
                 arranged_events = _apply_fill_overlay(arranged_events, fill_bar, start_pos, absolute_bar)
                 bar_subdivision = max(groove_bar_subdivision, fill_bar.subdivision)
                 # Merge fill tuplet annotations: a fill placed at beat N onward
@@ -2942,6 +3090,7 @@ def compile_song(song: Song) -> IRSong:
             _validate_buzz_overlap(arranged_events, context)
             _validate_grace_uniqueness(arranged_events, context)
             _validate_instrument_mutex(arranged_events, context)
+            _validate_tuplet_grid_alignment(arranged_events, groove_bar_tuplets, bpb, context)
 
             new_bars.append(
                 IRBar(
@@ -3097,15 +3246,18 @@ def _expand_play_block(
     beat_unit: int,
     section_name: str,
     groove_defs: dict[str, "Groove"] | None = None,
-) -> list[tuple[list[Event], int, bool, tuple[str | None, bool] | None, int | None, int | None]]:
+) -> list[tuple[list[Event], int, bool, tuple[str | None, bool] | None, int | None, int | None, list[object]]]:
     """Expand a play: block into a flat list of per-bar tuples.
 
     Each entry is ``(events, subdivision, is_rest, placeholder_info,
-    phrase_position, phrase_length)`` where ``placeholder_info`` is ``None``
-    for regular bars or a ``(label_or_None, is_first_bar_of_span)`` tuple
-    for placeholder-groove bars (label resolution for nameless placeholders
-    is deferred to :func:`_process_play_section` because numbering depends
-    on how many nameless spans the section ends up with).
+    phrase_position, phrase_length, beat_tuplets)`` where
+    ``placeholder_info`` is ``None`` for regular bars or a
+    ``(label_or_None, is_first_bar_of_span)`` tuple for placeholder-groove
+    bars (label resolution for nameless placeholders is deferred to
+    :func:`_process_play_section` because numbering depends on how many
+    nameless spans the section ends up with). ``beat_tuplets`` is the
+    bar's per-beat tuplet annotation list (empty when the bar carries no
+    tuplet content).
 
     ``phrase_position`` / ``phrase_length`` carry the source groove's
     natural phrase metadata so the lilypond emitter can group multi-bar
@@ -3125,8 +3277,9 @@ def _expand_play_block(
     here auto-promotes to a named placeholder so users can reference
     grooves they haven't transcribed yet.
     """
-    result: list[tuple[list[Event], int, bool, tuple[str | None, bool] | None, int | None, int | None]] = []
-    named_bars: dict[str, tuple[list[Event], int]] = {}  # name → (events, subdivision)
+    result: list[tuple[list[Event], int, bool, tuple[str | None, bool] | None, int | None, int | None, list[object]]] = []
+    # name → (events, subdivision, beat_tuplets)
+    named_bars: dict[str, tuple[list[Event], int, list[object]]] = {}
     last_groove_subdivision: int | None = None
     groove_defs = groove_defs or {}
 
@@ -3136,7 +3289,7 @@ def _expand_play_block(
         # same label tuple but with ``is_first=False`` so the renderer knows
         # not to re-emit the rehearsal markup.
         for i in range(repeat):
-            result.append(([], 1, False, (label, i == 0), None, None))
+            result.append(([], 1, False, (label, i == 0), None, None, []))
 
     for item in play_items:
         if isinstance(item, PlayGroove):
@@ -3166,7 +3319,14 @@ def _expand_play_block(
             for _ in range(item.repeat):
                 for bar_num in range(1, groove.bars + 1):
                     bar_sub = groove.bar_subdivisions[bar_num - 1]
-                    result.append((groove_events_by_bar[bar_num], bar_sub, False, None, bar_num, groove.bars))
+                    bar_tuplets = (
+                        groove.bar_beat_tuplets[bar_num - 1]
+                        if bar_num - 1 < len(groove.bar_beat_tuplets)
+                        else []
+                    )
+                    result.append(
+                        (groove_events_by_bar[bar_num], bar_sub, False, None, bar_num, groove.bars, list(bar_tuplets))
+                    )
 
         elif isinstance(item, PlayBar):
             if item.pattern is not None:
@@ -3175,27 +3335,27 @@ def _expand_play_block(
                     raise ValueError(
                         f"play: duplicate bar name {item.name!r} in section"
                     )
-                events, subdiv = _compile_play_bar_events(
+                events, subdiv, bar_tuplets = _compile_play_bar_events(
                     item.pattern,
                     bpb,
                     beat_unit,
                     f"section {section_name!r} play bar {item.name!r}",
                 )
-                named_bars[item.name] = (events, subdiv)
+                named_bars[item.name] = (events, subdiv, bar_tuplets)
             else:
                 # Reference — must already be defined
                 if item.name not in named_bars:
                     raise ValueError(
                         f"play: bar {item.name!r} referenced before it was defined"
                     )
-                events, subdiv = named_bars[item.name]
+                events, subdiv, bar_tuplets = named_bars[item.name]
 
             for _ in range(item.repeat):
-                result.append((events, subdiv, False, None, None, None))
+                result.append((events, subdiv, False, None, None, None, list(bar_tuplets)))
 
         elif isinstance(item, PlayRest):
             subdiv = last_groove_subdivision if last_groove_subdivision is not None else _whole_bar_rest_subdivision(bpb)
             for _ in range(item.repeat):
-                result.append(([], subdiv, True, None, None, None))
+                result.append(([], subdiv, True, None, None, None, []))
 
     return result
