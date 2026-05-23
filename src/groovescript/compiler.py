@@ -1879,15 +1879,24 @@ def _apply_variation_actions(
                 _validate_choke_instrument(action.target_instrument, action.modifiers, f"variation replace → {action.target_instrument!r}", source_line=action.line)
                 if "double" in action.modifiers:
                     _validate_double_subdivision(subdivision, beats_per_bar, f"variation replace → {action.target_instrument!r}", source_line=action.line)
+            # "at *" means "wherever the source instrument actually plays" —
+            # restrict to existing source hits so we don't stamp the target at
+            # grid slots that the source never occupied.
+            if action.beats == "*":
+                replace_positions = {
+                    e.beat_position for e in result if e.instrument == action.instrument
+                }
+            else:
+                replace_positions = positions
             result = [
                 e for e in result
-                if not (e.instrument == action.instrument and e.beat_position in positions)
+                if not (e.instrument == action.instrument and e.beat_position in replace_positions)
             ]
             duration = None
             if "buzz" in action.modifiers:
                 duration = _buzz_span(action.buzz_duration or "4", beats_per_bar, beat_unit)
             occupied = {e.beat_position for e in result if e.instrument == action.target_instrument}
-            for pos in sorted(positions):
+            for pos in sorted(replace_positions):
                 if pos in occupied:
                     raise GrooveScriptError(
                         message=(

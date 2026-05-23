@@ -583,6 +583,46 @@ def test_compile_variation_replace_rejects_stacking_target():
         compile_song(song)
 
 
+def test_compile_variation_replace_at_star_follows_source_positions():
+    """Regression: ``replace X with Y at *`` must only place Y where X already
+    plays — not at every grid slot in the bar. Guards against the outro bug in
+    charts/mrs-robinson.gs where ``replace ride with crash at *`` stamped crash
+    on every eighth note (because the bar's subdivision was 8 from other
+    instruments) even though ride was only on quarter notes.
+    """
+    # Groove with ride on quarter notes plus kicks on eighth-note positions,
+    # forcing subdivision=8 even though ride lives on the quarter-note grid.
+    eighth_ride_groove = Groove(
+        name="quarter ride",
+        bars=[
+            [
+                PatternLine(instrument="BD", beats=["1&", "3&"]),
+                PatternLine(instrument="SN", beats=["2", "4"]),
+                PatternLine(instrument="RD", beats=["1", "2", "3", "4"]),
+            ]
+        ],
+    )
+    variation = Variation(
+        name="crash out",
+        bars=[1],
+        actions=[
+            VariationAction(action="replace", instrument="RD", target_instrument="CR", beats="*"),
+        ],
+    )
+    song = Song(
+        metadata=Metadata(),
+        grooves=[eighth_ride_groove],
+        sections=[Section(name="outro", bars=1, groove="quarter ride", variations=[variation])],
+    )
+    ir = compile_song(song)
+    bar1 = ir.bars[0]
+    crash_positions = sorted(e.beat_position for e in bar1.events if e.instrument == "CR")
+    # Crash should land on the four quarter-note positions where ride was,
+    # not on every eighth-note slot.
+    assert crash_positions == [Fraction(0), Fraction(1, 4), Fraction(1, 2), Fraction(3, 4)]
+    assert not any(e.instrument == "RD" for e in bar1.events)
+
+
 def test_compile_variation_add_with_ghost_modifier():
     variation = Variation(
         name="ghost sn",
