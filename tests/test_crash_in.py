@@ -397,6 +397,41 @@ section "s":
     assert len(cr_on_one) == 1
 
 
+def test_crash_in_rider_ignores_foot_played_kick():
+    """Regression: a variation that thins the ride pattern must not let BD
+    become the rider. The rider is the hand-played time-keeping instrument,
+    so a kick with the most hits in the bar should be skipped over and the
+    crash should still displace the ride's beat-1 hit.
+
+    Bug: when ``replace ride with crash at 2`` left RD with 3 hits and BD
+    with 4, BD was picked as the rider — so BD@1 was replaced with CR and
+    BD@1 was then re-added, but RD@1 was never displaced. The bar ended up
+    with BD + CR + RD all stacked on beat 1.
+    """
+    src = """
+groove "g":
+  BD: 1, 3, 3and, 4and
+  SN: 2, 4
+  RD: *4
+
+section "s":
+  bars: 1
+  groove: "g"
+  crash in
+  variation at bar 1:
+    replace ride with crash at 2
+"""
+    ir = _compile(src)
+    bar1 = ir.bars[0]
+    instruments = _instruments_at(bar1, Fraction(0))
+    assert "CR" in instruments
+    assert "BD" in instruments
+    assert "RD" not in instruments, (
+        "RD@1 should have been displaced by the crash-in, not left stacked "
+        "underneath the new CR."
+    )
+
+
 def test_crash_in_tiebreak_prefers_ride_over_hihat():
     """When RD and HH tie on hit count, RD wins the rider role."""
     src = """

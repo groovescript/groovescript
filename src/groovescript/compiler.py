@@ -2042,8 +2042,14 @@ def _apply_crash_in(events: list[Event], absolute_bar: int) -> list[Event]:
     )
 
     if not has_cr_on_one:
+        # Rider candidates are hand-played instruments only — the rider is the
+        # thing the dominant hand keeps time on, so foot-played BD/HF are not
+        # eligible even if they dominate the hit count (e.g. bars where a
+        # variation thins out the ride pattern).
         counts: dict[str, int] = {}
         for event in result:
+            if event.instrument not in _HAND_INSTRUMENTS:
+                continue
             counts[event.instrument] = counts.get(event.instrument, 0) + 1
 
         rider: str | None = None
