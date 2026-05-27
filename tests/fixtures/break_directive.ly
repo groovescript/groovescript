@@ -145,7 +145,7 @@ drumPitchNames =
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "BREAK WITH EXPLICIT END BAR: 4" }
+      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "THROUGH: EXPLICIT END BAR: 4" }
       <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       <bd hh>8 hh8 <sn hh>8 hh8 r4 r4 |
       r4 r4 r4 r4 |
@@ -153,7 +153,7 @@ drumPitchNames =
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "BREAK WITH BOUNDED END BEAT: 4" }
+      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "THROUGH: BOUNDED END BEAT: 4" }
       <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       <bd hh>8 hh8 <sn hh>8 hh8 r4 r4 |
       r4 r8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
@@ -161,39 +161,50 @@ drumPitchNames =
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "SINGLE BAR BREAK (THROUGH SAME BAR): 4" } \vspace #0.3 \italic \fontsize #-1 "Play 2x" }
+      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "UNTIL: EXCLUSIVE END BAR: 4" } \vspace #0.3 \italic \fontsize #-1 "Play 2x" }
+      \repeat volta 2 {
+        r4 r4 r4 r4 |
+      }
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.padding = #2
+      \once \override Score.RehearsalMark.outside-staff-priority = #1000
+      \mark \markup \italic \fontsize #-1 "Play 2x"
       \repeat volta 2 {
         <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       }
-      r4 r4 r4 r4 |
-      <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "ALTERNATING BREAKS: 4" }
-      r4 r4 r4 r4 |
+      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "UNTIL: EXCLUSIVE END BEAT: 4" }
       <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
-      r4 r4 r4 r4 |
+      <bd hh>8 hh8 <sn hh>8 hh8 r4 r4 |
+      r4 r4 <bd hh>8 hh8 <sn hh>8 hh8 |
       <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "BREAK OVERRIDES FILL: 4" } \vspace #0.3 \italic \fontsize #-1 "Play 2x" }
+      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "THROUGH BEAT 2 (2& SURVIVES): 2" } \vspace #0.3 \italic \fontsize #-1 "Play 2x" }
       \repeat volta 2 {
-        <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+        <bd hh>16 hh16 hh16 hh16 <sn hh>16 hh16 <bd hh>16 hh16 <bd hh>16 hh16 hh16 hh16 <sn hh>16 hh16 hh16 hh16 |
       }
-      r4 r4 r4 r4 |
-      <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "LONG BREAK IN DENSE GROOVE: 8" } \vspace #0.3 \italic \fontsize #-1 "Play 2x" }
+      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "UNTIL BEAT 3 (2& SILENCED): 2" } \vspace #0.3 \italic \fontsize #-1 "Play 2x" }
+      \repeat volta 2 {
+        <bd hh>16 hh16 hh16 hh16 <sn hh>16 hh16 <bd hh>16 hh16 <bd hh>16 hh16 hh16 hh16 <sn hh>16 hh16 hh16 hh16 |
+      }
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.padding = #2
+      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "LONG BREAK (UNTIL): 8" } \vspace #0.3 \italic \fontsize #-1 "Play 2x" }
       \repeat volta 2 {
         <bd hh>16 hh16 hh16 hh16 <sn hh>16 hh16 <bd hh>16 hh16 <bd hh>16 hh16 hh16 hh16 <sn hh>16 hh16 hh16 hh16 |
       }
       <bd hh>16 hh16 hh16 hh16 <sn hh>16 hh16 <bd hh>16 hh16 r4 r4 |
       r4 r4 r4 r4 |
-      r4 r16 hh16 <bd hh>16 hh16 <bd hh>16 hh16 hh16 hh16 <sn hh>16 hh16 hh16 hh16 |
+      r4 r4 <bd hh>16 hh16 hh16 hh16 <sn hh>16 hh16 hh16 hh16 |
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
       \once \override Score.RehearsalMark.padding = #2

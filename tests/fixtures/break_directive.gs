@@ -2,10 +2,11 @@ title: "Break Directive Showcase"
 tempo: 112
 time_signature: 4/4
 
-// Demonstrates the four forms of the ``break on bar N …`` directive.
-// When no ``through`` clause is given, the break runs to the end of the
-// section. A ``through`` clause gives an explicit end bar (and optional
-// end beat).
+// Demonstrates the ``break on bar N …`` directive in all its forms.
+//
+// ``through``: inclusive end boundary — the named beat/bar IS silenced.
+// ``until``:   exclusive end boundary — the named beat/bar is NOT silenced.
+// No end clause: break runs to the end of the section.
 
 groove "money beat":
   BD: 1, 3
@@ -28,76 +29,71 @@ fill "crash landing":
     4&: SN
     4a: SN
 
-// ── Form 1: break on bar N ────────────────────────────────────────────────
-// Bar 3 and bar 4 should be empty rests — the break runs to end of section.
-// Bars 1 and 2 play the full money beat.
+// ── No end clause: break runs to end of section ───────────────────────────
 
+// Bar 3 and bar 4 are empty rests. Bars 1 and 2 play normally.
 section "break from bar (no through)":
   bars: 4
   groove: "money beat"
   break on bar 3
 
-// ── Form 2: break on bar N beat B ────────────────────────────────────────
-// Bar 2 plays beats 1-2 only; beats 3-4 are rests. Bars 3 and 4 are
-// fully silent. Bar 1 is normal.
-
+// Bar 2 plays beats 1-2 only; beats 3-4 rest. Bars 3-4 fully silent.
 section "break from beat (no through)":
   bars: 4
   groove: "money beat"
   break on bar 2 beat 3
 
-// ── Form 3 (through): break on bar N beat B through bar M ─────────────────
-// Bar 2 plays beats 1-2 then rests. Bar 3 is fully silent. Bars 1 and 4
-// are normal.
+// ── ``through``: inclusive end ────────────────────────────────────────────
 
-section "break with explicit end bar":
+// Bar 2 plays beats 1-2 then rests. Bar 3 fully silent. Bars 1 and 4 normal.
+section "through: explicit end bar":
   bars: 4
   groove: "money beat"
   break on bar 2 beat 3 through bar 3
 
-// ── Form 4 (through): break on bar N beat B through bar M beat C ──────────
-// Bar 2 rests from beat 3 onward. Bar 3 rests beats 1-2, then resumes on
-// beat 3. Bars 1 and 4 are normal.
-
-section "break with bounded end beat":
+// Bar 2 rests from beat 3. Bar 3 rests beats 1-2 (beat 2 = position 1/4
+// is silenced), then resumes on beat 3. Bars 1 and 4 normal.
+// Beat 2& in bar 3 survives because ``through beat 2`` stops at position 1/4.
+section "through: bounded end beat":
   bars: 4
   groove: "money beat"
   break on bar 2 beat 3 through bar 3 beat 2
 
-// ── Single-bar break via through ──────────────────────────────────────────
-// ``through bar N`` with the same N as the start limits the break to one
-// bar. Bars 1, 2, 4 are normal; bar 3 is a rest.
+// ── ``until``: exclusive end ──────────────────────────────────────────────
 
-section "single bar break (through same bar)":
+// ``until bar 3`` = bar 3 is the first bar that plays. Bars 1-2 silent.
+section "until: exclusive end bar":
   bars: 4
   groove: "money beat"
-  break on bar 3 through bar 3
+  break on bar 1 until bar 3
 
-// ── Two bounded breaks ────────────────────────────────────────────────────
-// Bars 1 and 3 are silent; bars 2 and 4 are normal.
-
-section "alternating breaks":
+// Bar 2 rests from beat 3. Bar 3 rests everything before beat 3 (so beat 2&
+// IS silenced, unlike the ``through beat 2`` version above). Beat 3 onward
+// in bar 3 plays. Bars 1 and 4 normal.
+section "until: exclusive end beat":
   bars: 4
   groove: "money beat"
-  break on bar 1 through bar 1
-  break on bar 3 through bar 3
+  break on bar 2 beat 3 until bar 3 beat 3
 
-// ── Break overrides fill ──────────────────────────────────────────────────
-// A fill is placed on bar 3 but the bounded break silences it — bar 3
-// should be an empty rest regardless.
+// ── through vs until side-by-side ─────────────────────────────────────────
+// Both break from beat 3 of bar 1. ``through beat 2`` leaves 2& sounding;
+// ``until beat 3`` silences 2& (because 2& < beat 3).
 
-section "break overrides fill":
-  bars: 4
-  groove: "money beat"
-  fill "crash landing" at bar 3
-  break on bar 3 through bar 3
+section "through beat 2 (2& survives)":
+  bars: 2
+  groove: "driving 16ths"
+  break on bar 1 beat 3 through bar 1 beat 2
+
+section "until beat 3 (2& silenced)":
+  bars: 2
+  groove: "driving 16ths"
+  break on bar 1 beat 3 until bar 1 beat 3
 
 // ── Longer break on denser groove ─────────────────────────────────────────
-// 8-bar section on driving 16ths. ``break on bar 3 beat 3 through bar 5
-// beat 2`` silences bar 3 from beat 3, all of bar 4, and bar 5 through
-// beat 2. Bars 1-2, partial bar 3, partial bar 5, and bars 6-8 have notes.
-
-section "long break in dense groove":
+// 8-bar section. ``until bar 5 beat 3`` silences bar 3 from beat 3, all of
+// bar 4, and bar 5 through beat 2& (everything before beat 3). Beat 3 of
+// bar 5 is the first note that sounds again.
+section "long break (until)":
   bars: 8
   groove: "driving 16ths"
-  break on bar 3 beat 3 through bar 5 beat 2
+  break on bar 3 beat 3 until bar 5 beat 3
