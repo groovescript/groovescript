@@ -345,3 +345,110 @@ section "s":
     assert len(ir.bars[1].events) == 0   # bar 2 silent
     assert len(ir.bars[2].events) == 0   # bar 3 silent (break runs to end)
     assert len(ir.bars[3].events) == 0   # bar 4 silent
+
+
+# ---------------------------------------------------------------------------
+# ``until`` forms: exclusive end boundary
+# ---------------------------------------------------------------------------
+
+def test_until_beat_excludes_end_beat():
+    """``until bar N beat 3`` silences everything before beat 3, exclusive.
+
+    Regression guard: beat 3 itself (and 3e, 3&, 3a) must NOT be silenced,
+    whereas they would be silenced with ``through bar N beat 3``.
+    """
+    src = _STANDARD_GROOVE + """
+section "s":
+  bars: 2
+  groove: "g"
+  break on bar 1 beat 1 until bar 1 beat 3
+"""
+    ir = _compile(src)
+    bar1 = ir.bars[0]
+    # beats 1 and 2 are silenced (positions < 2/4)
+    assert Fraction(0) not in _positions(bar1)       # beat 1
+    assert Fraction(1, 8) not in _positions(bar1)    # beat 1&
+    assert Fraction(1, 4) not in _positions(bar1)    # beat 2
+    assert Fraction(3, 8) not in _positions(bar1)    # beat 2&
+    # beat 3 and beyond survive (position >= 2/4)
+    assert Fraction(2, 4) in _positions(bar1)        # beat 3
+    assert Fraction(3, 8) not in _positions(bar1)    # beat 2& (already confirmed)
+    assert Fraction(3, 4) in _positions(bar1)        # beat 4
+
+
+def test_until_vs_through_difference():
+    """``until beat 3`` silences 2& and 2a; ``through beat 2`` does not."""
+    src = _STANDARD_GROOVE + """
+section "through":
+  bars: 1
+  groove: "g"
+  break on bar 1 beat 1 through bar 1 beat 2
+
+section "until":
+  bars: 1
+  groove: "g"
+  break on bar 1 beat 1 until bar 1 beat 3
+"""
+    ir = _compile(src)
+    through_bar = ir.bars[0]
+    until_bar = ir.bars[1]
+
+    # ``through beat 2``: beat 2 (1/4) is silenced, but 2& (3/8) survives
+    assert Fraction(1, 4) not in _positions(through_bar)
+    assert Fraction(3, 8) in _positions(through_bar)   # 2& survives
+
+    # ``until beat 3``: 2& (3/8) is silenced, beat 3 (2/4) survives
+    assert Fraction(3, 8) not in _positions(until_bar)  # 2& silenced
+    assert Fraction(2, 4) in _positions(until_bar)      # beat 3 survives
+
+
+def test_until_bar_excludes_that_bar():
+    """``until bar 3`` (no beat) silences bars 1-2; bar 3 is the first bar
+    that plays."""
+    src = _STANDARD_GROOVE + """
+section "s":
+  bars: 4
+  groove: "g"
+  break on bar 1 until bar 3
+"""
+    ir = _compile(src)
+    assert len(ir.bars[0].events) == 0   # bar 1 silent
+    assert len(ir.bars[1].events) == 0   # bar 2 silent
+    assert len(ir.bars[2].events) > 0    # bar 3 plays
+    assert len(ir.bars[3].events) > 0    # bar 4 plays
+
+
+def test_until_beat_range_cross_bar():
+    """``break on bar 2 beat 1 until bar 3 beat 3`` silences bar 2 fully and
+    bar 3 beats 1-2 (exclusive of beat 3)."""
+    src = _STANDARD_GROOVE + """
+section "s":
+  bars: 4
+  groove: "g"
+  break on bar 2 beat 1 until bar 3 beat 3
+"""
+    ir = _compile(src)
+    bar2 = ir.bars[1]
+    bar3 = ir.bars[2]
+
+    assert len(bar2.events) == 0                      # fully silenced
+    assert Fraction(0) not in _positions(bar3)        # beat 1 silenced
+    assert Fraction(1, 4) not in _positions(bar3)     # beat 2 silenced
+    assert Fraction(3, 8) not in _positions(bar3)     # beat 2& silenced
+    assert Fraction(2, 4) in _positions(bar3)         # beat 3 survives
+    assert Fraction(3, 4) in _positions(bar3)         # beat 4 survives
+    assert len(ir.bars[0].events) > 0                 # bar 1 untouched
+    assert len(ir.bars[3].events) > 0                 # bar 4 untouched
+
+
+def test_until_same_bar_is_empty_range():
+    """``until bar N`` when start_bar == N produces no silence (empty range)."""
+    src = _STANDARD_GROOVE + """
+section "s":
+  bars: 4
+  groove: "g"
+  break on bar 3 until bar 3
+"""
+    ir = _compile(src)
+    for bar in ir.bars:
+        assert len(bar.events) > 0   # nothing silenced

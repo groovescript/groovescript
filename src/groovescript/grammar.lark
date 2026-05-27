@@ -125,7 +125,11 @@ section_break_line: "break" "on" "bar" INT                                      
                   | "break" "on" "bar" INT "through" "bar" INT                                                       -> section_break_range
                   | "break" "on" "bar" INT "beat" BEAT_LABEL "through" "bar" INT                                     -> section_break_beat_range
                   | "break" "on" "bar" INT "through" "bar" INT "beat" BEAT_LABEL                                     -> section_break_range_beat
-                  | "break" "on" "bar" INT "beat" BEAT_LABEL "through" "bar" INT "beat" BEAT_LABEL -> section_break_full_range
+                  | "break" "on" "bar" INT "beat" BEAT_LABEL "through" "bar" INT "beat" BEAT_LABEL  -> section_break_full_range
+                  | "break" "on" "bar" INT "until" "bar" INT                                                         -> section_break_until_range
+                  | "break" "on" "bar" INT "beat" BEAT_LABEL "until" "bar" INT                                       -> section_break_until_beat_range
+                  | "break" "on" "bar" INT "until" "bar" INT "beat" BEAT_LABEL                                       -> section_break_until_range_beat
+                  | "break" "on" "bar" INT "beat" BEAT_LABEL "until" "bar" INT "beat" BEAT_LABEL    -> section_break_until_full_range
 
 play_block: "play" ":" play_item+
 ?play_item: play_groove | play_bar | play_rest

@@ -2116,16 +2116,24 @@ def _apply_crash_in(events: list[Event], absolute_bar: int) -> list[Event]:
 def _apply_break(events: list[Event], spec: BreakSpec, section_bar_offset: int, bpb: int, total_bars: int) -> list[Event]:
     """Remove events covered by *spec* for the bar at *section_bar_offset*.
 
-    Events whose beat_position falls within [start_frac, end_frac] (both
-    endpoints inclusive) are dropped.  For bars that lie strictly between
-    start_bar and end_bar every event is removed.  Returns the original list
-    unchanged when the bar is outside the break range.
+    ``through`` forms (end_exclusive=False): silence events where
+      start_frac <= beat_position <= end_frac  (both endpoints inclusive).
+    ``until`` forms (end_exclusive=True): silence events where
+      start_frac <= beat_position < end_frac   (end endpoint exclusive).
+    For end bars with no end beat, ``until bar N`` excludes bar N entirely
+    (effectively silences through bar N-1).
 
     *total_bars* is the section length; it determines the end of the break
-    when no explicit ``through`` clause was given.
+    when no explicit end clause was given.
     """
     bar_number = section_bar_offset + 1  # convert to 1-indexed
-    eff_end_bar = spec.effective_end_bar(total_bars)
+    written_end_bar = spec.effective_end_bar(total_bars)
+
+    # For ``until bar N`` with no end beat, bar N is the first un-silenced bar.
+    if spec.end_exclusive and spec.end_beat is None:
+        eff_end_bar = written_end_bar - 1
+    else:
+        eff_end_bar = written_end_bar
 
     if bar_number < spec.start_bar or bar_number > eff_end_bar:
         return events
@@ -2137,7 +2145,7 @@ def _apply_break(events: list[Event], spec: BreakSpec, section_bar_offset: int, 
         start_frac = None
 
     # Upper bound: None means end-of-bar (silence through last event).
-    if bar_number == eff_end_bar and spec.end_beat is not None:
+    if bar_number == written_end_bar and spec.end_beat is not None:
         end_frac: Fraction | None = _beat_label_to_fraction(spec.end_beat, 0, bpb)
     else:
         end_frac = None
@@ -2147,8 +2155,13 @@ def _apply_break(events: list[Event], spec: BreakSpec, section_bar_offset: int, 
         in_range = True
         if start_frac is not None and e.beat_position < start_frac:
             in_range = False
-        if end_frac is not None and e.beat_position > end_frac:
-            in_range = False
+        if end_frac is not None:
+            if spec.end_exclusive:
+                if e.beat_position >= end_frac:
+                    in_range = False
+            else:
+                if e.beat_position > end_frac:
+                    in_range = False
         if not in_range:
             result.append(e)
     return result

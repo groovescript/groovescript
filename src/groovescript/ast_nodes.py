@@ -414,6 +414,10 @@ class BreakSpec:
     start_beat: str | None = None  # None = start of bar
     end_bar: int | None = None  # None = same as start_bar
     end_beat: str | None = None  # None = end of bar
+    # True when the ``until`` keyword was used: the end boundary is exclusive.
+    # For an end beat this means beat_position < end_frac (not <=).
+    # For an end bar with no beat this means bar N is the first bar NOT silenced.
+    end_exclusive: bool = False
 
     def effective_end_bar(self, total_bars: int) -> int:
         """Return the last bar covered by this break (1-indexed).

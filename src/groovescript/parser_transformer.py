@@ -1001,6 +1001,21 @@ class _GrooveScriptTransformer(Transformer):
     def section_break_full_range(self, items):
         return ("break", BreakSpec(start_bar=int(items[0]), start_beat=str(items[1]), end_bar=int(items[2]), end_beat=str(items[3])))
 
+    # ``until`` variants — same structure as their ``through`` counterparts but
+    # with end_exclusive=True so the end boundary is not included in the silence.
+
+    def section_break_until_range(self, items):
+        return ("break", BreakSpec(start_bar=int(items[0]), end_bar=int(items[1]), end_exclusive=True))
+
+    def section_break_until_beat_range(self, items):
+        return ("break", BreakSpec(start_bar=int(items[0]), start_beat=str(items[1]), end_bar=int(items[2]), end_exclusive=True))
+
+    def section_break_until_range_beat(self, items):
+        return ("break", BreakSpec(start_bar=int(items[0]), end_bar=int(items[1]), end_beat=str(items[2]), end_exclusive=True))
+
+    def section_break_until_full_range(self, items):
+        return ("break", BreakSpec(start_bar=int(items[0]), start_beat=str(items[1]), end_bar=int(items[2]), end_beat=str(items[3]), end_exclusive=True))
+
     def section_fill_line(self, items):
         # Eight alternatives combining named/inline × single-bar/multi-bar × with/without beat:
         #   Named placement: [ESCAPED_STRING, [INT+], (BEAT_LABEL)?]
