@@ -115,37 +115,57 @@ drumPitchNames =
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \column { \fontsize #-1 \concat { \note { 4 } #1 " = 112" } \vspace #0.3 \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "WHOLE BAR BREAK: 4" } \vspace #0.3 \italic \fontsize #-1 "Play 2x" }
+      \mark \markup \column { \fontsize #-1 \concat { \note { 4 } #1 " = 112" } \vspace #0.3 \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "BREAK FROM BAR (NO THROUGH): 4" } \vspace #0.3 \italic \fontsize #-1 "Play 2x" }
       \bar ".|:"
       \repeat volta 2 {
         <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       }
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.padding = #2
+      \once \override Score.RehearsalMark.outside-staff-priority = #1000
+      \mark \markup \italic \fontsize #-1 "Play 2x"
+      \repeat volta 2 {
+        r4 r4 r4 r4 |
+      }
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
+      \once \override Score.RehearsalMark.padding = #2
+      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "BREAK FROM BEAT (NO THROUGH): 4" }
+      <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      <bd hh>8 hh8 <sn hh>8 hh8 r4 r4 |
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.padding = #2
+      \once \override Score.RehearsalMark.outside-staff-priority = #1000
+      \mark \markup \italic \fontsize #-1 "Play 2x"
+      \repeat volta 2 {
+        r4 r4 r4 r4 |
+      }
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
+      \once \override Score.RehearsalMark.padding = #2
+      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "BREAK WITH EXPLICIT END BAR: 4" }
+      <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      <bd hh>8 hh8 <sn hh>8 hh8 r4 r4 |
       r4 r4 r4 r4 |
+      <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
+      \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
+      \once \override Score.RehearsalMark.padding = #2
+      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "BREAK WITH BOUNDED END BEAT: 4" }
+      <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      <bd hh>8 hh8 <sn hh>8 hh8 r4 r4 |
+      r4 r8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "BREAK FROM BEAT: 4" } \vspace #0.3 \italic \fontsize #-1 "Play 2x" }
+      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "SINGLE BAR BREAK (THROUGH SAME BAR): 4" } \vspace #0.3 \italic \fontsize #-1 "Play 2x" }
       \repeat volta 2 {
         <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       }
-      <bd hh>8 hh8 <sn hh>8 hh8 r4 r4 |
-      <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
-      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
-      \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
-      \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "BREAK ACROSS BARS: 4" }
-      <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
-      <bd hh>8 hh8 <sn hh>8 hh8 r4 r4 |
       r4 r4 r4 r4 |
-      <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
-      \once \override Score.RehearsalMark.self-alignment-X = #LEFT
-      \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
-      \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "BREAK WITH BOUNDED END: 4" }
-      <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
-      <bd hh>8 hh8 <sn hh>8 hh8 r4 r4 |
-      r4 r8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)

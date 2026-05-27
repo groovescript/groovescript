@@ -415,11 +415,13 @@ class BreakSpec:
     end_bar: int | None = None  # None = same as start_bar
     end_beat: str | None = None  # None = end of bar
 
-    @property
-    def effective_end_bar(self) -> int:
-        return self.end_bar if self.end_bar is not None else self.start_bar
+    def effective_end_bar(self, total_bars: int) -> int:
+        """Return the last bar covered by this break (1-indexed).
 
-
+        When ``end_bar`` is ``None`` (no ``through`` clause) the break runs to
+        the end of the section, so ``total_bars`` is returned.
+        """
+        return self.end_bar if self.end_bar is not None else total_bars
 @dataclass
 class PlayGroove:
     """A groove reference inside a play: block."""

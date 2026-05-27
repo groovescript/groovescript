@@ -2113,16 +2113,19 @@ def _apply_crash_in(events: list[Event], absolute_bar: int) -> list[Event]:
     return result
 
 
-def _apply_break(events: list[Event], spec: BreakSpec, section_bar_offset: int, bpb: int) -> list[Event]:
+def _apply_break(events: list[Event], spec: BreakSpec, section_bar_offset: int, bpb: int, total_bars: int) -> list[Event]:
     """Remove events covered by *spec* for the bar at *section_bar_offset*.
 
     Events whose beat_position falls within [start_frac, end_frac] (both
     endpoints inclusive) are dropped.  For bars that lie strictly between
     start_bar and end_bar every event is removed.  Returns the original list
     unchanged when the bar is outside the break range.
+
+    *total_bars* is the section length; it determines the end of the break
+    when no explicit ``through`` clause was given.
     """
     bar_number = section_bar_offset + 1  # convert to 1-indexed
-    eff_end_bar = spec.effective_end_bar
+    eff_end_bar = spec.effective_end_bar(total_bars)
 
     if bar_number < spec.start_bar or bar_number > eff_end_bar:
         return events
@@ -2154,7 +2157,7 @@ def _apply_break(events: list[Event], spec: BreakSpec, section_bar_offset: int, 
 def _validate_break_specs(specs: list[BreakSpec], section_name: str, total_bars: int) -> None:
     """Raise :class:`GrooveScriptError` for break specs that reference bars outside the section."""
     for spec in specs:
-        eff_end = spec.effective_end_bar
+        eff_end = spec.effective_end_bar(total_bars)
         if spec.start_bar < 1 or spec.start_bar > total_bars:
             raise GrooveScriptError(
                 message=(
@@ -3033,7 +3036,7 @@ def compile_song(song: Song) -> IRSong:
                 is_rest = False
 
             for break_spec in section.breaks:
-                arranged_events = _apply_break(arranged_events, break_spec, section_bar_offset, bpb)
+                arranged_events = _apply_break(arranged_events, break_spec, section_bar_offset, bpb, total_bars)
 
             bar_cues = _collect_bar_cues(section, section_bar_offset, bar_subdivision, bpb)
             bar_placeholders = _collect_bar_placeholders(section, section_bar_offset, bar_subdivision, bpb)
@@ -3241,7 +3244,7 @@ def compile_song(song: Song) -> IRSong:
                 arranged_events = _apply_crash_in(arranged_events, absolute_bar)
 
             for break_spec in section.breaks:
-                arranged_events = _apply_break(arranged_events, break_spec, section_bar_offset, bpb)
+                arranged_events = _apply_break(arranged_events, break_spec, section_bar_offset, bpb, section.bars)
 
             bar_cues = _collect_bar_cues(section, section_bar_offset, bar_subdivision, bpb)
             bar_placeholders = _collect_bar_placeholders(section, section_bar_offset, bar_subdivision, bpb)
