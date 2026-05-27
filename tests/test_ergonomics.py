@@ -53,6 +53,47 @@ def test_parse_file_fixture_ergonomics():
 # ---------------------------------------------------------------------------
 
 
+class TestPreprocessorInstrumentCoverage:
+    """Regression tests: all grammar INSTRUMENT aliases must be recognised by
+    the preprocessor so space-separated beat lists get commas inserted."""
+
+    def test_stack_space_separated_beats_parse(self):
+        """Regression: ``stack: 2 4`` was silently misparsed because ``stack``
+        was missing from _PP_INSTRUMENT_RE, so no commas were inserted and the
+        LALR parser choked on the next top-level keyword."""
+        song = parse("""\
+groove "g":
+  stack: 2 4
+
+section "s":
+  bars: 1
+  groove: "g"
+""")
+        hits = [p for p in song.grooves[0].bars[0] if p.instrument == "ST"]
+        assert len(hits) == 1
+        assert list(hits[0].beats) == ["2", "4"]
+
+    @pytest.mark.parametrize("instr,canonical", [
+        ("secondcrash", "CR2"), ("splash", "SP"), ("stack", "ST"),
+        ("china", "CH"), ("crash2", "CR2"),
+        ("CR2", "CR2"), ("cr2", "CR2"), ("CH", "CH"), ("ch", "CH"),
+        ("SP", "SP"), ("sp", "SP"), ("ST", "ST"), ("st", "ST"),
+    ])
+    def test_previously_missing_instruments_accept_space_separated_beats(self, instr, canonical):
+        """Every instrument in the grammar must survive space-separated beat lists."""
+        song = parse(f"""\
+groove "g":
+  {instr}: 1 3
+
+section "s":
+  bars: 1
+  groove: "g"
+""")
+        hits = [p for p in song.grooves[0].bars[0] if p.instrument == canonical]
+        assert len(hits) == 1
+        assert list(hits[0].beats) == ["1", "3"]
+
+
 class TestStarExclusion:
     """Tests for ``*N except <beat_list>`` pattern-line syntax."""
 

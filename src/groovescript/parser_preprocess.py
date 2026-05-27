@@ -52,9 +52,9 @@ _BARE_SUFFIX_TOKENS: dict[str, str] = {
 # only accepted inside count+notes string bodies, not on DSL lines).
 _PP_INSTRUMENT_RE = (
     r"(?:SRS|SCS|cross-stick|rimshot|floortom|hightom|hitom|lowtom|midtom"
-    r"|openhat|hihatfoot|footchick|hihat|snare|crash|click"
+    r"|openhat|hihatfoot|footchick|hihat|snare|secondcrash|splash|stack|china|crash2|crash|click"
     r"|ridebell|cowbell|bell|ride|bass|kick|open|hat"
-    r"|BD|bd|SN|sn|OH|oh|RD|rd|RB|rb|CR|cr|CB|cb|FT|ft|HH|hh|HT|ht|MT|mt|HF|hf)"
+    r"|BD|bd|SN|sn|OH|oh|RD|rd|RB|rb|CR2|cr2|CR|cr|CB|cb|CH|ch|FT|ft|HH|hh|HT|ht|MT|mt|HF|hf|SP|sp|ST|st)"
 )
 _PP_BEAT_LABEL_RE = r"[1-9][0-9]?(?:trip|let|and|[e&atl])?"
 
