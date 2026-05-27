@@ -88,6 +88,7 @@ section_line: bars_line
             | section_time_signature_line
             | section_dynamic_line
             | section_crash_in_line
+            | section_break_line
             | play_block
 bars_line: "bars" ":" INT
 groove_line: "groove" ":" ESCAPED_STRING
@@ -109,6 +110,26 @@ section_crash_in_line: CRASH_IN
                      | NO_CRASH_IN                     -> section_no_crash_in_line
 CRASH_IN: /crash\s+in/
 NO_CRASH_IN: /no\s+crash\s+in/
+
+// Silence a range of beats/bars within a section.
+// Four user-facing forms (the ``beat`` clauses are optional on either end):
+//   break on bar 3
+//   break on bar 3 beat 3
+//   break on bar 3 beat 3 through bar 5
+//   break on bar 3 beat 3 through bar 5 beat 2
+// All six combinations of present/absent start-beat × present/absent end-bar/beat
+// are supported via separate rule aliases so the Transformer can read tokens
+// positionally without ambiguity.
+section_break_line: "break" "on" "bar" INT                                                                          -> section_break_bar
+                  | "break" "on" "bar" INT "beat" BEAT_LABEL                                                         -> section_break_bar_beat
+                  | "break" "on" "bar" INT "through" "bar" INT                                                       -> section_break_range
+                  | "break" "on" "bar" INT "beat" BEAT_LABEL "through" "bar" INT                                     -> section_break_beat_range
+                  | "break" "on" "bar" INT "through" "bar" INT "beat" BEAT_LABEL                                     -> section_break_range_beat
+                  | "break" "on" "bar" INT "beat" BEAT_LABEL "through" "bar" INT "beat" BEAT_LABEL  -> section_break_full_range
+                  | "break" "on" "bar" INT "until" "bar" INT                                                         -> section_break_until_range
+                  | "break" "on" "bar" INT "beat" BEAT_LABEL "until" "bar" INT                                       -> section_break_until_beat_range
+                  | "break" "on" "bar" INT "until" "bar" INT "beat" BEAT_LABEL                                       -> section_break_until_range_beat
+                  | "break" "on" "bar" INT "beat" BEAT_LABEL "until" "bar" INT "beat" BEAT_LABEL    -> section_break_until_full_range
 
 play_block: "play" ":" play_item+
 ?play_item: play_groove | play_bar | play_rest

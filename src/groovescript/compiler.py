@@ -5,6 +5,7 @@ from math import gcd, lcm
 
 from .ast_nodes import (
     BeatHit,
+    BreakSpec,
     CrashInSpec,
     Cue,
     DynamicSpan,
@@ -2112,6 +2113,80 @@ def _apply_crash_in(events: list[Event], absolute_bar: int) -> list[Event]:
     return result
 
 
+def _apply_break(events: list[Event], spec: BreakSpec, section_bar_offset: int, bpb: int, total_bars: int) -> list[Event]:
+    """Remove events covered by *spec* for the bar at *section_bar_offset*.
+
+    ``through`` forms (end_exclusive=False): silence events where
+      start_frac <= beat_position <= end_frac  (both endpoints inclusive).
+    ``until`` forms (end_exclusive=True): silence events where
+      start_frac <= beat_position < end_frac   (end endpoint exclusive).
+    For end bars with no end beat, ``until bar N`` excludes bar N entirely
+    (effectively silences through bar N-1).
+
+    *total_bars* is the section length; it determines the end of the break
+    when no explicit end clause was given.
+    """
+    bar_number = section_bar_offset + 1  # convert to 1-indexed
+    written_end_bar = spec.effective_end_bar(total_bars)
+
+    # For ``until bar N`` with no end beat, bar N is the first un-silenced bar.
+    if spec.end_exclusive and spec.end_beat is None:
+        eff_end_bar = written_end_bar - 1
+    else:
+        eff_end_bar = written_end_bar
+
+    if bar_number < spec.start_bar or bar_number > eff_end_bar:
+        return events
+
+    # Lower bound: None means start-of-bar (silence from position 0).
+    if bar_number == spec.start_bar and spec.start_beat is not None:
+        start_frac: Fraction | None = _beat_label_to_fraction(spec.start_beat, 0, bpb)
+    else:
+        start_frac = None
+
+    # Upper bound: None means end-of-bar (silence through last event).
+    if bar_number == written_end_bar and spec.end_beat is not None:
+        end_frac: Fraction | None = _beat_label_to_fraction(spec.end_beat, 0, bpb)
+    else:
+        end_frac = None
+
+    result = []
+    for e in events:
+        in_range = True
+        if start_frac is not None and e.beat_position < start_frac:
+            in_range = False
+        if end_frac is not None:
+            if spec.end_exclusive:
+                if e.beat_position >= end_frac:
+                    in_range = False
+            else:
+                if e.beat_position > end_frac:
+                    in_range = False
+        if not in_range:
+            result.append(e)
+    return result
+
+
+def _validate_break_specs(specs: list[BreakSpec], section_name: str, total_bars: int) -> None:
+    """Raise :class:`GrooveScriptError` for break specs that reference bars outside the section."""
+    for spec in specs:
+        eff_end = spec.effective_end_bar(total_bars)
+        if spec.start_bar < 1 or spec.start_bar > total_bars:
+            raise GrooveScriptError(
+                message=(
+                    f"Section {section_name!r}: break start bar {spec.start_bar} is out of "
+                    f"range (1–{total_bars})"
+                ),
+            )
+        if eff_end < spec.start_bar or eff_end > total_bars:
+            raise GrooveScriptError(
+                message=(
+                    f"Section {section_name!r}: break end bar {eff_end} is out of "
+                    f"range ({spec.start_bar}–{total_bars})"
+                ),
+            )
+
+
 def _resolve_inheritance(sections: list[Section]) -> list[Section]:
     """Resolve ``like`` references by merging the inherited section with the
     inheriting section's own declarations.
@@ -2882,6 +2957,8 @@ def compile_song(song: Song) -> IRSong:
         all_spans = _collect_section_dynamic_spans(section, None, fill_map, total_bars)
         dyn_starts, dyn_stops = _resolve_dynamic_spans(all_spans, total_bars, bpb)
 
+        _validate_break_specs(section.breaks, section.name, total_bars)
+
         new_bars: list[IRBar] = []
         for section_bar_offset, (template_events, base_subdivision, is_rest, placeholder_info, phrase_position, phrase_length, base_beat_tuplets) in enumerate(expanded):
             absolute_bar = start_bar_number + section_bar_offset
@@ -2970,6 +3047,9 @@ def compile_song(song: Song) -> IRSong:
             ):
                 arranged_events = _apply_crash_in(arranged_events, absolute_bar)
                 is_rest = False
+
+            for break_spec in section.breaks:
+                arranged_events = _apply_break(arranged_events, break_spec, section_bar_offset, bpb, total_bars)
 
             bar_cues = _collect_bar_cues(section, section_bar_offset, bar_subdivision, bpb)
             bar_placeholders = _collect_bar_placeholders(section, section_bar_offset, bar_subdivision, bpb)
@@ -3118,6 +3198,8 @@ def compile_song(song: Song) -> IRSong:
         dyn_starts, dyn_stops = _resolve_dynamic_spans(all_spans, section.bars, bpb)
         groove_bar_texts = groove_bar_texts_map.get(section.groove, {})
 
+        _validate_break_specs(section.breaks, section.name, section.bars)
+
         new_bars: list[IRBar] = []
         for section_bar_offset in range(section.bars):
             absolute_bar = start_bar_number + section_bar_offset
@@ -3173,6 +3255,9 @@ def compile_song(song: Song) -> IRSong:
                 and section.crash_in.applies_at(section_bar_offset)
             ):
                 arranged_events = _apply_crash_in(arranged_events, absolute_bar)
+
+            for break_spec in section.breaks:
+                arranged_events = _apply_break(arranged_events, break_spec, section_bar_offset, bpb, section.bars)
 
             bar_cues = _collect_bar_cues(section, section_bar_offset, bar_subdivision, bpb)
             bar_placeholders = _collect_bar_placeholders(section, section_bar_offset, bar_subdivision, bpb)

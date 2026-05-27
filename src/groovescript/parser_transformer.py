@@ -16,6 +16,7 @@ from .ast_nodes import (
     INHERIT_CATEGORIES,
     _TUPLET_RATIOS,
     BeatHit,
+    BreakSpec,
     CrashInSpec,
     Cue,
     DynamicSpan,
@@ -645,6 +646,7 @@ class _GrooveScriptTransformer(Transformer):
         variations: list[Variation] = []
         cues: list[Cue] = []
         dynamic_spans: list[DynamicSpan] = []
+        breaks: list[BreakSpec] = []
 
         for item in items[1:]:
             key, value = item
@@ -706,6 +708,8 @@ class _GrooveScriptTransformer(Transformer):
                         f"Section {name!r}: cannot combine `no crash in` with `crash in`"
                     )
                 no_crash_in = True
+            elif key == "break":
+                breaks.append(value)
 
         if play is not None:
             if bars is not None or groove is not None or repeat is not None:
@@ -736,6 +740,7 @@ class _GrooveScriptTransformer(Transformer):
             play=play,
             crash_in=crash_in,
             no_crash_in=no_crash_in,
+            breaks=breaks,
         )
 
     def play_block(self, items):
@@ -972,6 +977,44 @@ class _GrooveScriptTransformer(Transformer):
 
     def section_no_crash_in_line(self, items):
         return ("no_crash_in", True)
+
+    # -- break directives ---------------------------------------------------
+    # Six rule aliases covering all combinations of optional start-beat,
+    # optional end-bar, and optional end-beat.  Items are INT / BEAT_LABEL
+    # tokens in declaration order; aliases keep positions unambiguous.
+
+    def section_break_bar(self, items):
+        return ("break", BreakSpec(start_bar=int(items[0])))
+
+    def section_break_bar_beat(self, items):
+        return ("break", BreakSpec(start_bar=int(items[0]), start_beat=str(items[1])))
+
+    def section_break_range(self, items):
+        return ("break", BreakSpec(start_bar=int(items[0]), end_bar=int(items[1])))
+
+    def section_break_beat_range(self, items):
+        return ("break", BreakSpec(start_bar=int(items[0]), start_beat=str(items[1]), end_bar=int(items[2])))
+
+    def section_break_range_beat(self, items):
+        return ("break", BreakSpec(start_bar=int(items[0]), end_bar=int(items[1]), end_beat=str(items[2])))
+
+    def section_break_full_range(self, items):
+        return ("break", BreakSpec(start_bar=int(items[0]), start_beat=str(items[1]), end_bar=int(items[2]), end_beat=str(items[3])))
+
+    # ``until`` variants — same structure as their ``through`` counterparts but
+    # with end_exclusive=True so the end boundary is not included in the silence.
+
+    def section_break_until_range(self, items):
+        return ("break", BreakSpec(start_bar=int(items[0]), end_bar=int(items[1]), end_exclusive=True))
+
+    def section_break_until_beat_range(self, items):
+        return ("break", BreakSpec(start_bar=int(items[0]), start_beat=str(items[1]), end_bar=int(items[2]), end_exclusive=True))
+
+    def section_break_until_range_beat(self, items):
+        return ("break", BreakSpec(start_bar=int(items[0]), end_bar=int(items[1]), end_beat=str(items[2]), end_exclusive=True))
+
+    def section_break_until_full_range(self, items):
+        return ("break", BreakSpec(start_bar=int(items[0]), start_beat=str(items[1]), end_bar=int(items[2]), end_beat=str(items[3]), end_exclusive=True))
 
     def section_fill_line(self, items):
         # Eight alternatives combining named/inline × single-bar/multi-bar × with/without beat:

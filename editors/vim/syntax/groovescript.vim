@@ -44,7 +44,7 @@ syn keyword gsDefinition groove fill section
 " -- Section / groove body keywords -----------------------------------------
 syn keyword gsBodyKeyword bars pattern count notes repeat like
                         \ play cue variation text extend
-                        \ cresc decresc crescendo decrescendo
+                        \ cresc decresc crescendo decrescendo break through
 " `crash in` is a section/top-level flag. Match the multi-word forms so
 " the ``crash`` token highlights as a body keyword here (not as the crash
 " instrument). Defined after the instrument rules below so it takes
@@ -55,7 +55,7 @@ syn match gsBodyKeyword "\<no\s\+crash\s\+in\>"
 " -- Placement keywords (used in fill/cue/variation/placeholder lines) ------
 " `fill "..." at bar N beat X`, `cue "..." at bar N`, `variation at bar N:`,
 " `fill placeholder at bar N`.
-syn keyword gsPlacement at bar bars beat placeholder rest from to except
+syn keyword gsPlacement at bar bars beat placeholder rest from to except on through until
 
 " -- Variation action keywords ----------------------------------------------
 " `add BD at 1`, `remove HH at *`, `replace SN with SN accent at 2`,

@@ -396,6 +396,36 @@ class DynamicSpan:
     line: int | None = None
 
 
+@dataclass(frozen=True)
+class BreakSpec:
+    """A break directive that silences a range of beats/bars within a section.
+
+    All bar numbers are 1-indexed within the section. When ``end_bar`` is
+    ``None`` it defaults to ``start_bar`` (single-bar break). When a beat is
+    ``None`` the bound is open: ``start_beat=None`` means start-of-bar;
+    ``end_beat=None`` means end-of-bar.
+
+    Events whose beat_position is within [start_frac, end_frac] (both
+    endpoints inclusive) are removed. For bars that lie strictly between
+    start_bar and end_bar the entire bar is silenced.
+    """
+
+    start_bar: int  # 1-indexed within section
+    start_beat: str | None = None  # None = start of bar
+    end_bar: int | None = None  # None = same as start_bar
+    end_beat: str | None = None  # None = end of bar
+    # True when the ``until`` keyword was used: the end boundary is exclusive.
+    # For an end beat this means beat_position < end_frac (not <=).
+    # For an end bar with no beat this means bar N is the first bar NOT silenced.
+    end_exclusive: bool = False
+
+    def effective_end_bar(self, total_bars: int) -> int:
+        """Return the last bar covered by this break (1-indexed).
+
+        When ``end_bar`` is ``None`` (no ``through`` clause) the break runs to
+        the end of the section, so ``total_bars`` is returned.
+        """
+        return self.end_bar if self.end_bar is not None else total_bars
 @dataclass
 class PlayGroove:
     """A groove reference inside a play: block."""
@@ -458,6 +488,7 @@ class Section:
     # Set by the section-scoped ``no crash in`` opt-out — disables both any
     # inherited crash-in and any top-level crash-in for this section.
     no_crash_in: bool = False
+    breaks: list["BreakSpec"] = field(default_factory=list)
 
 
 @dataclass
