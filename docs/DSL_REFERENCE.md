@@ -52,6 +52,7 @@ the language, start with [`GETTING_STARTED.md`](GETTING_STARTED.md) or
   - [`like` inheritance](#like-inheritance)
   - [Per-section meter](#per-section-meter)
   - [`crash in` — start a section on a crash](#crash-in)
+  - [`break` — silence a bar/beat range](#break)
   - [Vocal cues and text annotations](#vocal-cues-and-text-annotations)
   - [Crescendos and decrescendos](#crescendos-and-decrescendos)
 - [Variations](#variations)
@@ -1472,6 +1473,78 @@ inherited from the parent section. Combining `crash in` and `no crash
 in` in the same section is rejected. The top-level `crash in` directive
 itself is purely additive — nothing else parses or compiles
 differently when it's absent.
+
+### Break
+
+`break on bar N` silences a contiguous range of the section — removing all
+groove events (and overriding fills and `crash in`) within that range. Use it
+for drum drop-outs, tacet passages inside a section, or anything where the
+groove stops mid-section.
+
+All bar numbers are **1-indexed within the section**.
+
+#### Forms
+
+```groovescript
+// ── No end clause: silence runs to the end of the section ────────────────
+break on bar 3                        # bar 3 through end
+break on bar 2 beat 3                 # beat 3 of bar 2 through end
+
+// ── "through": inclusive end boundary ────────────────────────────────────
+break on bar 2 through bar 4          # bars 2-4, all beats, bar 4 IS silenced
+break on bar 2 beat 3 through bar 4   # from bar 2 beat 3 through all of bar 4
+break on bar 2 through bar 4 beat 2   # from bar 2 through beat 2 of bar 4 (beat 2 IS silenced)
+break on bar 2 beat 3 through bar 4 beat 2  # from bar 2 beat 3 through bar 4 beat 2 (inclusive)
+
+// ── "until": exclusive end boundary ──────────────────────────────────────
+break on bar 1 until bar 3            # bars 1-2; bar 3 is the first bar that plays
+break on bar 2 beat 3 until bar 4     # from bar 2 beat 3; all of bar 4 plays
+break on bar 1 until bar 3 beat 3     # bar 3 plays from beat 3 onward
+break on bar 2 beat 3 until bar 4 beat 3  # from bar 2 beat 3; bar 4 plays from beat 3 onward
+```
+
+The distinction between `through` and `until` only matters when an **end
+beat** is given. With `through beat X`, beat X at the given fractional
+position is silenced; with `until beat X`, beat X is the first note that
+sounds again. For example, both of the following break from beat 3 of bar 1,
+but the boundary at beat 2 of bar 2 falls differently:
+
+```groovescript
+// 2& (beat position 3/8) survives — "through beat 2" stops at 1/4
+break on bar 1 beat 3 through bar 2 beat 2
+
+// 2& is silenced — "until beat 3" means everything before 3/4 is gone
+break on bar 1 beat 3 until bar 2 beat 3
+```
+
+#### Interaction with other directives
+
+- **Overrides fills and `crash in`**: a break is applied after fills and
+  crash-in, so any event that lands inside the break range is removed
+  regardless of how it was added.
+- **Multiple breaks per section**: several `break` lines are allowed and
+  their ranges can overlap.
+- **Works in `play:` sections**: bar numbers count from the start of the
+  section's assembled bar list, same as fills and variations.
+- **No interaction with `variation`**: variations still run normally; the
+  break then silences the result.
+
+```groovescript
+section "verse with drop-out":
+  bars: 8
+  groove: "money beat"
+  break on bar 3 through bar 4       # bars 3-4 silent; bars 1-2 and 5-8 normal
+
+section "late entry":
+  bars: 8
+  groove: "rock"
+  break on bar 1 until bar 3        # drummer enters on bar 3
+
+section "mid-section break":
+  bars: 8
+  groove: "driving 16ths"
+  break on bar 3 beat 3 until bar 5 beat 3  # silent from bar 3 beat 3 to bar 5 beat 2&
+```
 
 ### Vocal cues and text annotations
 
