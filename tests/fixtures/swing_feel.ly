@@ -112,49 +112,10 @@ drumPitchNames =
       \time 4/4
       \omit Score.MetronomeMark
       \tempo 4 = 132
-      \textMark \markup {
-        \fontsize #-2 \line {
-          \scale #'(0.75 . 0.75) \score {
-            \new Staff \with {
-              \omit StaffSymbol
-              \omit Clef
-              \omit BarLine
-            } { b'8 b'8 }
-            \layout {
-              \context {
-                \Score
-                \omit TimeSignature
-                \omit BarLine
-              }
-              indent = 0
-            }
-          }
-          " = "
-          \scale #'(0.75 . 0.75) \score {
-            \new RhythmicStaff \with {
-              \omit StaffSymbol
-              \omit Clef
-              \omit BarLine
-            } {
-              \override TupletBracket.direction = #UP
-              \override TupletNumber.font-size = #-2
-              \tuplet 3/2 { c'4 c'8 }
-            }
-            \layout {
-              \context {
-                \Score
-                \omit TimeSignature
-                \omit BarLine
-              }
-              indent = 0
-            }
-          }
-        }
-      }
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \column { \fontsize #-1 \concat { \note { 4 } #1 " = 132" } \vspace #0.3 \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "HEAD: 4" } \vspace #0.3 \italic \fontsize #-1 "Play 4x" }
+      \mark \markup \column { \fontsize #-1 \line { \concat { \note { 4 } #1 " = 132" } "   " \line { \scale #'(0.75 . 0.75) \score { \new Staff \with { \omit StaffSymbol \omit Clef \omit BarLine } { b'8 b'8 } \layout { \context { \Score \omit TimeSignature \omit BarLine } indent = 0 } } " = " \scale #'(0.75 . 0.75) \score { \new RhythmicStaff \with { \omit StaffSymbol \omit Clef \omit BarLine } { \override TupletBracket.direction = #UP \override TupletNumber.font-size = #-2 \tuplet 3/2 { c'4 c'8 } } \layout { \context { \Score \omit TimeSignature \omit BarLine } indent = 0 } } } } \vspace #0.3 \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "HEAD: 4" } \vspace #0.3 \italic \fontsize #-1 "Play 4x" }
       \bar ".|:"
       \repeat volta 4 {
         <hh bd>8 hh8 <hh sn>8 hh8 <hh bd>8 hh8 <hh sn>8 hh8 |

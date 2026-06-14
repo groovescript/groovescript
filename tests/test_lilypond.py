@@ -1967,8 +1967,10 @@ section "verse":
 """
     ly = emit_lilypond(compile_song(parse(src)))
     assert 'subtitle = "Tempo: 120    Time Signature: 4/4    Feel: Swing"' in ly
-    assert "\\textMark" in ly
+    assert "\\textMark" not in ly         # notation appears in section mark, not textMark
     assert "\\bold \"Swing\"" not in ly   # no redundant text label, glyph only
+    # Swing notation is embedded in the section mark next to the tempo
+    assert "\\line { \\concat {" in ly   # tempo + swing on one line
     # Left side: beamed eighth notes in plain Staff (b' at Staff center = baseline)
     assert "b'8 b'8" in ly
     assert "\\new Staff" in ly

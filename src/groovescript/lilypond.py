@@ -1009,7 +1009,6 @@ def _score_prelude(
     tempo: int | None,
     time_signature: str,
     suppress_metronome_mark: bool = False,
-    feel: str | None = None,
 ) -> str:
     _, beat_unit = _parse_time_signature(time_signature)
     if tempo is not None:
@@ -1025,73 +1024,41 @@ def _score_prelude(
         tempo_line = "      \\omit Score.MetronomeMark\n"
     else:
         tempo_line = ""
-    if feel == "swing":
-        # \textMark (LilyPond 2.23+) renders above the staff without
-        # conflicting with \mark rehearsal-mark events at bar 1.
-        # Standard swing equivalence: ♩♩ = triplet[♩ ♪], both sides rendered
-        # as embedded \score blocks so LilyPond draws real notation.
-        #
-        # Alignment: both scores baseline at Y=0 (center of their staff).
-        # Left: plain Staff, b' (B4) sits exactly on the 3rd/middle line =
-        #   center = baseline. Auto_beam_engraver in Staff reliably beams
-        #   b'8 b'8 in 4/4. RhythmicStaff auto-beaming failed here.
-        # Right: RhythmicStaff, c' sits on the single staff line = center =
-        #   baseline. RhythmicStaff keeps all notes on one line (no ledger).
-        # \omit in \with{} fires at context-creation time so staff lines never
-        # render; body-level \omit arrives too late and leaves a visible line.
-        _swing_staff_with = (
-            "            \\new Staff \\with {\n"
-            "              \\omit StaffSymbol\n"
-            "              \\omit Clef\n"
-            "              \\omit BarLine\n"
-            "            }"
-        )
-        _swing_rhythmic_staff_with = (
-            "            \\new RhythmicStaff \\with {\n"
-            "              \\omit StaffSymbol\n"
-            "              \\omit Clef\n"
-            "              \\omit BarLine\n"
-            "            }"
-        )
-        _swing_layout = (
-            "            \\layout {\n"
-            "              \\context {\n"
-            "                \\Score\n"
-            "                \\omit TimeSignature\n"
-            "                \\omit BarLine\n"
-            "              }\n"
-            "              indent = 0\n"
-            "            }\n"
-        )
-        swing_mark = (
-            "      \\textMark \\markup {\n"
-            "        \\fontsize #-2 \\line {\n"
-            "          \\scale #'(0.75 . 0.75) \\score {\n"
-            + _swing_staff_with +
-            " { b'8 b'8 }\n"
-            + _swing_layout +
-            "          }\n"
-            '          " = "\n'
-            "          \\scale #'(0.75 . 0.75) \\score {\n"
-            + _swing_rhythmic_staff_with +
-            " {\n"
-            "              \\override TupletBracket.direction = #UP\n"
-            "              \\override TupletNumber.font-size = #-2\n"
-            "              \\tuplet 3/2 { c'4 c'8 }\n"
-            "            }\n"
-            + _swing_layout +
-            "          }\n"
-            "        }\n"
-            "      }\n"
-        )
-    else:
-        swing_mark = ""
     return (
         "    \\drummode {\n"
         "      \\numericTimeSignature\n"
         f"      \\time {time_signature}\n"
         f"{tempo_line}"
-        f"{swing_mark}"
+    )
+
+
+def _swing_notation_markup() -> str:
+    """Inline swing equivalence markup (♪♪ = [triplet ♩♪]) for embedding in a \\markup expression.
+
+    Both sides use embedded \\score blocks so LilyPond renders real notation
+    (beamed eighths on the left, triplet bracket with quarter+eighth on right).
+    Alignment: Staff with b' (center of 5-line staff = markup baseline) on the
+    left; RhythmicStaff with c' (single line = baseline) on the right.
+    \\omit directives are in \\with{} so they fire at context-creation time.
+    """
+    return (
+        "\\line {"
+        " \\scale #'(0.75 . 0.75) \\score {"
+        " \\new Staff \\with {"
+        " \\omit StaffSymbol \\omit Clef \\omit BarLine"
+        " } { b'8 b'8 }"
+        " \\layout { \\context { \\Score \\omit TimeSignature \\omit BarLine }"
+        " indent = 0 } }"
+        ' " = "'
+        " \\scale #'(0.75 . 0.75) \\score {"
+        " \\new RhythmicStaff \\with {"
+        " \\omit StaffSymbol \\omit Clef \\omit BarLine"
+        " } {"
+        " \\override TupletBracket.direction = #UP"
+        " \\override TupletNumber.font-size = #-2"
+        " \\tuplet 3/2 { c'4 c'8 } }"
+        " \\layout { \\context { \\Score \\omit TimeSignature \\omit BarLine }"
+        " indent = 0 } } }"
     )
 
 
@@ -1100,6 +1067,7 @@ def _section_mark(
     override_repeat_times: int | None = None,
     tempo_str: str | None = None,
     bar_text: str | None = None,
+    show_swing: bool = False,
 ) -> str:
     repeat_times = override_repeat_times if override_repeat_times is not None else bar.repeat_times
 
@@ -1127,7 +1095,13 @@ def _section_mark(
     # When multiple elements are present they are stacked in a \column.
     parts: list[str] = []
     if tempo_str:
-        parts.append(f"\\fontsize #-1 \\concat {{ {tempo_str} }}")
+        if show_swing:
+            parts.append(
+                f"\\fontsize #-1 \\line {{ \\concat {{ {tempo_str} }}"
+                f" \"   \" {_swing_notation_markup()} }}"
+            )
+        else:
+            parts.append(f"\\fontsize #-1 \\concat {{ {tempo_str} }}")
     if section_box:
         parts.append(section_box)
     if bar_text_markup:
@@ -1230,6 +1204,7 @@ class _BarGroupState:
         beat_unit: int,
         global_tempo: int | None,
         global_time_signature: str,
+        feel: str | None = None,
     ) -> None:
         self.is_top_level = is_top_level
         # Track the last tempo shown in a section mark (to avoid duplicate display).
@@ -1241,6 +1216,8 @@ class _BarGroupState:
         self.current_ts: str = global_time_signature
         self.current_bpb: int = beats_per_bar
         self.current_beat_unit: int = beat_unit
+        self.feel: str | None = feel
+        self.swing_shown: bool = False
 
     def compute_tempo_info(self, bar: IRBar) -> tuple[str | None, str]:
         """Return (tempo_str_for_mark, tempo_change_cmd) for a bar.
@@ -1289,6 +1266,7 @@ def _group_bars(
     global_time_signature: str = "4/4",
     forced_voice_split_ids: set | None = None,
     compact: bool = False,
+    feel: str | None = None,
 ) -> list[str]:
     measures: list[str] = []
     i = 0
@@ -1298,6 +1276,7 @@ def _group_bars(
         beat_unit=beat_unit,
         global_tempo=global_tempo,
         global_time_signature=global_time_signature,
+        feel=feel,
     )
 
     while i < len(bars):
@@ -1316,7 +1295,10 @@ def _group_bars(
 
             ts_change_cmd = state.compute_time_signature_change(bar)
             cur_tempo_str, tempo_change_cmd = state.compute_tempo_info(bar)
-            mark = _section_mark(bar, tempo_str=cur_tempo_str, bar_text=bar.bar_text)
+            show_swing = is_top_level and state.feel == "swing" and not state.swing_shown and cur_tempo_str is not None
+            mark = _section_mark(bar, tempo_str=cur_tempo_str, bar_text=bar.bar_text, show_swing=show_swing)
+            if show_swing and mark:
+                state.swing_shown = True
             forced_bar = "      \\bar \".|:\"\n" if i == 0 else ""
             inner_measures = _group_bars(
                 pattern_bars,
@@ -1367,7 +1349,10 @@ def _group_bars(
                         f'\\fontsize #-1 "{escaped}" }}'
                     )
                 skip_tokens[idx] = token
-            mark = _section_mark(bar, tempo_str=cur_tempo_str, bar_text=bar.bar_text)
+            show_swing = is_top_level and state.feel == "swing" and not state.swing_shown and cur_tempo_str is not None
+            mark = _section_mark(bar, tempo_str=cur_tempo_str, bar_text=bar.bar_text, show_swing=show_swing)
+            if show_swing and mark:
+                state.swing_shown = True
             # Force a line break every 4 placeholder bars (and at the
             # end of the run) so each bar fills a quarter of the page
             # width. ``position_in_section`` counts this bar's 1-indexed
@@ -1417,7 +1402,10 @@ def _group_bars(
                 if (nb.time_signature or state.current_ts) != state.current_ts:
                     break
                 num_rests += 1
-            mark = _section_mark(bar, tempo_str=cur_tempo_str, bar_text=bar.bar_text) if is_top_level else ""
+            show_swing = is_top_level and state.feel == "swing" and not state.swing_shown and cur_tempo_str is not None
+            mark = _section_mark(bar, tempo_str=cur_tempo_str, bar_text=bar.bar_text, show_swing=show_swing) if is_top_level else ""
+            if show_swing and mark:
+                state.swing_shown = True
             if num_rests > 1:
                 # Append the *N span multiplier to the bar-rest token (e.g.
                 # ``R1`` -> ``R1*16``; ``R8*12`` -> ``R8*12*16`` for 12/8).
@@ -1607,10 +1595,13 @@ def _group_bars(
                     multibar_template_measures = template_measures
 
         cur_tempo_str, tempo_change_cmd = state.compute_tempo_info(bar)
+        show_swing = is_top_level and state.feel == "swing" and not state.swing_shown and cur_tempo_str is not None
         if multibar_template_measures is not None:
-            mark = _section_mark(bar, override_repeat_times=multibar_iterations, tempo_str=cur_tempo_str, bar_text=bar.bar_text) if is_top_level else ""
+            mark = _section_mark(bar, override_repeat_times=multibar_iterations, tempo_str=cur_tempo_str, bar_text=bar.bar_text, show_swing=show_swing) if is_top_level else ""
         else:
-            mark = _section_mark(bar, override_repeat_times=num_identical if num_identical > 1 else None, tempo_str=cur_tempo_str, bar_text=bar.bar_text) if is_top_level else ""
+            mark = _section_mark(bar, override_repeat_times=num_identical if num_identical > 1 else None, tempo_str=cur_tempo_str, bar_text=bar.bar_text, show_swing=show_swing) if is_top_level else ""
+        if show_swing and mark:
+            state.swing_shown = True
 
         # Emit bar_text annotation if present — but only as a standalone \mark
         # when there is no section mark to absorb it (bar_text is merged into
@@ -1679,6 +1670,7 @@ def emit_lilypond(ir: IRGroove | IRSong, *, compact: bool = False) -> str:
         global_time_signature=time_signature,
         forced_voice_split_ids=forced_voice_split_ids,
         compact=compact,
+        feel=feel,
     )
     body = "\n".join(measures)
 
@@ -1687,6 +1679,6 @@ def emit_lilypond(ir: IRGroove | IRSong, *, compact: bool = False) -> str:
         template
         .replace("{{HEADER}}", _header_block(title))
         .replace("{{SCORE_HEADER}}", _score_header_block(tempo, time_signature, feel=feel))
-        .replace("{{SCORE_PRELUDE}}", _score_prelude(tempo, time_signature, suppress_metronome_mark=has_any_tempo, feel=feel))
+        .replace("{{SCORE_PRELUDE}}", _score_prelude(tempo, time_signature, suppress_metronome_mark=has_any_tempo))
         .replace("{{BODY}}", body)
     )
