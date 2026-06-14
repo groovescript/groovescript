@@ -989,11 +989,13 @@ def _header_block(title: str | None) -> str:
     )
 
 
-def _score_header_block(tempo: int | None, time_signature: str) -> str:
+def _score_header_block(tempo: int | None, time_signature: str, feel: str | None = None) -> str:
     if tempo is None:
         subtitle = f"Time Signature: {time_signature}"
     else:
         subtitle = f"Tempo: {tempo}    Time Signature: {time_signature}"
+    if feel == "swing":
+        subtitle += "    Feel: Swing"
     return (
         "\\header {\n"
         f'  subtitle = "{_ly_str(subtitle)}"\n'
@@ -1003,7 +1005,12 @@ def _score_header_block(tempo: int | None, time_signature: str) -> str:
 
 
 
-def _score_prelude(tempo: int | None, time_signature: str, suppress_metronome_mark: bool = False) -> str:
+def _score_prelude(
+    tempo: int | None,
+    time_signature: str,
+    suppress_metronome_mark: bool = False,
+    feel: str | None = None,
+) -> str:
     _, beat_unit = _parse_time_signature(time_signature)
     if tempo is not None:
         # Suppress the MetronomeMark grob — tempo is displayed in the first
@@ -1018,11 +1025,32 @@ def _score_prelude(tempo: int | None, time_signature: str, suppress_metronome_ma
         tempo_line = "      \\omit Score.MetronomeMark\n"
     else:
         tempo_line = ""
+    if feel == "swing":
+        # \textMark (LilyPond 2.23+) renders above the staff without
+        # conflicting with \mark rehearsal-mark events at bar 1.
+        swing_mark = (
+            "      \\textMark \\markup {\n"
+            "        \\column {\n"
+            "          \\line { \\bold \"Swing\" }\n"
+            "          \\line {\n"
+            "            \\fontsize #-2 {\n"
+            "              \\general-align #Y #DOWN \\note {8} #1\n"
+            "              \" = \"\n"
+            "              \\general-align #Y #DOWN \\note {8.} #1\n"
+            "              \\smaller \\general-align #Y #DOWN \\note {16} #1\n"
+            "            }\n"
+            "          }\n"
+            "        }\n"
+            "      }\n"
+        )
+    else:
+        swing_mark = ""
     return (
         "    \\drummode {\n"
         "      \\numericTimeSignature\n"
         f"      \\time {time_signature}\n"
         f"{tempo_line}"
+        f"{swing_mark}"
     )
 
 
@@ -1585,11 +1613,13 @@ def emit_lilypond(ir: IRGroove | IRSong, *, compact: bool = False) -> str:
         title = None
         tempo = None
         time_signature = "4/4"
+        feel = None
     else:
         bars = ir.bars
         title = ir.metadata.title
         tempo = ir.metadata.tempo
         time_signature = ir.metadata.time_signature
+        feel = ir.metadata.feel
 
     beats_per_bar, beat_unit = _parse_time_signature(time_signature)
 
@@ -1615,7 +1645,7 @@ def emit_lilypond(ir: IRGroove | IRSong, *, compact: bool = False) -> str:
     return (
         template
         .replace("{{HEADER}}", _header_block(title))
-        .replace("{{SCORE_HEADER}}", _score_header_block(tempo, time_signature))
-        .replace("{{SCORE_PRELUDE}}", _score_prelude(tempo, time_signature, suppress_metronome_mark=has_any_tempo))
+        .replace("{{SCORE_HEADER}}", _score_header_block(tempo, time_signature, feel=feel))
+        .replace("{{SCORE_PRELUDE}}", _score_prelude(tempo, time_signature, suppress_metronome_mark=has_any_tempo, feel=feel))
         .replace("{{BODY}}", body)
     )

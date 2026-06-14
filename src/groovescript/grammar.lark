@@ -24,6 +24,7 @@ metadata_line: title_line
              | dsl_version_line
              | default_groove_line
              | default_bars_line
+             | feel_line
 
 title_line: "title" ":" ESCAPED_STRING
 tempo_line: "tempo" ":" INT
@@ -31,6 +32,8 @@ time_signature_line: "time_signature" ":" TIME_SIGNATURE
 dsl_version_line: "dsl_version" ":" INT
 default_groove_line: "default_groove" ":" ESCAPED_STRING
 default_bars_line: "default_bars" ":" INT
+feel_line: "feel" ":" FEEL_VALUE
+FEEL_VALUE: "swing"
 
 groove_def: "groove" ESCAPED_STRING ":" groove_body
           | "groove" "placeholder" ESCAPED_STRING                  -> groove_placeholder_def

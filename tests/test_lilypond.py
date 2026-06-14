@@ -1947,3 +1947,49 @@ def test_section_name_escapes_special_characters():
     # Raw (unescaped) backslash-quote pattern from the section name must not
     # appear in the rehearsal-mark string.
     assert 'A\\B"C' not in ly
+
+
+def test_emit_feel_swing_subtitle_and_mark():
+    """feel: swing adds 'Feel: Swing' to the subtitle and a \\textMark above bar 1."""
+    src = """\
+title: "Blues"
+tempo: 120
+feel: swing
+
+groove "beat":
+    BD: 1, 3
+    SN: 2, 4
+    HH: *8
+
+section "verse":
+    bars: 4
+    groove: "beat"
+"""
+    ly = emit_lilypond(compile_song(parse(src)))
+    assert 'subtitle = "Tempo: 120    Time Signature: 4/4    Feel: Swing"' in ly
+    assert "\\textMark" in ly
+    assert "\\bold \"Swing\"" in ly
+    # Equivalence glyphs for the standard swing notation
+    assert "\\note {8}" in ly
+    assert "\\note {8.}" in ly
+
+
+def test_emit_no_swing_content_when_feel_unset():
+    """When feel: is not declared, no swing text or mark appears in the output."""
+    src = """\
+title: "Rock"
+tempo: 120
+
+groove "beat":
+    BD: 1, 3
+    SN: 2, 4
+    HH: *8
+
+section "verse":
+    bars: 4
+    groove: "beat"
+"""
+    ly = emit_lilypond(compile_song(parse(src)))
+    assert "Swing" not in ly
+    assert "\\textMark" not in ly
+    assert 'subtitle = "Tempo: 120    Time Signature: 4/4"' in ly

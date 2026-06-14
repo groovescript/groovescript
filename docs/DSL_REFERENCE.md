@@ -163,7 +163,15 @@ dsl_version: 1            # the GrooveScript DSL version this file targets
 title: "Song Name"
 tempo: 120
 time_signature: 4/4
+feel: swing
 ```
+
+The `feel` field is optional and defaults to straight (omitted). Currently
+`swing` is the only accepted value. When set, the compiled sheet music
+includes a "Swing" text mark above the first bar (with a standard eighth-note
+equivalence symbol) and notes "Feel: Swing" in the score subtitle. The feel
+indication is purely notational — it does not alter beat positions, note
+durations, or MIDI output.
 
 Per-bar subdivision is inferred automatically from the content of each
 bar — the beat labels you write (`1`, `2&`, `3e`, `4trip`, …) and any
