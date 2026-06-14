@@ -1969,9 +1969,10 @@ section "verse":
     assert 'subtitle = "Tempo: 120    Time Signature: 4/4    Feel: Swing"' in ly
     assert "\\textMark" in ly
     assert "\\bold \"Swing\"" in ly
-    # Equivalence glyphs for the standard swing notation
-    assert "\\note {8}" in ly
-    assert "\\note {8.}" in ly
+    # Standard swing equivalence: two eighth notes = dotted eighth + sixteenth
+    assert ly.count("\\note {8}") >= 2   # two eighth notes on the left side
+    assert "\\note {8.}" in ly            # dotted eighth on the right
+    assert "\\note {16}" in ly            # sixteenth on the right
 
 
 def test_emit_no_swing_content_when_feel_unset():

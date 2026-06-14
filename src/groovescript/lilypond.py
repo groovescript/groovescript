@@ -1028,6 +1028,7 @@ def _score_prelude(
     if feel == "swing":
         # \textMark (LilyPond 2.23+) renders above the staff without
         # conflicting with \mark rehearsal-mark events at bar 1.
+        # Standard swing equivalence: two eighth notes = dotted eighth + sixteenth.
         swing_mark = (
             "      \\textMark \\markup {\n"
             "        \\column {\n"
@@ -1035,9 +1036,10 @@ def _score_prelude(
             "          \\line {\n"
             "            \\fontsize #-2 {\n"
             "              \\general-align #Y #DOWN \\note {8} #1\n"
+            "              \\general-align #Y #DOWN \\note {8} #1\n"
             "              \" = \"\n"
             "              \\general-align #Y #DOWN \\note {8.} #1\n"
-            "              \\smaller \\general-align #Y #DOWN \\note {16} #1\n"
+            "              \\general-align #Y #DOWN \\note {16} #1\n"
             "            }\n"
             "          }\n"
             "        }\n"

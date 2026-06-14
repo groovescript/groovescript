@@ -118,9 +118,10 @@ drumPitchNames =
           \line {
             \fontsize #-2 {
               \general-align #Y #DOWN \note {8} #1
+              \general-align #Y #DOWN \note {8} #1
               " = "
               \general-align #Y #DOWN \note {8.} #1
-              \smaller \general-align #Y #DOWN \note {16} #1
+              \general-align #Y #DOWN \note {16} #1
             }
           }
         }
