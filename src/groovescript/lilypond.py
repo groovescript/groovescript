@@ -1033,33 +1033,52 @@ def _score_prelude(
         # \omit Staff.StaffSymbol/Clef/BarLine leaves only the noteheads, stems,
         # beam, and the tuplet bracket+number. \scale sizes the fragment to match
         # the surrounding \fontsize #-2 note glyphs.
-        # RhythmicStaff is a single-line staff whose one line is the
-        # markup baseline (Y=0), so noteheads align with the \note glyphs
-        # on the left side.  A regular Staff would center at B4 (middle of
-        # a 5-line treble staff), putting c' noteheads ~2 units below the
-        # baseline and causing the vertical offset the user sees.
-        swing_mark = (
-            "      \\textMark \\markup {\n"
-            "        \\fontsize #-2 \\line {\n"
-            "          \\general-align #Y #DOWN \\note {8} #1\n"
-            "          \\general-align #Y #DOWN \\note {8} #1\n"
-            '          " = "\n'
-            "          \\scale #'(0.75 . 0.75) \\score {\n"
-            "            \\new RhythmicStaff {\n"
+        # Two embedded \score blocks (both RhythmicStaff, both baselines at the
+        # single staff line = text baseline) share the same vertical alignment.
+        # \omit in \with{} fires at context-creation time so the staff line never
+        # renders; \omit in the music body arrives too late and leaves a visible line.
+        # The left block beams the two eighth notes; the right block shows the triplet.
+        _swing_rhythmic_staff_with = (
+            "            \\new RhythmicStaff \\with {\n"
             "              \\omit StaffSymbol\n"
             "              \\omit Clef\n"
             "              \\omit BarLine\n"
-            "              \\override TupletBracket.direction = #UP\n"
-            "              \\override TupletNumber.font-size = #-2\n"
-            "              \\tuplet 3/2 { c'4 c'8 }\n"
-            "            }\n"
+            "            }"
+        )
+        _swing_layout = (
             "            \\layout {\n"
             "              \\context {\n"
             "                \\Score\n"
             "                \\omit TimeSignature\n"
+            "                \\omit BarLine\n"
             "              }\n"
             "              indent = 0\n"
             "            }\n"
+        )
+        # \time 2/8 gives auto-beaming a rhythmic context so the two eighth
+        # notes beam together; without it explicit [ ] brackets are ignored
+        # in the embedded markup score.  The time signature itself is hidden
+        # by \omit TimeSignature in the layout block.
+        swing_mark = (
+            "      \\textMark \\markup {\n"
+            "        \\fontsize #-2 \\line {\n"
+            "          \\scale #'(0.75 . 0.75) \\score {\n"
+            + _swing_rhythmic_staff_with +
+            " {\n"
+            "              \\time 2/8\n"
+            "              c'8 c'8\n"
+            "            }\n"
+            + _swing_layout +
+            "          }\n"
+            '          " = "\n'
+            "          \\scale #'(0.75 . 0.75) \\score {\n"
+            + _swing_rhythmic_staff_with +
+            " {\n"
+            "              \\override TupletBracket.direction = #UP\n"
+            "              \\override TupletNumber.font-size = #-2\n"
+            "              \\tuplet 3/2 { c'4 c'8 }\n"
+            "            }\n"
+            + _swing_layout +
             "          }\n"
             "        }\n"
             "      }\n"
