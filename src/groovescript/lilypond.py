@@ -1028,18 +1028,19 @@ def _score_prelude(
     if feel == "swing":
         # \textMark (LilyPond 2.23+) renders above the staff without
         # conflicting with \mark rehearsal-mark events at bar 1.
-        # Standard swing equivalence: two eighth notes = dotted eighth + sixteenth.
+        # Standard swing equivalence: two eighth notes = triplet (quarter + eighth).
+        # The \column stacks the triplet "3" above the quarter+eighth pair.
         swing_mark = (
             "      \\textMark \\markup {\n"
-            "        \\column {\n"
-            "          \\line { \\bold \"Swing\" }\n"
-            "          \\line {\n"
-            "            \\fontsize #-2 {\n"
+            "        \\fontsize #-2 \\line {\n"
+            "          \\general-align #Y #DOWN \\note {8} #1\n"
+            "          \\general-align #Y #DOWN \\note {8} #1\n"
+            '          " = "\n'
+            "          \\override #'(baseline-skip . 1.6) \\column {\n"
+            '            \\center-align \\fontsize #-2 "3"\n'
+            "            \\line {\n"
+            "              \\general-align #Y #DOWN \\note {4} #1\n"
             "              \\general-align #Y #DOWN \\note {8} #1\n"
-            "              \\general-align #Y #DOWN \\note {8} #1\n"
-            "              \" = \"\n"
-            "              \\general-align #Y #DOWN \\note {8.} #1\n"
-            "              \\general-align #Y #DOWN \\note {16} #1\n"
             "            }\n"
             "          }\n"
             "        }\n"

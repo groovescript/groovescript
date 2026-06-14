@@ -113,15 +113,15 @@ drumPitchNames =
       \omit Score.MetronomeMark
       \tempo 4 = 132
       \textMark \markup {
-        \column {
-          \line { \bold "Swing" }
-          \line {
-            \fontsize #-2 {
+        \fontsize #-2 \line {
+          \general-align #Y #DOWN \note {8} #1
+          \general-align #Y #DOWN \note {8} #1
+          " = "
+          \override #'(baseline-skip . 1.6) \column {
+            \center-align \fontsize #-2 "3"
+            \line {
+              \general-align #Y #DOWN \note {4} #1
               \general-align #Y #DOWN \note {8} #1
-              \general-align #Y #DOWN \note {8} #1
-              " = "
-              \general-align #Y #DOWN \note {8.} #1
-              \general-align #Y #DOWN \note {16} #1
             }
           }
         }

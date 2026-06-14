@@ -1968,11 +1968,11 @@ section "verse":
     ly = emit_lilypond(compile_song(parse(src)))
     assert 'subtitle = "Tempo: 120    Time Signature: 4/4    Feel: Swing"' in ly
     assert "\\textMark" in ly
-    assert "\\bold \"Swing\"" in ly
-    # Standard swing equivalence: two eighth notes = dotted eighth + sixteenth
-    assert ly.count("\\note {8}") >= 2   # two eighth notes on the left side
-    assert "\\note {8.}" in ly            # dotted eighth on the right
-    assert "\\note {16}" in ly            # sixteenth on the right
+    assert "\\bold \"Swing\"" not in ly   # no redundant text label, glyph only
+    # Correct swing equivalence: ♩♩ = triplet[♩ ♪]
+    assert ly.count("\\note {8}") >= 2   # two eighth notes on the left + one on the right
+    assert "\\note {4}" in ly            # quarter note inside the triplet
+    assert '"3"' in ly                   # triplet number
 
 
 def test_emit_no_swing_content_when_feel_unset():
