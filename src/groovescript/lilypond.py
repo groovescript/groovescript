@@ -989,13 +989,11 @@ def _header_block(title: str | None) -> str:
     )
 
 
-def _score_header_block(tempo: int | None, time_signature: str, feel: str | None = None) -> str:
+def _score_header_block(tempo: int | None, time_signature: str) -> str:
     if tempo is None:
         subtitle = f"Time Signature: {time_signature}"
     else:
         subtitle = f"Tempo: {tempo}    Time Signature: {time_signature}"
-    if feel == "swing":
-        subtitle += "    Feel: Swing"
     return (
         "\\header {\n"
         f'  subtitle = "{_ly_str(subtitle)}"\n'
@@ -1678,7 +1676,7 @@ def emit_lilypond(ir: IRGroove | IRSong, *, compact: bool = False) -> str:
     return (
         template
         .replace("{{HEADER}}", _header_block(title))
-        .replace("{{SCORE_HEADER}}", _score_header_block(tempo, time_signature, feel=feel))
+        .replace("{{SCORE_HEADER}}", _score_header_block(tempo, time_signature))
         .replace("{{SCORE_PRELUDE}}", _score_prelude(tempo, time_signature, suppress_metronome_mark=has_any_tempo))
         .replace("{{BODY}}", body)
     )

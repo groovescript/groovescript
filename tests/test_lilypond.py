@@ -1950,7 +1950,7 @@ def test_section_name_escapes_special_characters():
 
 
 def test_emit_feel_swing_subtitle_and_mark():
-    """feel: swing adds 'Feel: Swing' to the subtitle and a \\textMark above bar 1."""
+    """feel: swing embeds swing equivalence notation next to the tempo in the section mark."""
     src = """\
 title: "Blues"
 tempo: 120
@@ -1966,7 +1966,7 @@ section "verse":
     groove: "beat"
 """
     ly = emit_lilypond(compile_song(parse(src)))
-    assert 'subtitle = "Tempo: 120    Time Signature: 4/4    Feel: Swing"' in ly
+    assert 'subtitle = "Tempo: 120    Time Signature: 4/4"' in ly
     assert "\\textMark" not in ly         # notation appears in section mark, not textMark
     assert "\\bold \"Swing\"" not in ly   # no redundant text label, glyph only
     # Swing notation is embedded in the section mark next to the tempo
