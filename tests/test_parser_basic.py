@@ -357,3 +357,43 @@ def test_parse_file_fixture_instrument_name_variations():
     remove_action = next(a for a in variation.actions if a.action == "remove")
     assert add_action.instrument == "RD"
     assert remove_action.instrument == "HH"
+
+
+def test_parse_feel_swing_top_level():
+    """feel: swing is parsed and stored in Metadata.feel."""
+    src = """\
+title: "Blues"
+tempo: 120
+feel: swing
+
+groove "beat":
+    BD: 1, 3
+    SN: 2, 4
+    HH: *8
+"""
+    song = parse(src)
+    assert song.metadata.feel == "swing"
+
+
+def test_parse_feel_swing_inside_metadata_block():
+    """feel: swing is accepted inside a metadata: block."""
+    src = """\
+metadata:
+  title: "Blues"
+  feel: swing
+
+groove "beat":
+    BD: 1
+"""
+    song = parse(src)
+    assert song.metadata.feel == "swing"
+
+
+def test_parse_feel_defaults_to_none():
+    """Omitting feel: leaves Metadata.feel as None (straight feel)."""
+    src = """\
+groove "beat":
+    BD: 1
+"""
+    song = parse(src)
+    assert song.metadata.feel is None

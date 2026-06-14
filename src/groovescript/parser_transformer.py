@@ -178,6 +178,9 @@ class _GrooveScriptTransformer(Transformer):
     def default_bars_line(self, items):
         return Metadata(default_bars=int(items[0]))
 
+    def feel_line(self, items):
+        return Metadata(feel=str(items[0]))
+
     def groove_def(self, items):
         name = _ast.literal_eval(str(items[0]))
         body = items[1]
@@ -1548,6 +1551,8 @@ class _GrooveScriptTransformer(Transformer):
             target.default_groove = incoming.default_groove
         if incoming.default_bars is not None:
             target.default_bars = incoming.default_bars
+        if incoming.feel is not None:
+            target.feel = incoming.feel
 
 
 _parser = Lark(

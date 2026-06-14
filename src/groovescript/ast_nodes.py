@@ -214,6 +214,7 @@ class Metadata:
     dsl_version: int | None = None
     default_groove: str | None = None
     default_bars: int | None = None
+    feel: str | None = None  # "swing", or None for straight feel
 
 
 @dataclass
