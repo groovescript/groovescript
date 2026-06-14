@@ -1028,16 +1028,24 @@ def _score_prelude(
     if feel == "swing":
         # \textMark (LilyPond 2.23+) renders above the staff without
         # conflicting with \mark rehearsal-mark events at bar 1.
-        # Standard swing equivalence: ♩♩ = triplet[♩ ♪].
-        # An embedded \score renders a real triplet bracket (not just a "3" label).
-        # \omit Staff.StaffSymbol/Clef/BarLine leaves only the noteheads, stems,
-        # beam, and the tuplet bracket+number. \scale sizes the fragment to match
-        # the surrounding \fontsize #-2 note glyphs.
-        # Two embedded \score blocks (both RhythmicStaff, both baselines at the
-        # single staff line = text baseline) share the same vertical alignment.
-        # \omit in \with{} fires at context-creation time so the staff line never
-        # renders; \omit in the music body arrives too late and leaves a visible line.
-        # The left block beams the two eighth notes; the right block shows the triplet.
+        # Standard swing equivalence: ♩♩ = triplet[♩ ♪], both sides rendered
+        # as embedded \score blocks so LilyPond draws real notation.
+        #
+        # Alignment: both scores baseline at Y=0 (center of their staff).
+        # Left: plain Staff, b' (B4) sits exactly on the 3rd/middle line =
+        #   center = baseline. Auto_beam_engraver in Staff reliably beams
+        #   b'8 b'8 in 4/4. RhythmicStaff auto-beaming failed here.
+        # Right: RhythmicStaff, c' sits on the single staff line = center =
+        #   baseline. RhythmicStaff keeps all notes on one line (no ledger).
+        # \omit in \with{} fires at context-creation time so staff lines never
+        # render; body-level \omit arrives too late and leaves a visible line.
+        _swing_staff_with = (
+            "            \\new Staff \\with {\n"
+            "              \\omit StaffSymbol\n"
+            "              \\omit Clef\n"
+            "              \\omit BarLine\n"
+            "            }"
+        )
         _swing_rhythmic_staff_with = (
             "            \\new RhythmicStaff \\with {\n"
             "              \\omit StaffSymbol\n"
@@ -1055,19 +1063,12 @@ def _score_prelude(
             "              indent = 0\n"
             "            }\n"
         )
-        # \time 2/8 gives auto-beaming a rhythmic context so the two eighth
-        # notes beam together; without it explicit [ ] brackets are ignored
-        # in the embedded markup score.  The time signature itself is hidden
-        # by \omit TimeSignature in the layout block.
         swing_mark = (
             "      \\textMark \\markup {\n"
             "        \\fontsize #-2 \\line {\n"
             "          \\scale #'(0.75 . 0.75) \\score {\n"
-            + _swing_rhythmic_staff_with +
-            " {\n"
-            "              \\time 2/8\n"
-            "              c'8 c'8\n"
-            "            }\n"
+            + _swing_staff_with +
+            " { b'8 b'8 }\n"
             + _swing_layout +
             "          }\n"
             '          " = "\n'

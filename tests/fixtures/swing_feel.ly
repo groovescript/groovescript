@@ -115,14 +115,11 @@ drumPitchNames =
       \textMark \markup {
         \fontsize #-2 \line {
           \scale #'(0.75 . 0.75) \score {
-            \new RhythmicStaff \with {
+            \new Staff \with {
               \omit StaffSymbol
               \omit Clef
               \omit BarLine
-            } {
-              \time 2/8
-              c'8 c'8
-            }
+            } { b'8 b'8 }
             \layout {
               \context {
                 \Score

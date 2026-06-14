@@ -1969,13 +1969,13 @@ section "verse":
     assert 'subtitle = "Tempo: 120    Time Signature: 4/4    Feel: Swing"' in ly
     assert "\\textMark" in ly
     assert "\\bold \"Swing\"" not in ly   # no redundant text label, glyph only
-    # Left side: beamed eighth notes via \time 2/8 auto-beaming
-    assert "\\time 2/8" in ly
-    assert ly.count("c'8 c'8") >= 1      # two eighth notes; \time 2/8 auto-beams them
-    # Right side: proper triplet bracket
+    # Left side: beamed eighth notes in plain Staff (b' at Staff center = baseline)
+    assert "b'8 b'8" in ly
+    assert "\\new Staff" in ly
+    # Right side: proper triplet bracket in RhythmicStaff
     assert "\\tuplet 3/2" in ly
     assert "c'4 c'8" in ly               # quarter + eighth inside the triplet
-    assert "RhythmicStaff" in ly         # both sides use RhythmicStaff for baseline alignment
+    assert "RhythmicStaff" in ly
 
 
 def test_emit_no_swing_content_when_feel_unset():
