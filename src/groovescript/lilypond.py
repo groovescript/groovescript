@@ -1044,9 +1044,9 @@ def _swing_notation_markup() -> str:
     return (
         "\\line {"
         " \\scale #'(0.75 . 0.75) \\score {"
-        " \\new Staff \\with {"
+        " \\new RhythmicStaff \\with {"
         " \\omit StaffSymbol \\omit Clef \\omit BarLine"
-        " } { b'8 b'8 }"
+        " } { c'8[ c'8] }"
         " \\layout { \\context { \\Score \\omit TimeSignature \\omit BarLine }"
         " indent = 0 } }"
         ' " = "'

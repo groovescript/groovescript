@@ -1971,9 +1971,8 @@ section "verse":
     assert "\\bold \"Swing\"" not in ly   # no redundant text label, glyph only
     # Swing notation is embedded in the section mark next to the tempo
     assert "\\line { \\concat {" in ly   # tempo + swing on one line
-    # Left side: beamed eighth notes in plain Staff (b' at Staff center = baseline)
-    assert "b'8 b'8" in ly
-    assert "\\new Staff" in ly
+    # Left side: beamed eighth notes via explicit beam in RhythmicStaff
+    assert "c'8[ c'8]" in ly
     # Right side: proper triplet bracket in RhythmicStaff
     assert "\\tuplet 3/2" in ly
     assert "c'4 c'8" in ly               # quarter + eighth inside the triplet
