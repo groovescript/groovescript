@@ -1033,19 +1033,22 @@ def _score_prelude(
         # \omit Staff.StaffSymbol/Clef/BarLine leaves only the noteheads, stems,
         # beam, and the tuplet bracket+number. \scale sizes the fragment to match
         # the surrounding \fontsize #-2 note glyphs.
+        # RhythmicStaff is a single-line staff whose one line is the
+        # markup baseline (Y=0), so noteheads align with the \note glyphs
+        # on the left side.  A regular Staff would center at B4 (middle of
+        # a 5-line treble staff), putting c' noteheads ~2 units below the
+        # baseline and causing the vertical offset the user sees.
         swing_mark = (
             "      \\textMark \\markup {\n"
-            "        \\line {\n"
-            "          \\fontsize #-2 {\n"
-            "            \\general-align #Y #DOWN \\note {8} #1\n"
-            "            \\general-align #Y #DOWN \\note {8} #1\n"
-            '            " = "\n'
-            "          }\n"
-            "          \\scale #'(0.65 . 0.65) \\score {\n"
-            "            \\new Staff {\n"
-            "              \\omit Staff.StaffSymbol\n"
-            "              \\omit Staff.Clef\n"
-            "              \\omit Staff.BarLine\n"
+            "        \\fontsize #-2 \\line {\n"
+            "          \\general-align #Y #DOWN \\note {8} #1\n"
+            "          \\general-align #Y #DOWN \\note {8} #1\n"
+            '          " = "\n'
+            "          \\scale #'(0.75 . 0.75) \\score {\n"
+            "            \\new RhythmicStaff {\n"
+            "              \\omit StaffSymbol\n"
+            "              \\omit Clef\n"
+            "              \\omit BarLine\n"
             "              \\override TupletBracket.direction = #UP\n"
             "              \\override TupletNumber.font-size = #-2\n"
             "              \\tuplet 3/2 { c'4 c'8 }\n"
