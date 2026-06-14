@@ -1028,19 +1028,34 @@ def _score_prelude(
     if feel == "swing":
         # \textMark (LilyPond 2.23+) renders above the staff without
         # conflicting with \mark rehearsal-mark events at bar 1.
-        # Standard swing equivalence: two eighth notes = triplet (quarter + eighth).
-        # The \column stacks the triplet "3" above the quarter+eighth pair.
+        # Standard swing equivalence: ♩♩ = triplet[♩ ♪].
+        # An embedded \score renders a real triplet bracket (not just a "3" label).
+        # \omit Staff.StaffSymbol/Clef/BarLine leaves only the noteheads, stems,
+        # beam, and the tuplet bracket+number. \scale sizes the fragment to match
+        # the surrounding \fontsize #-2 note glyphs.
         swing_mark = (
             "      \\textMark \\markup {\n"
-            "        \\fontsize #-2 \\line {\n"
-            "          \\general-align #Y #DOWN \\note {8} #1\n"
-            "          \\general-align #Y #DOWN \\note {8} #1\n"
-            '          " = "\n'
-            "          \\override #'(baseline-skip . 1.6) \\column {\n"
-            '            \\center-align \\fontsize #-2 "3"\n'
-            "            \\line {\n"
-            "              \\general-align #Y #DOWN \\note {4} #1\n"
-            "              \\general-align #Y #DOWN \\note {8} #1\n"
+            "        \\line {\n"
+            "          \\fontsize #-2 {\n"
+            "            \\general-align #Y #DOWN \\note {8} #1\n"
+            "            \\general-align #Y #DOWN \\note {8} #1\n"
+            '            " = "\n'
+            "          }\n"
+            "          \\scale #'(0.65 . 0.65) \\score {\n"
+            "            \\new Staff {\n"
+            "              \\omit Staff.StaffSymbol\n"
+            "              \\omit Staff.Clef\n"
+            "              \\omit Staff.BarLine\n"
+            "              \\override TupletBracket.direction = #UP\n"
+            "              \\override TupletNumber.font-size = #-2\n"
+            "              \\tuplet 3/2 { c'4 c'8 }\n"
+            "            }\n"
+            "            \\layout {\n"
+            "              \\context {\n"
+            "                \\Score\n"
+            "                \\omit TimeSignature\n"
+            "              }\n"
+            "              indent = 0\n"
             "            }\n"
             "          }\n"
             "        }\n"

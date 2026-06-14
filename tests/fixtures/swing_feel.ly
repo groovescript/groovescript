@@ -113,15 +113,27 @@ drumPitchNames =
       \omit Score.MetronomeMark
       \tempo 4 = 132
       \textMark \markup {
-        \fontsize #-2 \line {
-          \general-align #Y #DOWN \note {8} #1
-          \general-align #Y #DOWN \note {8} #1
-          " = "
-          \override #'(baseline-skip . 1.6) \column {
-            \center-align \fontsize #-2 "3"
-            \line {
-              \general-align #Y #DOWN \note {4} #1
-              \general-align #Y #DOWN \note {8} #1
+        \line {
+          \fontsize #-2 {
+            \general-align #Y #DOWN \note {8} #1
+            \general-align #Y #DOWN \note {8} #1
+            " = "
+          }
+          \scale #'(0.65 . 0.65) \score {
+            \new Staff {
+              \omit Staff.StaffSymbol
+              \omit Staff.Clef
+              \omit Staff.BarLine
+              \override TupletBracket.direction = #UP
+              \override TupletNumber.font-size = #-2
+              \tuplet 3/2 { c'4 c'8 }
+            }
+            \layout {
+              \context {
+                \Score
+                \omit TimeSignature
+              }
+              indent = 0
             }
           }
         }
