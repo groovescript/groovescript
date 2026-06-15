@@ -1966,7 +1966,10 @@ section "verse":
     groove: "beat"
 """
     ly = emit_lilypond(compile_song(parse(src)))
-    assert 'subtitle = "Tempo: 120    Time Signature: 4/4"' in ly
+    # Exact-match the full subtitle line so an accidental " Feel: Swing"
+    # suffix (or any other change) fails the test.
+    assert 'subtitle = "Tempo: 120    Time Signature: 4/4"\n}' in ly
+    assert "Feel: Swing" not in ly        # subtitle is glyph-only, no text label
     assert "\\textMark" not in ly         # notation appears in section mark, not textMark
     assert "\\bold \"Swing\"" not in ly   # no redundant text label, glyph only
     # Swing notation is embedded in the section mark next to the tempo
@@ -1976,6 +1979,33 @@ section "verse":
     # Right side: proper triplet bracket in RhythmicStaff
     assert "\\tuplet 3/2" in ly
     assert "c'4 c'8" in ly               # quarter + eighth inside the triplet
+    assert "RhythmicStaff" in ly
+
+
+def test_emit_feel_swing_without_tempo():
+    """Regression: feel: swing must still emit the swing glyph when no tempo is declared.
+
+    Earlier the show_swing predicate required cur_tempo_str is not None,
+    so a tempo-less chart with feel: swing would silently drop the glyph.
+    """
+    src = """\
+title: "No Tempo Blues"
+feel: swing
+
+groove "beat":
+    BD: 1, 3
+    SN: 2, 4
+    HH: *8
+
+section "verse":
+    bars: 4
+    groove: "beat"
+"""
+    ly = emit_lilypond(compile_song(parse(src)))
+    # Swing glyph (beamed eighths + triplet bracket) appears in the section mark.
+    assert "c'8[ c'8]" in ly
+    assert "\\tuplet 3/2" in ly
+    assert "c'4 c'8" in ly
     assert "RhythmicStaff" in ly
 
 
@@ -1997,4 +2027,8 @@ section "verse":
     ly = emit_lilypond(compile_song(parse(src)))
     assert "Swing" not in ly
     assert "\\textMark" not in ly
-    assert 'subtitle = "Tempo: 120    Time Signature: 4/4"' in ly
+    # Exact-match the closing of the header block to pin the subtitle.
+    assert 'subtitle = "Tempo: 120    Time Signature: 4/4"\n}' in ly
+    # No swing glyph artifacts either.
+    assert "c'8[ c'8]" not in ly
+    assert "\\tuplet 3/2" not in ly
