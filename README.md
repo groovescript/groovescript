@@ -187,6 +187,11 @@ uv run groovescript midi input.gs -o output.mid
 
 # Export a .gs file to MusicXML (experimental — less tested than LilyPond output)
 uv run groovescript musicxml input.gs -o output.xml
+
+# Cut a release (patch by default; --minor / --major also supported).
+# Bumps pyproject.toml, commits, pushes, tags vX.Y.Z, creates a GitHub release.
+./release
+./release --help     # full flag list (--title, --notes, --notes-file, --dry-run)
 ```
 
 Source layout:

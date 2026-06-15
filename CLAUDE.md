@@ -71,6 +71,8 @@ uv run groovescript midi input.gs -o output.mid --watch  # Re-export on save
 uv run groovescript musicxml input.gs -o output.xml    # Export .gs -> MusicXML
 uv run groovescript musicxml input.gs -o output.xml --watch  # Re-export on save
 lilypond -o output output.ly                           # Render to PDF
+./release                                              # Cut a patch release (bumps pyproject.toml, pushes, tags, GitHub release)
+./release --minor                                      # Cut a minor release (--major also supported; see `./release --help`)
 ```
 
 ## Dependencies
