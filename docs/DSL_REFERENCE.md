@@ -168,10 +168,17 @@ feel: swing
 
 The `feel` field is optional and defaults to straight (omitted). Currently
 `swing` is the only accepted value. When set, the compiled sheet music
-embeds a swing equivalence notation (♫ = triplet[♩♪]) on the same line
-as the tempo mark in the first section header. The feel indication is
-purely notational — it does not alter beat positions, note durations,
-or MIDI output.
+embeds a swing equivalence notation (♫ = triplet[♩♪]) next to the tempo
+mark in the first section header (or on its own when no tempo is
+declared). The feel indication is purely notational — it does not alter
+beat positions or note durations.
+
+**Exporter support:** `feel: swing` affects the **LilyPond** output only.
+The **MusicXML** and **MIDI** exporters parse the field but currently
+ignore it: MusicXML output contains no swing direction, and MIDI playback
+is rendered with straight eighth notes regardless of `feel`. If you need
+the swing indication in MusicXML, render through LilyPond and import the
+resulting PDF, or open a feature request.
 
 Per-bar subdivision is inferred automatically from the content of each
 bar — the beat labels you write (`1`, `2&`, `3e`, `4trip`, …) and any

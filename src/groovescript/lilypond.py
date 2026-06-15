@@ -1031,7 +1031,7 @@ def _score_prelude(
 
 
 def _swing_notation_markup() -> str:
-    """Inline swing equivalence markup (♪♪ = [triplet ♩♪]) for embedding in a \\markup expression.
+    """Inline swing equivalence markup (♫ = [triplet ♩♪]) for embedding in a \\markup expression.
 
     Both sides use embedded \\score blocks so LilyPond renders real notation
     (beamed eighths on the left, triplet bracket with quarter+eighth on right).
@@ -1100,6 +1100,8 @@ def _section_mark(
             )
         else:
             parts.append(f"\\fontsize #-1 \\concat {{ {tempo_str} }}")
+    elif show_swing:
+        parts.append(f"\\fontsize #-1 \\line {{ {_swing_notation_markup()} }}")
     if section_box:
         parts.append(section_box)
     if bar_text_markup:
@@ -1293,7 +1295,7 @@ def _group_bars(
 
             ts_change_cmd = state.compute_time_signature_change(bar)
             cur_tempo_str, tempo_change_cmd = state.compute_tempo_info(bar)
-            show_swing = is_top_level and state.feel == "swing" and not state.swing_shown and cur_tempo_str is not None
+            show_swing = is_top_level and state.feel == "swing" and not state.swing_shown
             mark = _section_mark(bar, tempo_str=cur_tempo_str, bar_text=bar.bar_text, show_swing=show_swing)
             if show_swing and mark:
                 state.swing_shown = True
@@ -1347,7 +1349,7 @@ def _group_bars(
                         f'\\fontsize #-1 "{escaped}" }}'
                     )
                 skip_tokens[idx] = token
-            show_swing = is_top_level and state.feel == "swing" and not state.swing_shown and cur_tempo_str is not None
+            show_swing = is_top_level and state.feel == "swing" and not state.swing_shown
             mark = _section_mark(bar, tempo_str=cur_tempo_str, bar_text=bar.bar_text, show_swing=show_swing)
             if show_swing and mark:
                 state.swing_shown = True
@@ -1400,7 +1402,7 @@ def _group_bars(
                 if (nb.time_signature or state.current_ts) != state.current_ts:
                     break
                 num_rests += 1
-            show_swing = is_top_level and state.feel == "swing" and not state.swing_shown and cur_tempo_str is not None
+            show_swing = is_top_level and state.feel == "swing" and not state.swing_shown
             mark = _section_mark(bar, tempo_str=cur_tempo_str, bar_text=bar.bar_text, show_swing=show_swing) if is_top_level else ""
             if show_swing and mark:
                 state.swing_shown = True
@@ -1593,7 +1595,7 @@ def _group_bars(
                     multibar_template_measures = template_measures
 
         cur_tempo_str, tempo_change_cmd = state.compute_tempo_info(bar)
-        show_swing = is_top_level and state.feel == "swing" and not state.swing_shown and cur_tempo_str is not None
+        show_swing = is_top_level and state.feel == "swing" and not state.swing_shown
         if multibar_template_measures is not None:
             mark = _section_mark(bar, override_repeat_times=multibar_iterations, tempo_str=cur_tempo_str, bar_text=bar.bar_text, show_swing=show_swing) if is_top_level else ""
         else:

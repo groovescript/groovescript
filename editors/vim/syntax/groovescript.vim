@@ -34,8 +34,12 @@ syn match gsRepeatCount   "\<x\d\+\>"
 " These appear as `keyword: value` lines, either inside a `metadata:` block
 " or at the top level of the file.
 syn keyword gsMetadataKeyword title tempo time_signature dsl_version
-                            \ default_groove default_bars
+                            \ default_groove default_bars feel
 syn keyword gsMetadataBlock   metadata
+
+" -- Metadata values --------------------------------------------------------
+" Enumerated values for metadata fields (currently only `feel: swing`).
+syn keyword gsMetadataValue swing
 
 " -- Definition keywords ----------------------------------------------------
 " `groove "name":`, `fill "name":`, `section "name":`
@@ -127,6 +131,7 @@ hi def link gsRepeatCount      Number
 
 hi def link gsMetadataBlock    Structure
 hi def link gsMetadataKeyword  Keyword
+hi def link gsMetadataValue    Constant
 hi def link gsDefinition       Structure
 hi def link gsBodyKeyword      Keyword
 hi def link gsPlacement        Keyword

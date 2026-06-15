@@ -7,7 +7,9 @@ PDF sheet music.
 GrooveScript is a text-based DSL optimized for fast transcription of drum
 charts: reusable grooves and fills, section-based song structure,
 time-anchored variations, placeholder grooves and fills for incremental
-chart-building, and full support for changing meters.
+chart-building, full support for changing meters, and an optional
+`feel: swing` metadata flag that prints the swung-eighth-note equivalence
+in the score header.
 
 ## Core concepts
 
