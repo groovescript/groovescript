@@ -6,10 +6,8 @@ PDF sheet music.
 
 GrooveScript is a text-based DSL optimized for fast transcription of drum
 charts: reusable grooves and fills, section-based song structure,
-time-anchored variations, placeholder grooves and fills for incremental
-chart-building, full support for changing meters, and an optional
-`feel: swing` metadata flag that prints the swung-eighth-note equivalence
-in the score header.
+time-anchored variations, and placeholder grooves and fills for
+incremental chart-building.
 
 ## Core concepts
 
@@ -50,22 +48,9 @@ From here, iterate: fill in the grooves (step 2 of the tutorial), swap
 placeholder fills for real ones (step 3), add variations (step 4), and
 cues (step 5).
 
-You can also mix transcribed and TBD grooves inside one section.
-Undefined groove names referenced from a `play:` block auto-promote to
-named placeholders, so you can sketch a section by listing the grooves
-you intend to write before any of them exist:
-
-```groovescript
-section "chorus":
-  play:
-    groove "intro feel" x4         # not yet defined → placeholder labelled "intro feel"
-    groove "money beat" x8         # real, transcribed groove
-    groove placeholder "outro" x4  # explicit named placeholder
-```
-
-See the [Placeholder grooves](docs/DSL_REFERENCE.md#placeholder-grooves)
-reference for all three explicit forms (top-level declaration, section
-sole groove, and `play:` list item).
+Transcribed and placeholder grooves can be mixed within one section;
+see the [Placeholder grooves](docs/DSL_REFERENCE.md#placeholder-grooves)
+reference for the full set of forms.
 
 ## Quick taste
 
@@ -96,26 +81,11 @@ section "chorus":
   groove: "money beat"
 ```
 
-GrooveScript also supports named tuplet groups for sextuplet, quintuplet,
-septuplet, and nonuplet patterns — both inline and as a star shorthand:
-
-```groovescript
-groove "sextuplet beat":
-  HH: 1, 2{sextuplet 1 accent, 2, 3, 4 accent, 5, 6}, 3, 4
-  SN: 2, 4
-  BD: 1, 3
-
-groove "fast 16th triplets":
-  HH: 1, 2, 3{triplet/8 1, 2, 3}, 3&{triplet/8 1, 2, 3}, 4
-
-groove "tour de sextuplet":
-  HH: *sextuplet            # sextuplets on every beat
-```
-
-See `tests/fixtures/tuplets_showcase.{gs,pdf}` for a rendered demo.
-
-More complete fixtures live under `tests/fixtures/`, each with its compiled
-`.ly` and rendered `.pdf` committed alongside the `.gs` source.
+More complete fixtures — including tuplet groups, mixed subdivisions,
+meter changes, dynamic spans, and swing feel — live under
+`tests/fixtures/`, each with its compiled `.ly` and rendered `.pdf`
+committed alongside the `.gs` source. See `DSL_REFERENCE.md` for the
+full language.
 
 ## Get started
 
