@@ -144,8 +144,19 @@ else
         || die "version bump failed (pyproject.toml unchanged)"
 fi
 
+# --- refresh uv.lock to match the new version -----------------------------
+# pyproject's version is mirrored in uv.lock's groovescript package entry.
+# Without this, uv.lock stays one release behind and gets rewritten (leaving
+# a dirty working tree) the next time `uv run` syncs it.
+echo "release: updating uv.lock"
+run uv lock
+if [[ "$DRY_RUN" != true ]]; then
+    grep -qE "^version = \"$NEW_VERSION\"\$" uv.lock \
+        || die "uv.lock did not pick up version $NEW_VERSION"
+fi
+
 # --- commit, push, tag, push tag -----------------------------------------
-run git add pyproject.toml
+run git add pyproject.toml uv.lock
 run git commit -m "Bump version to $NEW_VERSION"
 run git push origin main
 run git tag "$TAG"
