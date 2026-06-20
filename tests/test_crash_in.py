@@ -316,6 +316,37 @@ section "s":
     assert "CR" in _instruments_at(bar1, Fraction(0))
 
 
+def test_crash_in_replaces_ride_when_fill_piles_on_snare():
+    """Regression: a fill's snare hits must not out-vote the real rider.
+
+    In a ride groove, a fill placed later in the bar can add more snare hits
+    than there are ride hits in the kept (pre-fill) portion. Rider detection
+    counts every hit in the merged bar, so the snare used to win the count;
+    crash-in then found no snare on beat 1 and *appended* a crash, leaving the
+    ride sounding under it. The crash must instead *replace* the ride on beat
+    1.
+    """
+    src = """
+groove "g":
+  ride: *8
+  kick: 1 3 and
+  snare: 2 4
+
+section "s":
+  bars: 4
+  groove: "g"
+  crash in at 4
+  fill at bar 4 beat 3:
+    count: "3 e and 4 and a"
+    notes: "(hat kick) snare hat (crash kick snare) sn sn"
+"""
+    ir = _compile(src)
+    bar4 = ir.bars[3]
+    # Beat 1 carries the crash and its kick — and crucially NOT the ride.
+    assert _instruments_at(bar4, Fraction(0)) == {"CR", "BD"}
+    assert "RD" not in _instruments_at(bar4, Fraction(0))
+
+
 def test_crash_in_absent_without_flag():
     """Regression: sections without ``crash in`` compile exactly as before."""
     src = """
