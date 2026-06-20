@@ -2018,6 +2018,16 @@ def _apply_variation_actions(
 # drummers conventionally swap to crash at a section start.
 _CRASH_IN_TIEBREAK_PRIORITY: tuple[str, ...] = ("RD", "HH", "OH", "CR", "HF")
 
+# Instruments eligible to be the "rider" a crash-in replaces on beat 1. The
+# rider is the timekeeping surface the dominant hand stays on, so cymbals,
+# hi-hats, cowbell, and even toms (Rosanna-style floor-tom grooves) qualify.
+# The snare and its side-stick articulation never do — they're the backbeat
+# voice, not a ride surface. Excluding them matters when a fill piles snare
+# hits into a bar: without this they could out-count the real ride and get
+# mis-elected as rider, so the crash would be appended on beat 1 instead of
+# swapping the ride out (leaving a stray ride sounding under the crash).
+_RIDER_INSTRUMENTS: frozenset[str] = _HAND_INSTRUMENTS - frozenset({"SN", "SCS"})
+
 
 def _apply_crash_in(events: list[Event], absolute_bar: int) -> list[Event]:
     """Ensure this (first) bar starts with a crash backed by a kick.
@@ -2043,13 +2053,14 @@ def _apply_crash_in(events: list[Event], absolute_bar: int) -> list[Event]:
     )
 
     if not has_cr_on_one:
-        # Rider candidates are hand-played instruments only — the rider is the
-        # thing the dominant hand keeps time on, so foot-played BD/HF are not
-        # eligible even if they dominate the hit count (e.g. bars where a
-        # variation thins out the ride pattern).
+        # Rider candidates are the timekeeping cymbal/hi-hat family only (see
+        # ``_RIDER_INSTRUMENTS``) — the rider is the thing the dominant hand
+        # keeps time on. Foot-played BD/HF and the snare/tom voices are not
+        # eligible even if they dominate the hit count (e.g. a fill that piles
+        # snare hits into the bar, or a variation that thins the ride pattern).
         counts: dict[str, int] = {}
         for event in result:
-            if event.instrument not in _HAND_INSTRUMENTS:
+            if event.instrument not in _RIDER_INSTRUMENTS:
                 continue
             counts[event.instrument] = counts.get(event.instrument, 0) + 1
 
