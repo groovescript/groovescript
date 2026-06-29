@@ -715,12 +715,14 @@ class _GrooveScriptTransformer(Transformer):
                 breaks.append(value)
 
         if play is not None:
-            if bars is not None or groove is not None or repeat is not None:
+            if groove is not None or repeat is not None:
                 raise ValueError(
-                    f"Section {name!r}: play: is mutually exclusive with bars:, groove:, and repeat:"
+                    f"Section {name!r}: play: is mutually exclusive with groove: and repeat:"
                 )
             if not play:
                 raise ValueError(f"Section {name!r}: play: block must not be empty")
+            # bars: is permitted alongside play: as a redundant assertion of the
+            # arrangement length; the compiler validates it matches the expansion.
         # Validation of required bars/groove is deferred to compile time so
         # that metadata defaults (default_bars / default_groove) can fill
         # gaps.  The parser no longer rejects missing bars/groove here.

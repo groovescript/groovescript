@@ -466,7 +466,7 @@ class Section:
     """A song section that references a groove."""
 
     name: str
-    bars: int | None  # None when using like: or play:
+    bars: int | None  # None when using like: or play: (with play:, an optional length assertion)
     groove: str | None  # None when using like: or play:
     repeat: int | None = None  # Number of times to repeat the phrase (phrase length = groove length)
     fills: list[FillPlacement] = field(default_factory=list)
@@ -481,7 +481,7 @@ class Section:
     dynamic_spans: list[DynamicSpan] = field(default_factory=list)
     tempo: int | None = None  # per-section tempo override
     time_signature: str | None = None  # per-section time signature override
-    play: list[PlayItem] | None = None  # mutually exclusive with bars/groove/repeat
+    play: list[PlayItem] | None = None  # mutually exclusive with groove/repeat; bars: allowed as a length assertion
     # Section-scoped ``crash in`` directive. ``None`` means "not declared on
     # this section"; the compiler may still apply a crash-in if a top-level
     # ``crash in`` directive is in effect (subject to ``no_crash_in``).

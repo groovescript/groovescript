@@ -1219,7 +1219,11 @@ named `fill "name" at bar N` placement.
 
 Use `play:` to compose a section from an **ordered sequence** of grooves,
 one-off bars, and rests. The section's total bar count is the sum of all
-items. `bars:`, `groove:`, and `repeat:` must not appear alongside `play:`.
+items. `groove:` and `repeat:` must not appear alongside `play:`.
+
+A `bars:` line *may* appear alongside `play:` as a redundant, self-documenting
+assertion of the arrangement's length. When present, it must equal the number
+of bars the `play:` block expands to; a mismatch is a compile-time error.
 
 ```groovescript
 section "verse":
