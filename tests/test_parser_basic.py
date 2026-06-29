@@ -98,6 +98,23 @@ def test_parse_multi_bar_groove():
     assert groove.bars[1][0].beats == ["1", "2&", "4"]
 
 
+def test_duplicate_bar_in_groove_errors():
+    """Regression: defining the same bar number twice in a multi-bar groove
+    must error rather than silently discarding the first definition and
+    keeping only the second."""
+    src = """\
+groove "dup":
+    bar 1:
+      BD: 1
+    bar 1:
+      SN: 2
+    bar 2:
+      HH: *8
+"""
+    with pytest.raises(Exception, match="bar 1 is defined more than once"):
+        parse(src)
+
+
 def test_parse_sections():
     song = parse(ARRANGEMENT_SRC)
     assert len(song.sections) == 2

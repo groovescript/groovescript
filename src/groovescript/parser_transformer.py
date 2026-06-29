@@ -349,6 +349,10 @@ class _GrooveScriptTransformer(Transformer):
         # First pass: collect raw bars indexed by bar number.
         raw_bars: dict[int, tuple[list[PatternLine], str | None, int | None]] = {}
         for bar_num, lines, text, like_bar in flat_items:
+            if bar_num in raw_bars:
+                raise ValueError(
+                    f"bar {bar_num} is defined more than once in this groove"
+                )
             raw_bars[bar_num] = (lines, text, like_bar)
         # Second pass: resolve ``like: bar N`` references.
         bars = []
