@@ -470,7 +470,7 @@ def test_compile_named_inline_play_groove_end_to_end():
     assert floortom_bar_indices == {0, 1, 3, 4}
 
 
-def test_parse_play_errors_mixing_bars_and_play():
+def test_parse_play_errors_mixing_groove_and_play():
     src = """\
 groove "beat":
     BD: 1
@@ -478,13 +478,32 @@ groove "beat":
     HH: *8
 
 section "bad":
-  bars: 4
   groove: "beat"
   play:
     groove "beat" x4
 """
     with pytest.raises(Exception, match="mutually exclusive"):
         parse(src)
+
+
+def test_parse_play_allows_matching_bars_line():
+    """A ``bars:`` line alongside ``play:`` is accepted at parse time; the
+    compiler is responsible for checking the count matches the expansion."""
+    src = """\
+groove "beat":
+    BD: 1
+    SN: 2
+    HH: *8
+
+section "ok":
+  bars: 4
+  play:
+    groove "beat" x4
+"""
+    song = parse(src)
+    section = song.sections[0]
+    assert section.bars == 4
+    assert section.play is not None
 
 
 def test_parse_play_errors_mixing_repeat_and_play():

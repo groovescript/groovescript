@@ -1392,7 +1392,7 @@ def test_compile_like_section_inherits_tempo():
 from groovescript.ast_nodes import PlayBar, PlayGroove, PlayRest
 
 
-def _make_play_song(play_items, fills=None, variations=None, tempo=120):
+def _make_play_song(play_items, fills=None, variations=None, tempo=120, bars=None):
     """Minimal Song with a single play: section."""
     return Song(
         metadata=Metadata(tempo=tempo),
@@ -1401,7 +1401,7 @@ def _make_play_song(play_items, fills=None, variations=None, tempo=120):
         sections=[
             Section(
                 name="verse",
-                bars=None,
+                bars=bars,
                 groove=None,
                 play=play_items,
                 fills=fills or [],
@@ -1499,6 +1499,21 @@ def test_compile_play_total_bars_matches_expansion():
     song = _make_play_song(play_items)
     ir = compile_song(song)
     assert len(ir.bars) == 4 + 1 + 2 + 4 + 1
+
+
+def test_compile_play_matching_bars_line_ok():
+    """A ``bars:`` line that matches the play: block expansion compiles cleanly."""
+    song = _make_play_song([PlayGroove("money beat", repeat=4)], bars=4)
+    ir = compile_song(song)
+    assert len(ir.bars) == 4
+
+
+def test_compile_play_mismatched_bars_line_errors():
+    """Regression: a ``bars:`` line that disagrees with the play: block
+    expansion is rejected rather than silently ignored."""
+    song = _make_play_song([PlayGroove("money beat", repeat=4)], bars=5)
+    with pytest.raises(Exception, match="does not match the play"):
+        compile_song(song)
 
 
 def test_compile_play_section_bar_numbers_are_sequential():

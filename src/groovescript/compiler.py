@@ -2944,6 +2944,12 @@ def compile_song(song: Song) -> IRSong:
         total_bars = len(expanded)
         if total_bars == 0:
             raise ValueError(f"Section {section.name!r}: play: block expanded to zero bars")
+        if section.bars is not None and section.bars != total_bars:
+            raise ValueError(
+                f"Section {section.name!r}: bars: {section.bars} does not match the "
+                f"play: block, which expands to {total_bars} "
+                f"bar{'s' if total_bars != 1 else ''}"
+            )
 
         # Resolve labels for nameless placeholder spans. A single nameless
         # span uses ``"<Section> groove"`` (the same default as the
