@@ -1186,6 +1186,48 @@ section "name":
     replace HH with CR at 1
 ```
 
+#### Meter change on a single bar
+
+A variation block can override the time signature of just the bars it
+targets, for a section that's otherwise a consistent meter except for one
+(or a few) odd bars — e.g. a single 2/4 bar dropped into a 4/4 tune:
+
+```groovescript
+section "verse":
+  bars: 8
+  groove: "money beat"
+  variation at bar 5:
+    time_signature: 2/4        # bar 5 only; bars 1-4 and 6-8 stay 4/4
+```
+
+Because the bar's beat grid no longer matches the surrounding groove, the
+bar starts from an **empty canvas** rather than being diffed against the
+groove's pattern — `remove`/`replace`/`modify` are rejected (there's
+nothing pre-existing to target). This makes the common case — a bar of
+silence in the new meter — a single line:
+
+```groovescript
+  variation at bar 5:
+    time_signature: 2/4
+```
+
+renders as a plain rest bar in 2/4. To notate the bar instead, use `add`
+(or `count:`/`notes:` substitution) to build it up from nothing:
+
+```groovescript
+  variation at bar 5:
+    time_signature: 2/4
+    add BD at 1
+    add SN at 2
+```
+
+A meter-changing variation cannot share a bar with a fill or a `break on
+bar` — both assume the section's uniform beat grid, so the compiler
+rejects the combination rather than silently mis-placing them. It's also
+not currently supported inside groove `extend:` bodies or top-level
+`variation "name":` definitions — only inline, section-level `variation at
+bar N:` blocks.
+
 `repeat: N` divides the section's `bars` into N identical phrases and
 emits a `\repeat volta N { … }` block in LilyPond. The phrase length is
 `bars / N`, which must be a whole number; `bars: 4 repeat: 2` produces two

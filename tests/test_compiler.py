@@ -711,6 +711,205 @@ def test_compile_variation_at_multiple_bars():
         assert "CR" not in instruments, f"bar {bar_idx+1} unexpectedly has CR"
 
 
+def test_compile_meter_variation_empty_bar_is_rest_in_new_time_signature():
+    """A bare `time_signature:` variation with no actions renders bar 5 as a
+    whole-bar rest in the new meter, leaving the rest of the section in 4/4."""
+    from groovescript.parser import parse
+
+    src = """\
+groove "basic":
+    HH: *8
+    BD: 1, 3
+    SN: 2, 4
+
+section "verse":
+  bars: 8
+  groove: "basic"
+  variation at bar 5:
+    time_signature: 2/4
+"""
+    song = parse(src)
+    ir = compile_song(song)
+    changed = ir.bars[4]
+    assert changed.time_signature == "2/4"
+    assert changed.is_rest is True
+    assert changed.events == []
+    # Neighbors keep the section's original 4/4 meter and full groove content.
+    assert ir.bars[3].time_signature == "4/4"
+    assert any(e.instrument == "BD" for e in ir.bars[3].events)
+    assert ir.bars[5].time_signature == "4/4"
+    assert any(e.instrument == "BD" for e in ir.bars[5].events)
+
+
+def test_compile_meter_variation_with_add_builds_from_empty_canvas():
+    """`add` actions inside a time_signature variation build the bar from
+    scratch — none of the underlying groove's events (e.g. HH) leak through."""
+    from groovescript.parser import parse
+
+    src = """\
+groove "basic":
+    HH: *8
+    BD: 1, 3
+    SN: 2, 4
+
+section "verse":
+  bars: 8
+  groove: "basic"
+  variation at bar 5:
+    time_signature: 2/4
+    add BD at 1
+    add SN at 2
+"""
+    song = parse(src)
+    ir = compile_song(song)
+    changed = ir.bars[4]
+    assert changed.time_signature == "2/4"
+    assert changed.is_rest is False
+    instruments = {e.instrument for e in changed.events}
+    assert instruments == {"BD", "SN"}
+
+
+def test_compile_meter_variation_rejects_remove_action():
+    """remove/replace/modify have nothing to target on an empty canvas, so a
+    time_signature-carrying variation must reject them at parse time."""
+    from groovescript.errors import GrooveScriptError
+    from groovescript.parser import parse
+
+    src = """\
+groove "basic":
+    HH: *8
+    BD: 1, 3
+    SN: 2, 4
+
+section "verse":
+  bars: 8
+  groove: "basic"
+  variation at bar 5:
+    time_signature: 2/4
+    remove BD at 1
+"""
+    with pytest.raises(GrooveScriptError, match="remove.*cannot be combined with time_signature"):
+        parse(src)
+
+
+def test_compile_meter_variation_rejects_duplicate_time_signature_clause():
+    from groovescript.errors import GrooveScriptError
+    from groovescript.parser import parse
+
+    src = """\
+groove "basic":
+    HH: *8
+    BD: 1, 3
+    SN: 2, 4
+
+section "verse":
+  bars: 8
+  groove: "basic"
+  variation at bar 5:
+    time_signature: 2/4
+    time_signature: 3/4
+"""
+    with pytest.raises(GrooveScriptError, match="specified more than once"):
+        parse(src)
+
+
+def test_compile_meter_variation_conflicts_with_fill_on_same_bar():
+    """A fill assumes the section's uniform beat grid, so it cannot coexist
+    with a meter override on the same bar."""
+    from groovescript.parser import parse
+
+    src = """\
+groove "basic":
+    HH: *8
+    BD: 1, 3
+    SN: 2, 4
+
+section "verse":
+  bars: 8
+  groove: "basic"
+  fill at bar 5:
+    BD: 1
+  variation at bar 5:
+    time_signature: 2/4
+"""
+    song = parse(src)
+    with pytest.raises(ValueError, match="fill cannot be placed"):
+        compile_song(song)
+
+
+def test_compile_meter_variation_conflicts_with_break_spanning_bar():
+    """A break's beat math assumes the section's uniform beat grid, so it
+    cannot span a bar whose meter has been overridden."""
+    from groovescript.parser import parse
+
+    src = """\
+groove "basic":
+    HH: *8
+    BD: 1, 3
+    SN: 2, 4
+
+section "verse":
+  bars: 8
+  groove: "basic"
+  break on bar 4 through bar 5
+  variation at bar 5:
+    time_signature: 2/4
+"""
+    song = parse(src)
+    with pytest.raises(ValueError, match="break.*cannot span"):
+        compile_song(song)
+
+
+def test_compile_meter_variation_in_play_section():
+    """The play: code path applies the same empty-canvas meter override."""
+    from groovescript.parser import parse
+
+    src = """\
+groove "basic":
+    HH: *8
+    BD: 1, 3
+    SN: 2, 4
+
+section "verse":
+  play:
+    groove "basic" x4
+    groove "basic" x1
+  variation at bar 5:
+    time_signature: 2/4
+"""
+    song = parse(src)
+    ir = compile_song(song)
+    changed = ir.bars[4]
+    assert changed.time_signature == "2/4"
+    assert changed.is_rest is True
+    assert changed.events == []
+
+
+def test_compile_named_meter_variation_with_no_actions_is_not_treated_as_reference():
+    """Regression: a *named* time_signature-only block (`variation "x" at bar
+    N: time_signature: 2/4`) has empty `actions`, same as a bodyless named
+    reference (`variation "x" at bar N`). Only `is_reference` distinguishes
+    them — without it this block would incorrectly raise "unknown variation"."""
+    from groovescript.parser import parse
+
+    src = """\
+groove "basic":
+    HH: *8
+    BD: 1, 3
+    SN: 2, 4
+
+section "verse":
+  bars: 8
+  groove: "basic"
+  variation "turnaround" at bar 5:
+    time_signature: 2/4
+"""
+    song = parse(src)
+    ir = compile_song(song)
+    assert ir.bars[4].time_signature == "2/4"
+    assert ir.bars[4].is_rest is True
+
+
 def test_compile_variation_modify_add_flam_attaches_to_existing_hits():
     """``modify add flam to snare at 2`` stamps ``flam`` on the snare hit at
     beat 2, leaving events on other beats and modifiers on other events

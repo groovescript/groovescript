@@ -351,14 +351,25 @@ class VariationAction:
 class Variation:
     """An inline variation block applied to one or more bars within a section.
 
-    When ``actions`` is empty and ``name`` is set, this is a reference to a
-    reusable variation (top-level ``variation "name":`` definition, or
-    built-in variation library entry) that the compiler resolves by name.
+    When ``is_reference`` is True, this is a reference to a reusable
+    variation (top-level ``variation "name":`` definition, or built-in
+    variation library entry) that the compiler resolves by name; ``actions``
+    is always empty in that case. A block with a name but a trailing body
+    (even an empty-actions body, e.g. a ``time_signature``-only block) is
+    NOT a reference — ``is_reference`` is what disambiguates the two, since
+    both can otherwise have empty ``actions``.
     """
 
     name: str | None  # optional human-readable label for the variation
     bars: list[int]  # 1-indexed within the section (was singular ``bar``)
     actions: list[VariationAction]
+    is_reference: bool = False
+    # Meter override for this bar. When set, the bar's notation starts from
+    # an empty canvas (not diffed against the underlying groove pattern) —
+    # see ``_apply_meter_variation`` in compiler.py. Only "add" and
+    # "substitute" actions are meaningful against an empty canvas; "remove"/
+    # "replace"/"modify" are rejected at parse time when this is set.
+    time_signature: str | None = None
 
 
 @dataclass

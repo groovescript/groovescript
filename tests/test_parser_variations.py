@@ -583,3 +583,114 @@ section "s":
     assert action.action == "modify_add"
     assert action.instrument == "HH"
     assert action.beats == "*"
+
+
+def test_parse_variation_time_signature_with_no_actions():
+    """A bare ``time_signature:`` clause parses with an empty actions list —
+    the common case of a single odd-meter bar with no notation."""
+    src = """\
+groove "beat":
+    HH: *8
+
+section "verse":
+  bars: 4
+  groove: "beat"
+  variation at bar 3:
+    time_signature: 2/4
+"""
+    song = parse(src)
+    v = song.sections[0].variations[0]
+    assert v.bars == [3]
+    assert v.time_signature == "2/4"
+    assert v.actions == []
+    assert v.is_reference is False
+
+
+def test_parse_variation_time_signature_with_add_action():
+    src = """\
+groove "beat":
+    HH: *8
+
+section "verse":
+  bars: 4
+  groove: "beat"
+  variation at bar 3:
+    time_signature: 2/4
+    add BD at 1
+"""
+    song = parse(src)
+    v = song.sections[0].variations[0]
+    assert v.time_signature == "2/4"
+    assert len(v.actions) == 1
+    assert v.actions[0].action == "add"
+    assert v.actions[0].instrument == "BD"
+
+
+def test_parse_variation_time_signature_named_block_is_not_a_reference():
+    """A named block with a body (even just ``time_signature:``) is an inline
+    block, not a bodyless reference to a top-level/library variation —
+    ``is_reference`` is what tells the two apart."""
+    src = """\
+groove "beat":
+    HH: *8
+
+section "verse":
+  bars: 4
+  groove: "beat"
+  variation "turnaround" at bar 3:
+    time_signature: 2/4
+"""
+    song = parse(src)
+    v = song.sections[0].variations[0]
+    assert v.name == "turnaround"
+    assert v.is_reference is False
+
+
+def test_parse_variation_reference_still_marked_as_reference():
+    """Regression: the bodyless ``variation "name" at bar N`` reference form
+    must still set ``is_reference=True`` so the compiler resolves it against
+    top-level/library variations instead of treating it as empty content."""
+    src = """\
+variation "lift":
+  add CR at 1
+
+groove "beat":
+    HH: *8
+
+section "verse":
+  bars: 4
+  groove: "beat"
+  variation "lift" at bar 3
+"""
+    song = parse(src)
+    v = song.sections[0].variations[0]
+    assert v.name == "lift"
+    assert v.actions == []
+    assert v.is_reference is True
+
+
+def test_parse_variation_time_signature_rejected_in_extend_block():
+    from groovescript.errors import GrooveScriptError
+
+    src = """\
+groove "beat":
+    HH: *8
+
+groove "extended":
+  extend: "beat"
+  variation at bar 1:
+    time_signature: 2/4
+"""
+    with pytest.raises(GrooveScriptError, match="not supported inside a groove extend"):
+        parse(src)
+
+
+def test_parse_variation_time_signature_rejected_in_top_level_def():
+    from groovescript.errors import GrooveScriptError
+
+    src = """\
+variation "bad":
+  time_signature: 2/4
+"""
+    with pytest.raises(GrooveScriptError, match="not supported inside a top-level reusable"):
+        parse(src)
