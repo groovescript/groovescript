@@ -188,7 +188,8 @@ section_variation_block: "variation" ESCAPED_STRING "at" "bar" bar_number_list "
                        | "variation" ESCAPED_STRING "at" "bar" bar_number_list   -> section_variation_ref
                        | "variation" ESCAPED_STRING "at" "bars" bar_number_list  -> section_variation_ref
 bar_number_list: INT ("," INT)*
-?variation_action: add_action | remove_action | replace_action | substitute_action | modify_action
+?variation_action: add_action | remove_action | replace_action | substitute_action | modify_action | variation_time_signature_action
+variation_time_signature_action: "time_signature" ":" TIME_SIGNATURE
 add_action: "add" add_instr_spec+ "at" variation_target
 add_instr_spec: INSTRUMENT MODIFIER*
 remove_action: "remove" INSTRUMENT+ "at" variation_target

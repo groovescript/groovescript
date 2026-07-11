@@ -2013,6 +2013,66 @@ def _apply_variation_actions(
     return result
 
 
+def _compile_meter_variation_bar(
+    variation: "Variation", absolute_bar: int
+) -> tuple[list[Event], int, bool, int, int]:
+    """Build one bar's events from an empty canvas for a time_signature-carrying variation.
+
+    The bar's meter differs from the section's, so diffing against the
+    surrounding groove's pattern is meaningless (its beat positions don't
+    line up with the new grid). Zero actions produces a plain rest bar in
+    the new meter — the common case of a single odd-meter bar with no
+    notation. ``remove``/``replace``/``modify`` actions are rejected at
+    parse time (see ``section_variation_block`` in parser_transformer.py)
+    since there is nothing pre-existing to target.
+
+    Returns ``(events, subdivision, is_rest, bpb, beat_unit)``.
+    """
+    bar_bpb = _beats_per_bar(variation.time_signature)
+    bar_beat_unit = _beat_unit(variation.time_signature)
+    if not variation.actions:
+        return [], 1, True, bar_bpb, bar_beat_unit
+    bar_subdivision = _infer_variation_subdivision(variation.actions, bar_bpb)
+    events = _apply_variation_actions(
+        [], variation.actions, bar_subdivision, absolute_bar, bar_bpb, bar_beat_unit
+    )
+    return events, bar_subdivision, False, bar_bpb, bar_beat_unit
+
+
+def _validate_meter_variation_conflicts(
+    section_name: str,
+    section_bar_offset: int,
+    has_fill: bool,
+    breaks: list["BreakSpec"],
+    total_bars: int,
+) -> None:
+    """Reject combining a meter-changing variation with a fill or break on the same bar.
+
+    Both fills and breaks assume the bar's beat grid matches the section's
+    uniform beats-per-bar; a bar whose meter has been overridden would
+    silently mis-place their beat math.
+    """
+    bar_number = section_bar_offset + 1
+    if has_fill:
+        raise GrooveScriptError(
+            message=(
+                f"Section {section_name!r} bar {bar_number}: a fill cannot be "
+                f"placed on a bar whose meter is overridden by a "
+                f"time_signature-carrying variation"
+            ),
+        )
+    for spec in breaks:
+        eff_end = spec.effective_end_bar(total_bars)
+        if spec.start_bar <= bar_number <= eff_end:
+            raise GrooveScriptError(
+                message=(
+                    f"Section {section_name!r} bar {bar_number}: a break "
+                    f"cannot span a bar whose meter is overridden by a "
+                    f"time_signature-carrying variation"
+                ),
+            )
+
+
 # Tiebreak order when multiple instruments share the highest hit count in
 # bar 1 of a ``crash in`` section. Cymbals/rides come first in the order
 # drummers conventionally swap to crash at a section start.
@@ -2731,7 +2791,7 @@ def _build_coverage_maps(
         # Resolve name-only references ("variation \"foo\" at bar N" with no
         # body) against the shared variation_map. Inline blocks already carry
         # their own actions and are used verbatim.
-        if not variation.actions and variation.name is not None:
+        if variation.is_reference:
             if variation_map is None or variation.name not in variation_map:
                 raise GrooveScriptError(
                     message=(
@@ -2899,7 +2959,7 @@ def compile_song(song: Song) -> IRSong:
     referenced_variations: set[str] = set()
     for section in sections:
         for variation in section.variations:
-            if not variation.actions and variation.name is not None:
+            if variation.is_reference:
                 referenced_variations.add(variation.name)
     if referenced_variations:
         from .library import get_library_variations
@@ -3035,6 +3095,7 @@ def compile_song(song: Song) -> IRSong:
             ]
             bar_subdivision = base_subdivision
             bar_beat_tuplets: list[object] = list(base_beat_tuplets)
+            bar_bpb, bar_beat_unit, bar_ts = bpb, beat_unit, effective_ts
 
             if section_bar_offset in fill_coverage:
                 fill_bar, start_pos = fill_coverage[section_bar_offset]
@@ -3051,11 +3112,24 @@ def compile_song(song: Song) -> IRSong:
 
             if section_bar_offset in variation_coverage:
                 variation = variation_coverage[section_bar_offset]
-                var_subdivision = _infer_variation_subdivision(variation.actions, bpb)
-                bar_subdivision = max(bar_subdivision, var_subdivision)
-                arranged_events = _apply_variation_actions(
-                    arranged_events, variation.actions, bar_subdivision, absolute_bar, bpb, beat_unit
-                )
+                if variation.time_signature is not None:
+                    _validate_meter_variation_conflicts(
+                        section.name, section_bar_offset,
+                        section_bar_offset in fill_coverage, section.breaks, total_bars,
+                    )
+                    arranged_events, bar_subdivision, is_rest, bar_bpb, bar_beat_unit = (
+                        _compile_meter_variation_bar(variation, absolute_bar)
+                    )
+                    bar_ts = variation.time_signature
+                    bar_beat_tuplets = []
+                    phrase_position = None
+                    phrase_length = None
+                else:
+                    var_subdivision = _infer_variation_subdivision(variation.actions, bpb)
+                    bar_subdivision = max(bar_subdivision, var_subdivision)
+                    arranged_events = _apply_variation_actions(
+                        arranged_events, variation.actions, bar_subdivision, absolute_bar, bpb, beat_unit
+                    )
 
             if (
                 section.crash_in is not None
@@ -3068,19 +3142,19 @@ def compile_song(song: Song) -> IRSong:
             for break_spec in section.breaks:
                 arranged_events = _apply_break(arranged_events, break_spec, section_bar_offset, bpb, total_bars)
 
-            bar_cues = _collect_bar_cues(section, section_bar_offset, bar_subdivision, bpb)
-            bar_placeholders = _collect_bar_placeholders(section, section_bar_offset, bar_subdivision, bpb)
+            bar_cues = _collect_bar_cues(section, section_bar_offset, bar_subdivision, bar_bpb)
+            bar_placeholders = _collect_bar_placeholders(section, section_bar_offset, bar_subdivision, bar_bpb)
 
             # Post-arrangement buzz validation: buzz may have arrived via
             # a fill overlay or variation add/replace; re-check overlap
             # against the final event list for this bar.
             context = f"section {section.name!r} bar {section_bar_offset + 1}"
             for event in arranged_events:
-                _validate_buzz_event(event, bpb, context)
+                _validate_buzz_event(event, bar_bpb, context)
             _validate_buzz_overlap(arranged_events, context)
             _validate_grace_uniqueness(arranged_events, context)
             _validate_instrument_mutex(arranged_events, context)
-            _validate_tuplet_grid_alignment(arranged_events, bar_beat_tuplets, bpb, context)
+            _validate_tuplet_grid_alignment(arranged_events, bar_beat_tuplets, bar_bpb, context)
 
             new_bars.append(
                 IRBar(
@@ -3092,7 +3166,7 @@ def compile_song(song: Song) -> IRSong:
                     cues=bar_cues,
                     fill_placeholders=bar_placeholders,
                     tempo=effective_tempo,
-                    time_signature=effective_ts,
+                    time_signature=bar_ts,
                     is_rest=is_rest,
                     dynamic_starts=dyn_starts.get(section_bar_offset, []),
                     dynamic_stops=dyn_stops.get(section_bar_offset, []),
@@ -3258,13 +3332,31 @@ def compile_song(song: Song) -> IRSong:
             else:
                 bar_subdivision = groove_bar_subdivision
 
+            bar_bpb, bar_beat_unit, bar_ts = bpb, beat_unit, effective_ts
+            bar_phrase_position, bar_phrase_length = groove_bar_number, groove.bars
+            is_rest = False
+            is_meter_override = False
+
             if section_bar_offset in variation_coverage:
                 variation = variation_coverage[section_bar_offset]
-                var_subdivision = _infer_variation_subdivision(variation.actions, bpb)
-                bar_subdivision = max(bar_subdivision, var_subdivision)
-                arranged_events = _apply_variation_actions(
-                    arranged_events, variation.actions, bar_subdivision, absolute_bar, bpb, beat_unit
-                )
+                if variation.time_signature is not None:
+                    _validate_meter_variation_conflicts(
+                        section.name, section_bar_offset,
+                        section_bar_offset in fill_coverage, section.breaks, section.bars,
+                    )
+                    arranged_events, bar_subdivision, is_rest, bar_bpb, bar_beat_unit = (
+                        _compile_meter_variation_bar(variation, absolute_bar)
+                    )
+                    bar_ts = variation.time_signature
+                    groove_bar_tuplets = []
+                    bar_phrase_position, bar_phrase_length = None, None
+                    is_meter_override = True
+                else:
+                    var_subdivision = _infer_variation_subdivision(variation.actions, bpb)
+                    bar_subdivision = max(bar_subdivision, var_subdivision)
+                    arranged_events = _apply_variation_actions(
+                        arranged_events, variation.actions, bar_subdivision, absolute_bar, bpb, beat_unit
+                    )
 
             if (
                 section.crash_in is not None
@@ -3276,11 +3368,13 @@ def compile_song(song: Song) -> IRSong:
             for break_spec in section.breaks:
                 arranged_events = _apply_break(arranged_events, break_spec, section_bar_offset, bpb, section.bars)
 
-            bar_cues = _collect_bar_cues(section, section_bar_offset, bar_subdivision, bpb)
-            bar_placeholders = _collect_bar_placeholders(section, section_bar_offset, bar_subdivision, bpb)
+            bar_cues = _collect_bar_cues(section, section_bar_offset, bar_subdivision, bar_bpb)
+            bar_placeholders = _collect_bar_placeholders(section, section_bar_offset, bar_subdivision, bar_bpb)
 
-            # Bar-level text annotation from groove definition (loops with groove)
-            bar_text = groove_bar_texts.get(groove_bar_number)
+            # Bar-level text annotation from groove definition (loops with groove).
+            # A meter-overridden bar discards the underlying groove bar entirely,
+            # so its text annotation (if any) no longer applies.
+            bar_text = None if is_meter_override else groove_bar_texts.get(groove_bar_number)
 
             # A repeat block starts every phrase_length bars if repeat_times is set.
             is_repeat_start = (repeat_times and (section_bar_offset % phrase_length == 0))
@@ -3288,11 +3382,11 @@ def compile_song(song: Song) -> IRSong:
 
             context = f"section {section.name!r} bar {section_bar_offset + 1}"
             for event in arranged_events:
-                _validate_buzz_event(event, bpb, context)
+                _validate_buzz_event(event, bar_bpb, context)
             _validate_buzz_overlap(arranged_events, context)
             _validate_grace_uniqueness(arranged_events, context)
             _validate_instrument_mutex(arranged_events, context)
-            _validate_tuplet_grid_alignment(arranged_events, groove_bar_tuplets, bpb, context)
+            _validate_tuplet_grid_alignment(arranged_events, groove_bar_tuplets, bar_bpb, context)
 
             new_bars.append(
                 IRBar(
@@ -3307,11 +3401,12 @@ def compile_song(song: Song) -> IRSong:
                     fill_placeholders=bar_placeholders,
                     bar_text=bar_text,
                     tempo=effective_tempo,
-                    time_signature=effective_ts,
+                    time_signature=bar_ts,
+                    is_rest=is_rest,
                     dynamic_starts=dyn_starts.get(section_bar_offset, []),
                     dynamic_stops=dyn_stops.get(section_bar_offset, []),
-                    phrase_position=groove_bar_number,
-                    phrase_length=groove.bars,
+                    phrase_position=bar_phrase_position,
+                    phrase_length=bar_phrase_length,
                     beat_tuplets=list(groove_bar_tuplets),
                 )
             )

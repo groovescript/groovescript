@@ -320,7 +320,20 @@ class _GrooveScriptTransformer(Transformer):
                 actions.extend(item)
             elif isinstance(item, VariationAction):
                 actions.append(item)
+            elif isinstance(item, tuple) and item[0] == "__time_signature__":
+                raise GrooveScriptError(
+                    message=(
+                        "time_signature is not supported inside a groove "
+                        "extend: variation block; use a section-level "
+                        "`variation at bar N:` block instead"
+                    ),
+                    line=item[2],
+                )
         return GrooveExtendVariation(bars=bar_nums, actions=actions)
+
+    def variation_time_signature_action(self, items):
+        token = items[0]
+        return ("__time_signature__", str(token), token.line)
 
     def pattern_content(self, items):
         # Each item is either:
@@ -1198,6 +1211,15 @@ class _GrooveScriptTransformer(Transformer):
                 actions.extend(item)
             elif isinstance(item, VariationAction):
                 actions.append(item)
+            elif isinstance(item, tuple) and item[0] == "__time_signature__":
+                raise GrooveScriptError(
+                    message=(
+                        "time_signature is not supported inside a top-level "
+                        "reusable `variation \"name\":` definition; use a "
+                        "section-level `variation at bar N:` block instead"
+                    ),
+                    line=item[2],
+                )
         return VariationDef(name=name, actions=actions)
 
     def section_variation_ref(self, items):
@@ -1205,7 +1227,7 @@ class _GrooveScriptTransformer(Transformer):
         # the compiler from the top-level variation defs plus library.
         name = _ast.literal_eval(str(items[0]))
         bar_nums = items[1]  # list[int] from bar_number_list
-        return ("variation", Variation(name=name, bars=bar_nums, actions=[]))
+        return ("variation", Variation(name=name, bars=bar_nums, actions=[], is_reference=True))
 
     def section_variation_block(self, items):
         # Four alternatives (with/without name × bar/bars):
@@ -1224,12 +1246,43 @@ class _GrooveScriptTransformer(Transformer):
         # instrument in a multi-instrument form). Flatten them while passing
         # through substitute_action, which returns a single VariationAction.
         actions: list[VariationAction] = []
+        time_signature: str | None = None
+        ts_line: int | None = None
+        bar_list_str = ", ".join(str(b) for b in bar_nums)
         for item in raw_actions:
             if isinstance(item, list) and item and isinstance(item[0], VariationAction):
                 actions.extend(item)
             elif isinstance(item, VariationAction):
                 actions.append(item)
-        return ("variation", Variation(name=name, bars=bar_nums, actions=actions))
+            elif isinstance(item, tuple) and item[0] == "__time_signature__":
+                if time_signature is not None:
+                    raise GrooveScriptError(
+                        message=(
+                            f"variation at bar {bar_list_str}: time_signature "
+                            f"specified more than once"
+                        ),
+                        line=item[2],
+                    )
+                time_signature = item[1]
+                ts_line = item[2]
+        if time_signature is not None:
+            for action in actions:
+                if action.action in ("remove", "replace", "modify_add", "modify_remove"):
+                    verb = action.action.replace("_", " ")
+                    raise GrooveScriptError(
+                        message=(
+                            f"variation at bar {bar_list_str}: '{verb}' cannot be "
+                            f"combined with time_signature — a meter-changing "
+                            f"bar starts empty, so there is nothing to "
+                            f"{verb.split()[0]}. Use 'add' or 'substitute' "
+                            f"instead."
+                        ),
+                        line=action.line or ts_line,
+                    )
+        return (
+            "variation",
+            Variation(name=name, bars=bar_nums, actions=actions, time_signature=time_signature),
+        )
 
     def add_instr_spec(self, items):
         # items: [INSTRUMENT, *MODIFIER tokens]
