@@ -323,7 +323,9 @@ def test_compile_song_fill_uses_max_subdivision():
     assert bar4.subdivision == 16  # max(8, 16)
 
 
-def test_compile_song_rejects_unknown_fill():
+def test_compile_song_promotes_unknown_fill_to_placeholder():
+    """Regression: an undefined fill reference should auto-promote to a fill
+    placeholder label rather than raising an error."""
     song = Song(
         metadata=Metadata(),
         grooves=[MONEY_BEAT],
@@ -337,8 +339,10 @@ def test_compile_song_rejects_unknown_fill():
             )
         ],
     )
-    with pytest.raises(ValueError, match="unknown fill"):
-        compile_song(song)
+    ir = compile_song(song)
+    bar = ir.bars[0]
+    # The groove events are preserved; a placeholder label appears instead of real fill notes.
+    assert any(label == "nonexistent" for _, label in bar.fill_placeholders)
 
 
 def test_compile_song_multi_bar_fill():

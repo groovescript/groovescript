@@ -270,11 +270,9 @@ def test_library_fill_flam_fill_has_flams():
     assert all(e.instrument == "SN" for e in flammed)
 
 
-def test_library_fill_unknown_still_errors():
-    """A reference to a fill that is neither user-defined nor in the library
-    must still raise a clear unknown-fill error."""
-    import pytest
-
+def test_library_fill_unknown_promotes_to_placeholder():
+    """An undefined fill (not user-defined, not in library) auto-promotes to a
+    fill placeholder label instead of erroring."""
     source = """
     section "verse":
         bars: 1
@@ -282,8 +280,9 @@ def test_library_fill_unknown_still_errors():
         fill "definitely-not-a-real-fill" at bar 1
     """
     song = parse(source)
-    with pytest.raises(ValueError, match="unknown fill"):
-        compile_song(song)
+    ir = compile_song(song)
+    bar = ir.bars[0]
+    assert any(label == "definitely-not-a-real-fill" for _, label in bar.fill_placeholders)
 
 
 # ----- Fill extension tests -----
