@@ -2758,23 +2758,28 @@ def _build_coverage_maps(
     bpb: int,
     beat_unit: int,
     variation_map: dict[str, VariationDef] | None = None,
-) -> tuple[dict[int, tuple["IRFillBar", Fraction]], dict[int, Variation]]:
+) -> tuple[dict[int, tuple["IRFillBar", Fraction]], dict[int, Variation], dict[int, list[tuple[Fraction, str]]]]:
     """Build per-bar fill and variation coverage maps for a section.
 
-    Returns ``(fill_coverage, variation_coverage)`` keyed by
+    Returns ``(fill_coverage, variation_coverage, placeholder_fills)`` keyed by
     section-bar offset (0-indexed). ``total_bars`` bounds fill coverage
     so multi-bar fills that extend past the section are truncated.
 
     ``variation_map`` is consulted to resolve named references
     (``variation "name" at bar N`` with no body) to their action list.
+
+    ``placeholder_fills`` collects undefined fill references auto-promoted to
+    placeholder labels; callers merge these into bar fill_placeholders.
     """
     fill_coverage: dict[int, tuple[IRFillBar, Fraction]] = {}
+    placeholder_fills: dict[int, list[tuple[Fraction, str]]] = {}
     for placement in section.fills:
         fill_def = fill_map.get(placement.fill_name)
         if fill_def is None:
-            raise ValueError(
-                f"Section {section.name!r} references unknown fill {placement.fill_name!r}"
-            )
+            bar_offset = placement.bar - 1
+            if bar_offset < total_bars:
+                placeholder_fills.setdefault(bar_offset, []).append((Fraction(0), placement.fill_name))
+            continue
         bar_offset = placement.bar - 1
         for fill_bar_index, fill_bar in enumerate(fill_def.bars):
             offset = bar_offset + fill_bar_index
@@ -2810,7 +2815,7 @@ def _build_coverage_maps(
         for vbar in variation.bars:
             variation_coverage[vbar - 1] = variation
 
-    return fill_coverage, variation_coverage
+    return fill_coverage, variation_coverage, placeholder_fills
 
 
 def compile_song(song: Song) -> IRSong:
@@ -3030,7 +3035,7 @@ def compile_song(song: Song) -> IRSong:
             }
 
         ir_section = IRSection(name=section.name, start_bar=start_bar_number, bars=total_bars, tempo=effective_tempo)
-        fill_coverage, variation_coverage = _build_coverage_maps(section, fill_map, total_bars, bpb, beat_unit, variation_map)
+        fill_coverage, variation_coverage, placeholder_fill_coverage = _build_coverage_maps(section, fill_map, total_bars, bpb, beat_unit, variation_map)
         all_spans = _collect_section_dynamic_spans(section, None, fill_map, total_bars)
         dyn_starts, dyn_stops = _resolve_dynamic_spans(all_spans, total_bars, bpb)
 
@@ -3144,6 +3149,7 @@ def compile_song(song: Song) -> IRSong:
 
             bar_cues = _collect_bar_cues(section, section_bar_offset, bar_subdivision, bar_bpb)
             bar_placeholders = _collect_bar_placeholders(section, section_bar_offset, bar_subdivision, bar_bpb)
+            bar_placeholders = bar_placeholders + placeholder_fill_coverage.get(section_bar_offset, [])
 
             # Post-arrangement buzz validation: buzz may have arrived via
             # a fill overlay or variation add/replace; re-check overlap
@@ -3274,7 +3280,7 @@ def compile_song(song: Song) -> IRSong:
                 )
         phrase_length = (section.bars // repeat_times) if repeat_times else None
 
-        fill_coverage, variation_coverage = _build_coverage_maps(section, fill_map, section.bars, bpb, beat_unit, variation_map)
+        fill_coverage, variation_coverage, placeholder_fill_coverage = _build_coverage_maps(section, fill_map, section.bars, bpb, beat_unit, variation_map)
 
         # Pre-bucket groove events by their groove-bar number. The tiling
         # loop below re-visits each groove bar ``section.bars / groove.bars``
@@ -3370,6 +3376,7 @@ def compile_song(song: Song) -> IRSong:
 
             bar_cues = _collect_bar_cues(section, section_bar_offset, bar_subdivision, bar_bpb)
             bar_placeholders = _collect_bar_placeholders(section, section_bar_offset, bar_subdivision, bar_bpb)
+            bar_placeholders = bar_placeholders + placeholder_fill_coverage.get(section_bar_offset, [])
 
             # Bar-level text annotation from groove definition (loops with groove).
             # A meter-overridden bar discards the underlying groove bar entirely,
