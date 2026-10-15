@@ -12,6 +12,7 @@ from .ast_nodes import (
     Fill,
     FillBar,
     FillPlaceholder,
+    FillPlacement,
     Groove,
     InheritSpec,
     InstrumentHit,
@@ -2751,6 +2752,52 @@ def _resolve_fill_extends(fill_map: dict[str, Fill]) -> None:
         _resolve(fname)
 
 
+def _format_bar_position(position: Fraction, beats_per_bar: int) -> str:
+    """Render a bar-relative position as a count label (``2``, ``2e``, ``2&``, ``2a``).
+
+    Positions that don't land on a 16th fall back to ``beat N + k/m``.
+    """
+    beat_offset = position * beats_per_bar
+    beat_number = int(beat_offset) + 1
+    remainder = beat_offset - int(beat_offset)
+    suffixes = {Fraction(0): "", Fraction(1, 4): "e", Fraction(1, 2): "&", Fraction(3, 4): "a"}
+    if remainder in suffixes:
+        return f"{beat_number}{suffixes[remainder]}"
+    return f"{beat_number} + {remainder}"
+
+
+def _validate_fill_starts_at_placement(
+    fill_bar: "IRFillBar",
+    start_pos: Fraction,
+    placement: FillPlacement,
+    section_name: str,
+    beats_per_bar: int,
+) -> None:
+    """Reject a ``fill at bar N beat X`` whose content begins before beat X.
+
+    The overlay only clears groove events from ``start_pos`` onward, so a
+    fill hit before it would silently layer on top of the groove (and often
+    surface later as a confusing instrument-mutex error).
+    """
+    early = [e for e in fill_bar.events if e.beat_position < start_pos]
+    if not early:
+        return
+    first = min(early, key=lambda e: e.beat_position)
+    first_label = _format_bar_position(first.beat_position, beats_per_bar)
+    raise GrooveScriptError(
+        message=(
+            f"fill at bar {placement.bar} beat {placement.beat} in section "
+            f"{section_name!r} has a {first.instrument} hit at {first_label}, "
+            f"before the fill's start beat {placement.beat}"
+        ),
+        line=first.source_line,
+        hint=(
+            f"start the fill where its content starts: "
+            f"`fill at bar {placement.bar} beat {first_label}`"
+        ),
+    )
+
+
 def _build_coverage_maps(
     section: Section,
     fill_map: dict[str, Fill],
@@ -2787,6 +2834,9 @@ def _build_coverage_maps(
                 compiled_bar = compile_fill_bar(fill_bar, bpb, beat_unit)
                 if fill_bar_index == 0 and placement.beat is not None:
                     start_pos = _beat_label_to_fraction(placement.beat, compiled_bar.subdivision, bpb)
+                    _validate_fill_starts_at_placement(
+                        compiled_bar, start_pos, placement, section.name, bpb
+                    )
                 else:
                     start_pos = Fraction(0)
                 fill_coverage[offset] = (compiled_bar, start_pos)

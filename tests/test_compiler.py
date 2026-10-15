@@ -63,6 +63,55 @@ section "intro":
     assert early_hh
 
 
+def test_fill_content_before_placement_beat_is_rejected():
+    """Regression test: a fill whose count starts before its ``beat`` anchor
+    used to leave the groove intact under the early hits, surfacing as a
+    confusing HH/OH mutex error instead of pointing at the misplaced anchor."""
+    from groovescript.errors import GrooveScriptError
+    from groovescript.parser import parse
+    src = """\
+groove "beat":
+    BD: 1, 3
+    SN: 2, 4
+    HH: *8
+
+section "chorus":
+  bars: 2
+  groove: "beat"
+  fill at bar 2 beat 3:
+    count: "2and 3 a 4"
+    notes: "openhat midtom snare ghost lowtom"
+"""
+    with pytest.raises(GrooveScriptError) as exc_info:
+        compile_song(parse(src))
+    err = exc_info.value
+    assert "OH hit at 2&, before the fill's start beat 3" in err.message
+    assert "section 'chorus'" in err.message
+    assert "`fill at bar 2 beat 2&`" in err.hint
+
+
+def test_fill_content_at_placement_beat_is_accepted():
+    """A fill anchored where its count starts compiles and replaces the
+    groove from that point on."""
+    from groovescript.parser import parse
+    src = """\
+groove "beat":
+    BD: 1, 3
+    SN: 2, 4
+    HH: *8
+
+section "chorus":
+  bars: 2
+  groove: "beat"
+  fill at bar 2 beat 2and:
+    count: "2and 3 a 4"
+    notes: "openhat midtom snare ghost lowtom"
+"""
+    bar2 = compile_song(parse(src)).bars[1]
+    at_2and = {e.instrument for e in bar2.events if e.beat_position == Fraction(3, 8)}
+    assert at_2and == {"OH"}
+
+
 def test_compile_returns_ir_groove():
     ir = compile_groove(MONEY_BEAT)
     assert isinstance(ir, IRGroove)

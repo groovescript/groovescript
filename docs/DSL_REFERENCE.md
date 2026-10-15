@@ -1186,6 +1186,11 @@ section "name":
     replace HH with CR at 1
 ```
 
+A fill placed `at bar N beat X` replaces the groove from beat X onward;
+the groove before X is kept. The fill's content must therefore not start
+earlier than X — e.g. a fill counted `"2and 3 a 4"` needs `beat 2and`,
+not `beat 3`. A fill with hits before its start beat is a compile error.
+
 #### Meter change on a single bar
 
 A variation block can override the time signature of just the bars it
