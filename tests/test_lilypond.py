@@ -2032,3 +2032,23 @@ section "verse":
     # No swing glyph artifacts either.
     assert "c'8[ c'8]" not in ly
     assert "\\tuplet 3/2" not in ly
+
+
+def test_fill_replacing_triplet_groove_uses_fill_grid():
+    """Regression: a fill that replaces every hit of a triplet-grid groove
+    bar (e.g. a one-beat crash fill over the library "shuffle") kept the
+    groove's 12-slot grid with no tuplet annotations, so the emitter wrote
+    invalid durations like ``r6.`` that LilyPond rejects."""
+    src = (
+        'fill "crash in":\n'
+        '  count "4":\n'
+        "    4: BD, CR\n"
+        'section "shuffle":\n'
+        "  bars: 2\n"
+        '  groove: "shuffle"\n'
+        '  fill "crash in" at bar 2\n'
+    )
+    ir = compile_song(parse(src))
+    ly = emit_lilypond(ir)
+    assert "r4 r4 r4 <bd cymc>4 |" in ly
+    assert "6." not in ly.split("\\drummode", 1)[1]

@@ -1705,6 +1705,25 @@ def _merge_fill_beat_tuplets(
     return merged
 
 
+def _fill_bar_subdivision(
+    groove_subdivision: int,
+    fill_bar: IRFillBar,
+    start_position: Fraction,
+    groove_events: list[Event],
+) -> int:
+    """Slot grid for a bar after a fill overlay.
+
+    Normally the larger of the groove's and the fill's grids. But when the
+    fill replaces every groove hit, the groove's grid no longer describes
+    anything in the bar and must not leak through: a shuffle's 12-slot
+    triplet grid under a straight one-beat fill would otherwise be emitted
+    as non-power-of-two durations (``r6.``) with no tuplet bracket.
+    """
+    if any(e.beat_position < start_position for e in groove_events):
+        return max(groove_subdivision, fill_bar.subdivision)
+    return fill_bar.subdivision
+
+
 def _apply_fill_overlay(
     groove_events: list[Event],
     fill_bar: IRFillBar,
@@ -3195,7 +3214,9 @@ def compile_song(song: Song) -> IRSong:
                     f"section {section.name!r} bar {section_bar_offset + 1}",
                 )
                 arranged_events = _apply_fill_overlay(arranged_events, fill_bar, start_pos, absolute_bar)
-                bar_subdivision = max(bar_subdivision, fill_bar.subdivision)
+                bar_subdivision = _fill_bar_subdivision(
+                    bar_subdivision, fill_bar, start_pos, template_events
+                )
                 bar_beat_tuplets = _merge_fill_beat_tuplets(
                     bar_beat_tuplets, fill_bar.beat_tuplets, start_pos, bpb
                 )
@@ -3415,7 +3436,9 @@ def compile_song(song: Song) -> IRSong:
                     f"section {section.name!r} bar {section_bar_offset + 1}",
                 )
                 arranged_events = _apply_fill_overlay(arranged_events, fill_bar, start_pos, absolute_bar)
-                bar_subdivision = max(groove_bar_subdivision, fill_bar.subdivision)
+                bar_subdivision = _fill_bar_subdivision(
+                    groove_bar_subdivision, fill_bar, start_pos, template_events
+                )
                 # Merge fill tuplet annotations: a fill placed at beat N onward
                 # replaces the groove's annotation for those beats.
                 groove_bar_tuplets = _merge_fill_beat_tuplets(

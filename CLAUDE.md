@@ -96,6 +96,8 @@ After implementing a change that affects compiled output, always:
 5. Update the Vim syntax plugin (`editors/vim/syntax/groovescript.vim`) and the web editor highlighter (`editors/web/gs-mode.js`) if new instruments, modifiers, or keywords were added
 6. Commit `.gs`, `.ly`, `.pdf`, updated docs, and code changes together
 
+`tests/test_fixtures_fresh.py` fails whenever a committed `.ly` under `tests/fixtures/`, `templates/` or `charts/` no longer matches the compiler's output (with the CLI's default `--compact`). Recompile and re-render the PDF rather than editing the test.
+
 ## Regression tests for bug fixes
 
 When fixing a bug, always add a regression test that would have caught the bug
