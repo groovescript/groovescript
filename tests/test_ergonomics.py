@@ -908,3 +908,25 @@ section "s":
         assert len(sn_events) == 2
         for e in sn_events:
             assert "accent" in e.modifiers
+
+    def test_compile_extend_add_finer_than_base_subdivision(self):
+        """Regression: ``add BD at 2a`` in an extend body on an 8th-note base
+        must widen the bar to 16ths. Previously the action ran on the base's
+        8th grid and the 2a hit was silently dropped from the output."""
+        song = parse("""\
+groove "outro":
+  extend: "rock"
+  add BD at 2a
+
+section "s":
+  bars: 1
+  groove: "outro"
+""")
+        ir = compile_song(song)
+        bar = ir.bars[0]
+        assert bar.subdivision == 16
+        bd_positions = sorted(
+            e.beat_position for e in bar.events if e.instrument == "BD"
+        )
+        assert bd_positions == [Fraction(0), Fraction(7, 16), Fraction(1, 2)]
+        assert "hh16 bd16" in emit_lilypond(ir)

@@ -1488,7 +1488,18 @@ def compile_groove(
             events_by_bar.setdefault(bar_number, [])
 
         for bar_number in sorted(events_by_bar):
+            # Widen the bar's grid to fit the actions' beat labels first (as
+            # section variations do), so e.g. ``add BD at 2a`` on an 8th-note
+            # base lands on a 16th slot instead of being silently dropped.
             subdivision = per_bar_subdivisions[bar_number - 1]
+            for ev in groove.extend_variations:
+                if ev.bars is not None and bar_number not in ev.bars:
+                    continue
+                subdivision = max(
+                    subdivision,
+                    _infer_variation_subdivision(ev.actions, beats_per_bar),
+                )
+            per_bar_subdivisions[bar_number - 1] = subdivision
             bar_events = events_by_bar[bar_number]
             for ev in groove.extend_variations:
                 if ev.bars is not None and bar_number not in ev.bars:
