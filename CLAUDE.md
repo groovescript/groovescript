@@ -16,6 +16,7 @@ src/groovescript/
   compiler.py         # AST -> IR (flat event list per bar)
   lilypond.py         # IR -> LilyPond source
   midi.py             # IR -> MIDI file bytes (Format 1, GM drums on channel 10)
+  lyrics.py           # Implied-duration rhythm for timed lyrics (shared by emitters)
   lilypond_template.ly # Static LilyPond boilerplate (loaded by lilypond.py)
   grammar.lark        # Lark EBNF grammar
   groove_library.gs    # Built-in groove library (parsed at runtime)
@@ -52,9 +53,10 @@ charts/               # Real (non-test) charts: .gs source + compiled .ly + .pdf
 - A section is either classic (`bars:` + `groove:`) or play-list (`play:`) -- `groove:`/`repeat:` are mutually exclusive with `play:`. A `bars:` line may accompany `play:` as a redundant length assertion; the compiler errors if it doesn't equal the play block's expanded bar count
 - Section `like "parent"` inherits the basic arrangement only (scalars, inline grooves, section-level dynamic spans, crash-in flag). `like "parent" with fills|variations|cues` opts into additional categories. Categories are order-insensitive, commas optional, duplicates rejected. Scalar fields use inheritor's value when set, list fields concatenate. Dynamic spans defined inside a groove or fill travel with that groove/fill wherever it's referenced
 - Placeholder grooves are TBD slots that render as empty bars with a boxed rehearsal label and emit silence in MIDI/MusicXML. Three forms: top-level `groove placeholder "name"` (no body, no colon), section sole `groove: placeholder ["label"]`, and `play:` items `groove placeholder ["label"] xN`. Inside `play:` only, an undefined groove name auto-promotes to a named placeholder using the reference name as label; outside `play:`, an undefined name remains an error. Nameless placeholder spans within one section get numeric suffixes (`"<Section> groove 1"`, `"<Section> groove 2"`, …) only when there's more than one. Variations targeting a placeholder bar are an error; `extend:` cannot reference a placeholder. Fills and cues overlay placeholder bars normally
+- Timed lyrics: section `lyrics:` block of `bar N: "<count>" "<words>"` entries (count uses the fill count tokenizer; `-` hyphenates, `~` joins words, `_` is reserved). Onsets only: emitters show each syllable lasting until the next onset or the bar line (`lyrics.py`), and lyric onsets never affect drum subdivision. Resolved onto `IRBar.lyrics` after arrangement by `_attach_section_lyrics`; `bar 0:` is a pickup into the previous section's last bar. `like … with lyrics` merges keyed by bar (inheritor's `bar N:` replaces the parent's), the one exception to "list fields concatenate". Bars with lyrics never compact, and an explicit `repeat:` block with lyrics is written out in full. LilyPond style is `staff` (RhythmicStaff above the drums) or `line` (NullVoice + Lyrics below), chosen by `--lyrics-style` > `lyrics_style:` metadata > `staff`; the vocal stream follows the drum staff's printed bars (`_group_bars(printed=…)`) so repeats and multi-bar rests stay aligned. MIDI adds a lyric-meta track, MusicXML a "Voice" part
 - Errors raise `GrooveScriptError` with Rust-style diagnostics; CLI catches and renders, no tracebacks
 - Preprocessors (`_preprocess_commas`, `_quote_unquoted_count_notes`) run before Lark sees the text
-- LilyPond boilerplate lives in `lilypond_template.ly` with `{{HEADER}}`, `{{SCORE_HEADER}}`, `{{SCORE_PRELUDE}}`, `{{BODY}}` placeholders
+- LilyPond boilerplate lives in `lilypond_template.ly` with `{{HEADER}}`, `{{SCORE_HEADER}}`, `{{SCORE_PRELUDE}}`, `{{BODY}}` placeholders, plus `{{VOCAL_STAFF}}` / `{{DRUM_STAFF_OPEN}}` / `{{DRUM_STAFF_CLOSE}}`, which stay empty unless the song has lyrics
 - DSL version: bump `CURRENT_DSL_VERSION` in `parser.py` on breaking changes
 
 ## Commands
@@ -64,6 +66,7 @@ uv run pytest                                          # Run tests
 uv run groovescript compile input.gs -o output.ly      # Compile .gs -> .ly
 uv run groovescript compile input.gs -o output.ly --watch  # Re-compile on save
 uv run groovescript compile input.gs -o output.ly --no-compact  # Disable default collapsing of identical bars across implicit phrase boundaries
+uv run groovescript compile input.gs -o output.ly --lyrics-style line  # Timed lyrics style: staff (default) | line | off
 uv run groovescript lint input.gs                      # Lint (parse+compile, no output)
 uv run groovescript lint --style input.gs              # Also report stylistic warnings
 uv run groovescript lint --watch input.gs              # Re-lint on save
@@ -90,7 +93,7 @@ After implementing a change that affects compiled output, always:
    `uv run groovescript compile tests/fixtures/<name>.gs -o tests/fixtures/<name>.ly`
 3. Render it to PDF: `lilypond -o tests/fixtures/<name> tests/fixtures/<name>.ly`
 4. Update relevant docs if user-visible behavior changed (`README.md`, `CLAUDE.md`)
-5. Update the Vim syntax plugin (`editors/vim/syntax/groovescript.vim`) if new instruments, modifiers, or keywords were added
+5. Update the Vim syntax plugin (`editors/vim/syntax/groovescript.vim`) and the web editor highlighter (`editors/web/gs-mode.js`) if new instruments, modifiers, or keywords were added
 6. Commit `.gs`, `.ly`, `.pdf`, updated docs, and code changes together
 
 ## Regression tests for bug fixes

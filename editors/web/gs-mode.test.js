@@ -225,14 +225,14 @@ test('metadata keyword', () => {
 });
 
 test('metadata field keywords', () => {
-  for (const kw of ['title', 'tempo', 'time_signature', 'dsl_version']) {
+  for (const kw of ['title', 'tempo', 'time_signature', 'dsl_version', 'lyrics_style']) {
     const toks = tokenizeLine(kw);
     assert.equal(toks[0].type, 'keyword', `expected keyword for "${kw}"`);
   }
 });
 
 test('body keywords', () => {
-  for (const kw of ['bars', 'count', 'notes', 'repeat', 'like', 'with', 'play', 'cue', 'variation', 'extend']) {
+  for (const kw of ['bars', 'count', 'notes', 'repeat', 'like', 'with', 'play', 'cue', 'lyrics', 'variation', 'extend']) {
     const toks = tokenizeLine(kw);
     assert.equal(toks[0].type, 'keyword', `expected keyword for "${kw}"`);
   }

@@ -1,6 +1,7 @@
 """MusicXML export: converts GrooveScript IR to MusicXML bytes.
 
-Outputs a MusicXML 4.0 score-partwise document with a single percussion part.
+Outputs a MusicXML 4.0 score-partwise document with a percussion part, plus a
+"Voice" part when the song has timed lyrics (see :func:`_fill_vocal_part`).
 Each IRBar maps to one <measure>; beat positions (stored as exact Fractions) are
 converted to integer division offsets so the XML is standard-compliant.
 
@@ -18,6 +19,7 @@ import xml.etree.ElementTree as ET
 from xml.etree.ElementTree import Element, SubElement, ElementTree
 
 from .compiler import Event, IRBar, IRGroove, IRSong
+from .lyrics import lyric_segments
 
 # Divisions per quarter note. The value must be divisible by every tuplet
 # denominator we want to emit cleanly: lcm(8, 3, 5, 6, 7, 9) = 2520. With
@@ -178,18 +180,22 @@ def _split_duration(divs: int) -> list[int]:
 # Public API
 # ---------------------------------------------------------------------------
 
-def emit_musicxml(ir: IRSong | IRGroove) -> bytes:
-    """Convert an IRSong or standalone IRGroove to MusicXML 4.0 bytes."""
+def emit_musicxml(ir: IRSong | IRGroove, *, include_lyrics: bool = True) -> bytes:
+    """Convert an IRSong or standalone IRGroove to MusicXML 4.0 bytes.
+
+    ``include_lyrics=False`` leaves the vocal part out even when the song
+    has timed lyrics.
+    """
     if isinstance(ir, IRGroove):
         return _musicxml_from_groove(ir)
-    return _musicxml_from_song(ir)
+    return _musicxml_from_song(ir, include_lyrics=include_lyrics)
 
 
 # ---------------------------------------------------------------------------
 # IRSong path
 # ---------------------------------------------------------------------------
 
-def _musicxml_from_song(song: IRSong) -> bytes:
+def _musicxml_from_song(song: IRSong, include_lyrics: bool = True) -> bytes:
     default_ts = song.metadata.time_signature
     default_bpm = song.metadata.tempo if song.metadata.tempo is not None else _DEFAULT_TEMPO
     title = song.metadata.title or ""
@@ -200,7 +206,119 @@ def _musicxml_from_song(song: IRSong) -> bytes:
     part = SubElement(root, "part", id="P1")
     _fill_part(part, song.bars, default_ts, default_bpm)
 
+    if include_lyrics and song.has_lyrics:
+        root.find("part-list").append(_score_part("P2", "Voice"))  # type: ignore[union-attr]
+        vocal = SubElement(root, "part", id="P2")
+        _fill_vocal_part(vocal, song.bars, default_ts)
+
     return _serialize(root)
+
+
+def _fill_vocal_part(part: Element, bars: list[IRBar], default_ts: str) -> None:
+    """Emit the "Voice" part: one-line rhythm notes carrying lyrics.
+
+    Lyrics can't hang off drum notes (an onset often has no drum hit), so
+    they get their own part. Each syllable sounds until the next onset or
+    the bar line (the implied-duration display convention); the note
+    carries ``<lyric>`` with ``<syllabic>`` derived from the hyphens.
+    """
+    cur_ts = default_ts
+    in_word = False  # previous syllable ended with a hyphen
+    for i, bar in enumerate(bars):
+        ts = bar.time_signature if bar.time_signature is not None else cur_ts
+        measure = SubElement(part, "measure", number=str(bar.number))
+        if i == 0 or ts != cur_ts:
+            attrs = SubElement(measure, "attributes")
+            if i == 0:
+                SubElement(attrs, "divisions").text = str(_DIVS_PER_BEAT)
+                key = SubElement(attrs, "key")
+                SubElement(key, "fifths").text = "0"
+            _add_time(attrs, ts)
+            if i == 0:
+                clef = SubElement(attrs, "clef")
+                SubElement(clef, "sign").text = "percussion"
+                details = SubElement(attrs, "staff-details")
+                SubElement(details, "staff-lines").text = "1"
+        cur_ts = ts
+        bar_divs = _bar_total_divs(ts)
+        if not bar.lyrics:
+            _add_whole_rest(measure, bar_divs)
+            continue
+        beats_per_bar, beat_unit = (int(x) for x in ts.split("/"))
+        divs_per_beat = Fraction(4 * _DIVS_PER_BEAT, beat_unit)
+        for seg in lyric_segments(bar.lyrics, beats_per_bar):
+            pieces = _split_duration_exact(int((seg.end - seg.start) * divs_per_beat))
+            if seg.syllable is None:
+                for dur in pieces:
+                    _append_rest(measure, dur)
+                continue
+            syl = seg.syllable
+            if in_word:
+                syllabic = "middle" if syl.hyphen_after else "end"
+            else:
+                syllabic = "begin" if syl.hyphen_after else "single"
+            in_word = syl.hyphen_after
+            for k, dur in enumerate(pieces):
+                _append_vocal_note(
+                    measure,
+                    dur,
+                    tie_stop=k > 0,
+                    tie_start=k < len(pieces) - 1,
+                    lyric=(syllabic, syl.text) if k == 0 else None,
+                )
+
+
+def _split_duration_exact(divs: int) -> list[int]:
+    """Like :func:`_split_duration`, but folds any unrepresentable remainder
+    (e.g. a quintuplet span) into the last piece so measures stay full."""
+    pieces = _split_duration(divs)
+    leftover = divs - sum(pieces)
+    if leftover:
+        if pieces:
+            pieces[-1] += leftover
+        else:
+            pieces = [leftover]
+    return pieces
+
+
+def _append_vocal_note(
+    parent: Element,
+    dur: int,
+    *,
+    tie_start: bool,
+    tie_stop: bool,
+    lyric: tuple[str, str] | None,
+) -> None:
+    """Append one rhythm note of the vocal part (element order per schema)."""
+    note = SubElement(parent, "note")
+    unp = SubElement(note, "unpitched")
+    SubElement(unp, "display-step").text = "B"
+    SubElement(unp, "display-octave").text = "4"
+    SubElement(note, "duration").text = str(dur)
+    if tie_stop:
+        SubElement(note, "tie", type="stop")
+    if tie_start:
+        SubElement(note, "tie", type="start")
+    type_name, dots, actual, normal = _duration_attrs(dur)
+    SubElement(note, "type").text = type_name
+    for _ in range(dots):
+        SubElement(note, "dot")
+    if actual != 1 or normal != 1:
+        tm = SubElement(note, "time-modification")
+        SubElement(tm, "actual-notes").text = str(actual)
+        SubElement(tm, "normal-notes").text = str(normal)
+    SubElement(note, "stem").text = "up"
+    if tie_stop or tie_start:
+        notations = SubElement(note, "notations")
+        if tie_stop:
+            SubElement(notations, "tied", type="stop")
+        if tie_start:
+            SubElement(notations, "tied", type="start")
+    if lyric is not None:
+        syllabic, text = lyric
+        lyric_el = SubElement(note, "lyric", number="1")
+        SubElement(lyric_el, "syllabic").text = syllabic
+        SubElement(lyric_el, "text").text = text
 
 
 def _fill_part(

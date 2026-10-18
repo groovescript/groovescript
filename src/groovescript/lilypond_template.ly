@@ -96,11 +96,11 @@ drumPitchNames =
 }
 
 \score {
-{{SCORE_HEADER}}  \new DrumStaff \with {
+{{SCORE_HEADER}}{{VOCAL_STAFF}}  \new DrumStaff \with {
     drumStyleTable = #my-drums-style
-  } {
+  } {{DRUM_STAFF_OPEN}}{
 {{SCORE_PRELUDE}}{{BODY}}
       \label #'lastPage
     }
-  }
+  }{{DRUM_STAFF_CLOSE}}
 }

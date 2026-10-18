@@ -3,6 +3,8 @@
 Writes a Format 1 MIDI file with two tracks:
   - Track 0: tempo and time-signature meta events
   - Track 1: drum note events on MIDI channel 10 (0-indexed: 9)
+  - Track 2 (only when the song has timed lyrics): a "Lyrics" track with
+    one lyric meta event (``FF 05``) per syllable
 
 General MIDI (GM) standard drum note numbers are used so the output plays
 correctly in any GM-compatible device or DAW.
@@ -113,6 +115,29 @@ def _build_track(events: list[tuple[int, bytes]]) -> bytes:
         prev = tick
     body += b"\x00\xFF\x2F\x00"  # end-of-track meta event
     return b"MTrk" + _u32(len(body)) + body
+
+
+def _meta_text_event(kind: int, text: str) -> bytes:
+    """Build a text-like meta event (``FF <kind> <len> <utf-8 bytes>``)."""
+    data = text.encode("utf-8")
+    return bytes([0xFF, kind]) + _vlq(len(data)) + data
+
+
+def _lyrics_track(bars, bar_starts: list[int], default_ts: str) -> list[tuple[int, bytes]]:
+    """One lyric meta event per syllable on a dedicated "Lyrics" track.
+
+    A syllable that hyphenates into the next keeps its trailing ``-`` — the
+    karaoke convention DAWs use to join syllables back into words.
+    """
+    track: list[tuple[int, bytes]] = [(0, _meta_text_event(0x03, "Lyrics"))]
+    cur_ts = default_ts
+    for bar, bstart in zip(bars, bar_starts):
+        cur_ts = bar.time_signature if bar.time_signature is not None else cur_ts
+        bticks = _bar_ticks(cur_ts)
+        for syl in bar.lyrics:
+            text = f"{syl.text}-" if syl.hyphen_after else syl.text
+            track.append((bstart + int(syl.position * bticks), _meta_text_event(0x05, text)))
+    return track
 
 
 def _tempo_event(bpm: int) -> bytes:
@@ -306,8 +331,12 @@ def _midi_from_song(song: IRSong) -> bytes:
     drum_track, choked = _bars_to_drum_events(song.bars, bar_starts, default_ts)
     drum_track = _extend_sustained(drum_track, cur_tick, choked)
 
-    header = b"MThd" + _u32(6) + _u16(1) + _u16(2) + _u16(TICKS_PER_BEAT)
-    return header + _build_track(tempo_track) + _build_track(drum_track)
+    tracks = [_build_track(tempo_track), _build_track(drum_track)]
+    if song.has_lyrics:
+        tracks.append(_build_track(_lyrics_track(song.bars, bar_starts, default_ts)))
+
+    header = b"MThd" + _u32(6) + _u16(1) + _u16(len(tracks)) + _u16(TICKS_PER_BEAT)
+    return header + b"".join(tracks)
 
 
 def _bars_to_drum_events(

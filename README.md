@@ -82,7 +82,7 @@ section "chorus":
 ```
 
 More complete fixtures — including tuplet groups, mixed subdivisions,
-meter changes, dynamic spans, and swing feel — live under
+meter changes, dynamic spans, swing feel, and timed lyrics — live under
 `tests/fixtures/`, each with its compiled `.ly` and rendered `.pdf`
 committed alongside the `.gs` source. See `DSL_REFERENCE.md` for the
 full language.
@@ -179,6 +179,12 @@ lilypond -o tests/fixtures/full_song_example tests/fixtures/full_song_example.ly
 # --no-compact to keep the implicit 4-bar phrase chunking instead.
 uv run groovescript compile input.gs -o output.ly --no-compact
 
+# Charts with timed lyrics (`lyrics:` blocks) engrave a small vocal rhythm
+# staff above the drums by default. Pick a lyrics line under the drums
+# instead, or leave the words out entirely:
+uv run groovescript compile input.gs -o output.ly --lyrics-style line
+uv run groovescript compile input.gs -o output.ly --lyrics-style off
+
 # Lint a .gs file (parse + compile check, no LilyPond output)
 uv run groovescript lint input.gs
 
@@ -204,6 +210,7 @@ src/groovescript/
   compiler.py         # AST → IR (flat event list per bar)
   lilypond.py         # IR → LilyPond source
   midi.py             # IR → MIDI file bytes (Format 1, GM drums on channel 10)
+  lyrics.py           # Implied-duration rhythm for timed lyrics
   musicxml.py         # IR → MusicXML
   lint.py             # Style checker used by `lint --style`
   grammar.lark        # Lark EBNF grammar
