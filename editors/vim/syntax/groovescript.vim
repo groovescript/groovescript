@@ -34,12 +34,13 @@ syn match gsRepeatCount   "\<x\d\+\>"
 " These appear as `keyword: value` lines, either inside a `metadata:` block
 " or at the top level of the file.
 syn keyword gsMetadataKeyword title tempo time_signature dsl_version
-                            \ default_groove default_bars feel
+                            \ default_groove default_bars feel lyrics_style
 syn keyword gsMetadataBlock   metadata
 
 " -- Metadata values --------------------------------------------------------
-" Enumerated values for metadata fields (currently only `feel: swing`).
-syn keyword gsMetadataValue swing
+" Enumerated values for metadata fields (`feel: swing`,
+" `lyrics_style: staff|line`).
+syn keyword gsMetadataValue swing staff line
 
 " -- Definition keywords ----------------------------------------------------
 " `groove "name":`, `fill "name":`, `section "name":`
@@ -47,7 +48,7 @@ syn keyword gsDefinition groove fill section
 
 " -- Section / groove body keywords -----------------------------------------
 syn keyword gsBodyKeyword bars pattern count notes repeat like
-                        \ play cue variation text extend
+                        \ play cue lyrics variation text extend
                         \ cresc decresc crescendo decrescendo break through
 " `crash in` is a section/top-level flag. Match the multi-word forms so
 " the ``crash`` token highlights as a body keyword here (not as the crash

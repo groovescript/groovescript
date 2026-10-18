@@ -25,6 +25,7 @@ metadata_line: title_line
              | default_groove_line
              | default_bars_line
              | feel_line
+             | lyrics_style_line
 
 title_line: "title" ":" ESCAPED_STRING
 tempo_line: "tempo" ":" INT
@@ -34,6 +35,8 @@ default_groove_line: "default_groove" ":" ESCAPED_STRING
 default_bars_line: "default_bars" ":" INT
 feel_line: "feel" ":" FEEL_VALUE
 FEEL_VALUE: "swing"
+lyrics_style_line: "lyrics_style" ":" LYRICS_STYLE_VALUE
+LYRICS_STYLE_VALUE: "staff" | "line"
 
 groove_def: "groove" ESCAPED_STRING ":" groove_body
           | "groove" "placeholder" ESCAPED_STRING                  -> groove_placeholder_def
@@ -92,6 +95,7 @@ section_line: bars_line
             | section_dynamic_line
             | section_crash_in_line
             | section_break_line
+            | section_lyrics_block
             | play_block
 bars_line: "bars" ":" INT
 groove_line: "groove" ":" ESCAPED_STRING
@@ -100,7 +104,7 @@ groove_line: "groove" ":" ESCAPED_STRING
            | "groove" ":" "placeholder" ESCAPED_STRING              -> groove_line_placeholder_named
 repeat_line: "repeat" ":" INT
 like_line: "like" ESCAPED_STRING ("with" INHERIT_CATEGORY (","? INHERIT_CATEGORY)*)?
-INHERIT_CATEGORY: "fills" | "variations" | "cues"
+INHERIT_CATEGORY: "fills" | "variations" | "cues" | "lyrics"
 section_tempo_line: "tempo" ":" INT
 section_time_signature_line: "time_signature" ":" TIME_SIGNATURE
 // Flag line: replace the first cymbal/riding hit of one or more bars in
@@ -166,6 +170,13 @@ section_fill_placeholder_line: "fill" "placeholder" "at" "bar" INT
                               | "fill" "placeholder" ESCAPED_STRING "at" "bar" INT "beat" BEAT_LABEL
                               | "fill" "at" "bar" bar_number_list                         -> section_empty_fill_placeholder
                               | "fill" "at" "bar" bar_number_list "beat" BEAT_LABEL       -> section_empty_fill_placeholder
+// Timed lyrics: one ``bar N: "<count>" "<words>"`` entry per bar. ``bar 0``
+// is a pickup into the preceding section's last bar.
+// The header is one terminal (keyword + colon) so a bare ``lyrics`` can still
+// lex as an INHERIT_CATEGORY at the end of ``like "x" with … lyrics``.
+section_lyrics_block: LYRICS_HEADER lyrics_entry+
+LYRICS_HEADER.2: /lyrics[ \t]*:/
+lyrics_entry: "bar" INT ":" ESCAPED_STRING ESCAPED_STRING
 section_cue_line: "cue" ESCAPED_STRING "at" "bar" INT
                 | "cue" ESCAPED_STRING "at" "bar" INT "beat" BEAT_LABEL
 section_dynamic_line: DYNAMIC_KIND "from" "bar" INT "to" "bar" INT

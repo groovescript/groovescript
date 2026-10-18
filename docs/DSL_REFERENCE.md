@@ -54,6 +54,7 @@ the language, start with [`GETTING_STARTED.md`](GETTING_STARTED.md) or
   - [`crash in` — start a section on a crash](#crash-in)
   - [`break` — silence a bar/beat range](#break)
   - [Vocal cues and text annotations](#vocal-cues-and-text-annotations)
+  - [Timed lyrics](#timed-lyrics)
   - [Crescendos and decrescendos](#crescendos-and-decrescendos)
 - [Variations](#variations)
   - [`add`, `remove`, `replace`, `substitute`, `modify`](#variations)
@@ -179,6 +180,9 @@ ignore it: MusicXML output contains no swing direction, and MIDI playback
 is rendered with straight eighth notes regardless of `feel`. If you need
 the swing indication in MusicXML, render through LilyPond and import the
 resulting PDF, or open a feature request.
+
+`lyrics_style: staff` or `lyrics_style: line` picks how
+[timed lyrics](#timed-lyrics) are engraved (default `staff`).
 
 Per-bar subdivision is inferred automatically from the content of each
 bar — the beat labels you write (`1`, `2&`, `3e`, `4trip`, …) and any
@@ -1381,14 +1385,14 @@ section "verse 2":
 Bare `like "parent"` inherits only the basic arrangement: `bars`, `groove`,
 `repeat`, `tempo`, `time_signature`, `play`, inline grooves,
 section-level dynamic spans, and the `crash in` flag. To also inherit
-`fills`, `variations`, or `cues`, list the categories after `with`:
+`fills`, `variations`, `cues`, or `lyrics`, list the categories after `with`:
 
 ```groovescript
 section "chorus 2":
   like "chorus" with fills, variations, cues
 ```
 
-The three categories are order-insensitive and commas between them are
+The categories are order-insensitive and commas between them are
 optional (`with fills variations cues` is equivalent). Listing the same
 category twice is an error.
 
@@ -1396,7 +1400,9 @@ Scalar fields on the inheriting section (`bars`, `groove`, `repeat`,
 `tempo`, `play`, `time_signature`) override the inherited values when
 explicitly set. List fields concatenate — inherited first, then the
 inheriting section's additions. If a new entry targets the same bar as
-an inherited entry, the new entry wins.
+an inherited entry, the new entry wins. Lyrics are merged by bar instead:
+an inheritor's `bar N:` entry replaces the parent's entry for that bar
+(see [Timed lyrics](#timed-lyrics)).
 
 Dynamic spans (`cresc …`, `decresc …`) defined inside a groove or fill
 always travel with that groove or fill wherever it's referenced, so a
@@ -1615,12 +1621,104 @@ section "mid-section break":
 ### Vocal cues and text annotations
 
 - `cue "text" at bar N [beat X]` — places a text annotation above the
-  staff at the given bar (and optional beat).
+  staff at the given bar (and optional beat). Use cues for labels like
+  "vocals in"; for sung words pinned to beats, use
+  [timed lyrics](#timed-lyrics).
 - `text: "…"` inside a groove `bar N:` block — attaches a text annotation
   to that bar of the groove.
 - `text: "…"` at the top of a groove `extend:` body — annotates bar 1 of
   the resolved groove. Useful for single-bar derived grooves where there
   is no `bar N:` block to nest the text in.
+
+### Timed lyrics
+
+A drummer who also sings can pin syllables to exact beat positions with a
+section-level `lyrics:` block. Each entry pairs a count string with a
+words string for one bar of the section:
+
+```groovescript
+section "verse":
+  bars: 8
+  groove: "money beat"
+  lyrics:
+    bar 1: "1 2& 3 4&"  "When the mor- ning"
+    bar 2: "1 3"        "comes a-"
+    bar 3: "1"          "round"
+    bar 5: "2 2& 3e 4"  "I can feel it"
+```
+
+- **Count string**: uses the same tokenizer as fill `count:` strings, so
+  every beat label works (`1`, `2&`, `3e`, `4a`, `trip`, `let`) along with
+  inline whole-beat tuplet groups (`2{triplet 1, 2, 3}`). Positions are
+  relative to bar N's own meter, including a bar whose meter is changed by
+  a `variation at bar N:` with `time_signature:`.
+- **Words string**: whitespace-separated syllables, matched to the count's
+  onsets by position.
+  - A syllable ending in `-` hyphenates into the next one, which may be in
+    a later bar (`"mor- ning"`, or `"a-"` in one bar and `"round"` in the
+    next).
+  - `~` joins words on one onset: `oh~yeah` sings "oh yeah" on one beat.
+  - `_` is reserved for future held syllables and is an error for now.
+- Lining the two strings up in columns is encouraged but not required.
+- **Pickups**: `bar 0:` means "the bar before this section". Lead-in words
+  that start on the `4&` before the downbeat stay with the section they
+  belong to, but are engraved in the previous section's last bar, using
+  that bar's meter:
+
+  ```groovescript
+  section "chorus":
+    bars: 8
+    groove: "money beat"
+    lyrics:
+      bar 0: "4&"     "And"
+      bar 1: "1 2 3"  "here we go"
+  ```
+
+Lyrics are **onsets only**. On the page, each syllable lasts until the
+next onset in the bar, or to the bar line if it is the last one. This is a
+display convention, not a statement about how long the note is held.
+Lyric onsets never change the drum bar's inferred subdivision.
+
+Lyrics may sit on placeholder-groove bars, since the singer still needs
+the words while the groove is TBD. **A bar with lyrics never folds into a
+repeat.** Runs of identical drum bars are not compacted across it, and a
+`repeat:` section whose passes carry lyrics is written out in full.
+
+**Errors**: a different number of onsets and syllables (both counts are
+reported), a beat outside the bar's meter, two syllables on one onset,
+`bar N` beyond the section's length (counting `play:` and `repeat:`), the
+same bar listed twice, `_` in the words, `bar 0:` on the first section,
+and a `bar 0:` onset that collides with lyrics the previous section
+already puts there.
+
+**Inheritance**: `like "verse"` does not copy lyrics, because a second
+verse almost always has different words. `like "verse" with lyrics` does,
+and combines with the other categories (`with fills, lyrics`). An
+inheritor's own `bar N:` entries replace the parent's entry for that bar,
+and the parent's other bars are kept.
+
+#### Rendering style
+
+Lyrics engrave in one of two styles:
+
+- `staff` (default): a small one-line "Vox" rhythm staff above the drum
+  staff, showing the implied rhythm with the syllables under it. It is
+  hidden on systems with no lyrics.
+- `line`: a lyrics line under the drum staff. A hidden rhythm gives each
+  syllable its own column even where there is no drum note.
+
+Choose the style with `lyrics_style: staff|line` in the metadata, or
+override it per run with `compile … --lyrics-style staff|line|off`. `off`
+prints a drums-only chart from the same source.
+
+**Other outputs**: MIDI export adds a "Lyrics" track with one lyric meta
+event per syllable. A hyphenated syllable keeps its trailing `-`, the
+karaoke convention. MusicXML export adds a "Voice" part of rhythm notes
+carrying `<lyric>` elements with begin/middle/end `<syllabic>` values;
+`musicxml … --lyrics-style off` leaves it out. `lint --style` warns about a
+hyphen on a section's last syllable, and about sections that use more
+than three beat-placed `cue`s, which usually means a vocal line written
+as cues.
 
 ### Crescendos and decrescendos
 

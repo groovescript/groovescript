@@ -4,7 +4,7 @@ from fractions import Fraction
 
 # Categories that may be listed after ``like "x" with …`` to opt a child
 # section into inheriting parent data beyond the "structure only" default.
-INHERIT_CATEGORIES: frozenset[str] = frozenset({"fills", "variations", "cues"})
+INHERIT_CATEGORIES: frozenset[str] = frozenset({"fills", "variations", "cues", "lyrics"})
 
 
 @dataclass(frozen=True)
@@ -215,6 +215,7 @@ class Metadata:
     default_groove: str | None = None
     default_bars: int | None = None
     feel: str | None = None  # "swing", or None for straight feel
+    lyrics_style: str | None = None  # "staff" | "line"; None = emitter default (staff)
 
 
 @dataclass
@@ -395,6 +396,38 @@ class Cue:
     beat: str | None = None  # if None, placed at bar start; else at this beat label
 
 
+@dataclass(frozen=True)
+class LyricToken:
+    """One syllable from a ``lyrics:`` words string.
+
+    ``text`` has ``~`` already turned into a space and the trailing ``-``
+    stripped; ``hyphen_after`` records that the syllable hyphenates into
+    the next one (which may sit in a later bar).
+    """
+
+    text: str
+    hyphen_after: bool = False
+
+
+@dataclass
+class LyricLine:
+    """One ``bar N: "<count>" "<words>"`` entry of a section ``lyrics:`` block.
+
+    ``labels`` are the beat labels parsed from the count string (same
+    tokenizer as fill counts); ``syllables`` pair with them by position.
+    ``bar`` is 1-indexed within the section; ``0`` is a pickup into the
+    preceding section's last bar.
+    """
+
+    bar: int
+    count: str
+    words: str
+    labels: list[str]
+    syllables: list[LyricToken]
+    # 1-indexed source line of the entry, for compile-time diagnostics.
+    line: int | None = None
+
+
 @dataclass
 class DynamicSpan:
     """A crescendo or decrescendo hairpin spanning a range of bars/beats."""
@@ -486,9 +519,11 @@ class Section:
     inline_grooves: list[Groove] = field(default_factory=list)  # one-off unnamed grooves defined inside the section
     variations: list[Variation] = field(default_factory=list)
     # Inheritance spec: ``like "parent"`` (structure only), or
-    # ``like "parent" with fills, variations, cues`` (opt-in categories).
+    # ``like "parent" with fills, variations, cues, lyrics`` (opt-in categories).
     inherit: InheritSpec | None = None
     cues: list[Cue] = field(default_factory=list)
+    # Timed lyrics (``lyrics:`` block), one entry per bar, in source order.
+    lyrics: list[LyricLine] = field(default_factory=list)
     dynamic_spans: list[DynamicSpan] = field(default_factory=list)
     tempo: int | None = None  # per-section tempo override
     time_signature: str | None = None  # per-section time signature override

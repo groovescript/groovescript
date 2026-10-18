@@ -9,7 +9,7 @@ column-accurate diagnostic formatter for count/notes slot-count mismatches.
 
 import re
 
-from .ast_nodes import InstrumentHit
+from .ast_nodes import InstrumentHit, LyricToken
 
 
 # Instrument name aliases — maps lowercase alias → canonical abbreviation.
@@ -522,6 +522,58 @@ def _format_count_notes_mismatch(
     elif m > n and n < len(note_cols):
         caret_col = len(notes_prefix) + note_cols[n]
         lines.append(" " * caret_col + "^ this note has no matching count slot")
+    return "\n".join(lines)
+
+
+def _lyric_word_columns(words_str: str) -> list[int]:
+    """Return the 0-indexed start column of each syllable in ``words_str``."""
+    return [m.start() for m in re.finditer(r"\S+", words_str)]
+
+
+def _parse_lyric_words(words_str: str) -> list[LyricToken]:
+    """Split a ``lyrics:`` words string into syllables.
+
+    Tokens are whitespace-separated. A trailing ``-`` hyphenates into the
+    next syllable; ``~`` joins words on one onset (``oh~yeah`` → "oh yeah").
+    ``_`` is reserved for future extenders/holds and is rejected.
+    """
+    tokens: list[LyricToken] = []
+    for raw in words_str.split():
+        if "_" in raw:
+            raise ValueError(
+                f"lyrics: '_' in {raw!r} is reserved for future use "
+                f"(held syllables); remove it"
+            )
+        hyphen_after = raw.endswith("-")
+        text = raw[:-1] if hyphen_after else raw
+        text = text.replace("~", " ").strip()
+        if not text:
+            raise ValueError(
+                f"lyrics: {raw!r} is not a syllable; a hyphen must follow "
+                f"the syllable it splits (e.g. \"mor- ning\")"
+            )
+        tokens.append(LyricToken(text=text, hyphen_after=hyphen_after))
+    return tokens
+
+
+def _format_count_words_mismatch(count_str: str, words_str: str) -> str:
+    """Build a column-aligned diagnostic for a lyrics count/words mismatch."""
+    n = len(_parse_count_tokens(count_str))
+    m = len(_parse_lyric_words(words_str))
+    header = f"lyrics: count has {n} onset(s) but words has {m} syllable(s)"
+    count_prefix = "   count: "
+    words_prefix = "   words: "
+    lines = [header, f"{count_prefix}{count_str}", f"{words_prefix}{words_str}"]
+    # Tuplet groups expand one token into several onsets, so the per-token
+    # column map only lines up for plain count strings.
+    count_cols = _count_token_columns(count_str) if "{" not in count_str else []
+    word_cols = _lyric_word_columns(words_str)
+    if n > m and m < len(count_cols):
+        caret_col = len(count_prefix) + count_cols[m]
+        lines.append(" " * caret_col + "^ this onset has no matching syllable")
+    elif m > n and n < len(word_cols):
+        caret_col = len(words_prefix) + word_cols[n]
+        lines.append(" " * caret_col + "^ this syllable has no matching onset")
     return "\n".join(lines)
 
 

@@ -29,6 +29,7 @@ from .ast_nodes import (
     GrooveExtendVariation,
     InheritSpec,
     InstrumentHit,
+    LyricLine,
     Metadata,
     PatternLine,
     PlayBar,
@@ -47,6 +48,8 @@ from .errors import GrooveScriptError
 from .parser_notation import (
     _extract_modifier_args,
     _format_count_notes_mismatch,
+    _format_count_words_mismatch,
+    _parse_lyric_words,
     _normalize_beat_label,
     _normalize_instrument,
     _parse_count_tokens,
@@ -180,6 +183,9 @@ class _GrooveScriptTransformer(Transformer):
 
     def feel_line(self, items):
         return Metadata(feel=str(items[0]))
+
+    def lyrics_style_line(self, items):
+        return Metadata(lyrics_style=str(items[0]))
 
     def groove_def(self, items):
         name = _ast.literal_eval(str(items[0]))
@@ -665,6 +671,7 @@ class _GrooveScriptTransformer(Transformer):
         inline_grooves_list: list[Groove] = []
         variations: list[Variation] = []
         cues: list[Cue] = []
+        lyrics: list[LyricLine] = []
         dynamic_spans: list[DynamicSpan] = []
         breaks: list[BreakSpec] = []
 
@@ -710,6 +717,18 @@ class _GrooveScriptTransformer(Transformer):
                 variations.append(value)
             elif key == "cue":
                 cues.append(value)
+            elif key == "lyrics":
+                for entry in value:
+                    if any(prev.bar == entry.bar for prev in lyrics):
+                        raise GrooveScriptError(
+                            message=(
+                                f"Section {name!r}: lyrics for bar {entry.bar} "
+                                f"are given more than once"
+                            ),
+                            line=entry.line,
+                            hint="merge the words into a single `bar N:` entry",
+                        )
+                    lyrics.append(entry)
             elif key == "dynamic_span":
                 dynamic_spans.append(value)
             elif key == "crash_in":
@@ -756,6 +775,7 @@ class _GrooveScriptTransformer(Transformer):
             variations=variations,
             inherit=inherit,
             cues=cues,
+            lyrics=lyrics,
             dynamic_spans=dynamic_spans,
             tempo=tempo,
             time_signature=time_signature,
@@ -1150,6 +1170,31 @@ class _GrooveScriptTransformer(Transformer):
         if len(placeholders) == 1:
             return ("fill_placeholder", placeholders[0])
         return ("fill_placeholder_many", placeholders)
+
+    def section_lyrics_block(self, items):
+        # items[0] is the LYRICS_HEADER token; duplicate bars are checked
+        # in ``section_def`` so multiple blocks in one section merge.
+        return ("lyrics", list(items[1:]))
+
+    @v_args(meta=True)
+    def lyrics_entry(self, meta, items):
+        bar = int(items[0])
+        count_str = _ast.literal_eval(str(items[1]))
+        words_str = _ast.literal_eval(str(items[2]))
+        labels = _parse_count_tokens(count_str)
+        syllables = _parse_lyric_words(words_str)
+        if len(labels) != len(syllables):
+            raise ValueError(_format_count_words_mismatch(count_str, words_str))
+        if not labels:
+            raise ValueError(f"lyrics: bar {bar} has no onsets")
+        return LyricLine(
+            bar=bar,
+            count=count_str,
+            words=words_str,
+            labels=labels,
+            syllables=syllables,
+            line=_meta_line(meta),
+        )
 
     def section_cue_line(self, items):
         text = _ast.literal_eval(str(items[0]))
@@ -1612,6 +1657,8 @@ class _GrooveScriptTransformer(Transformer):
             target.default_bars = incoming.default_bars
         if incoming.feel is not None:
             target.feel = incoming.feel
+        if incoming.lyrics_style is not None:
+            target.lyrics_style = incoming.lyrics_style
 
 
 _parser = Lark(

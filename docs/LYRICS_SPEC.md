@@ -1,6 +1,7 @@
 # Spec: Timed lyrics
 
-Status: draft, 2026-10-17
+Status: implemented (slices 1–4), 2026-10-18. Slice 5 remains future work.
+User docs: [DSL reference → Timed lyrics](DSL_REFERENCE.md#timed-lyrics).
 
 ## Goal
 

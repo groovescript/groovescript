@@ -1,8 +1,10 @@
+import re
 from collections import defaultdict
 from fractions import Fraction
 from pathlib import Path
 
-from .compiler import IRBar, IRGroove, IRSong
+from .compiler import IRBar, IRGroove, IRSong, LyricSyllable
+from .lyrics import beat_grid, is_power_of_two, lyric_segments, tuplet_normal
 
 # Instruments that are foot-played (duplicated from compiler to avoid a
 # circular dependency on the compiler-internal constant).  Must stay in sync.
@@ -1190,6 +1192,178 @@ def _bar_text_markup(text: str) -> str:
     )
 
 
+def _explicit_repeat_span(bars: list[IRBar], start: int) -> int:
+    """Number of bars (all passes) in the explicit ``repeat:`` block at ``start``."""
+    phrase_end = start + 1
+    while phrase_end < len(bars) and bars[phrase_end].repeat_index != 2:
+        phrase_end += 1
+    return (phrase_end - start) * (bars[start].repeat_times or 1)
+
+
+# ── Timed lyrics ──────────────────────────────────────────────────────────
+
+LYRICS_STYLES: tuple[str, ...] = ("staff", "line", "off")
+_DEFAULT_LYRICS_STYLE = "staff"
+_LYRICS_VOICE = "lyricsrhythm"
+
+
+def _dot_merge(durations: list[str]) -> list[str]:
+    """Fold ``["4", "8"]``-style tied pairs into a single dotted value."""
+    out: list[str] = []
+    k = 0
+    while k < len(durations):
+        if k + 1 < len(durations) and int(durations[k + 1]) == 2 * int(durations[k]):
+            out.append(f"{durations[k]}.")
+            k += 2
+        else:
+            out.append(durations[k])
+            k += 1
+    return out
+
+
+def _lyric_span_tokens(
+    durations: list[str], is_note: bool, tie_out: bool, note: str, rest: str,
+) -> list[str]:
+    """Tokens for one rest/syllable span; notes are tied piece to piece."""
+    if not is_note:
+        return [f"{rest}{d}" for d in durations]
+    return [
+        f"{note}{d}{'~' if (k < len(durations) - 1 or tie_out) else ''}"
+        for k, d in enumerate(durations)
+    ]
+
+
+def _lyric_rhythm(
+    lyrics: list[LyricSyllable], beats_per_bar: int, beat_unit: int, note: str, rest: str,
+) -> str:
+    """Hidden/visible rhythm for one bar of lyrics (implied durations).
+
+    When every onset sits on a power-of-two grid the bar is cut on one
+    straight grid. Otherwise each beat is cut on its own grid, and beats
+    whose grid is not a power of two are wrapped in ``\\tuplet``; spans
+    crossing a beat line are tied.
+    """
+    segments = lyric_segments(lyrics, beats_per_bar)
+    onsets = [seg.start for seg in segments if seg.syllable is not None]
+    offsets = [o - int(o) for o in onsets]
+    grid = beat_grid(offsets)
+    tokens: list[str] = []
+    if is_power_of_two(grid):
+        for seg in segments:
+            run = int((seg.end - seg.start) * grid)
+            durations = _dot_merge(
+                _slot_run_to_lily_durations(run, grid * beats_per_bar, beats_per_bar, beat_unit)
+            )
+            tokens.extend(_lyric_span_tokens(durations, seg.syllable is not None, False, note, rest))
+        return " ".join(tokens)
+    for beat in range(beats_per_bar):
+        lo, hi = Fraction(beat), Fraction(beat + 1)
+        beat_grid_n = beat_grid([o - beat for o in onsets if lo <= o < hi])
+        straight = is_power_of_two(beat_grid_n)
+        written = beat_grid_n if straight else tuplet_normal(beat_grid_n)
+        beat_tokens: list[str] = []
+        for seg in segments:
+            start, end = max(seg.start, lo), min(seg.end, hi)
+            if start >= end:
+                continue
+            run = int((end - start) * beat_grid_n)
+            durations = _dot_merge(_slot_run_to_lily_durations(run, written, 1, beat_unit))
+            beat_tokens.extend(_lyric_span_tokens(
+                durations, seg.syllable is not None, end < seg.end, note, rest,
+            ))
+        if straight:
+            tokens.extend(beat_tokens)
+        else:
+            tokens.append(f"\\tuplet {beat_grid_n}/{written} {{ {' '.join(beat_tokens)} }}")
+    return " ".join(tokens)
+
+
+def _lyric_words(printed: list[tuple[IRBar, int]]) -> str:
+    """The ``\\lyricsto`` text: quoted syllables with ``--`` hyphens."""
+    words: list[str] = []
+    for bar, _ in printed:
+        for syl in bar.lyrics:
+            words.append(f'"{_ly_str(syl.text)}"')
+            if syl.hyphen_after:
+                words.append("--")
+    # A hyphen with no following syllable would be dangling; drop it.
+    if words and words[-1] == "--":
+        words.pop()
+    return " ".join(words)
+
+
+def _lyric_rhythm_measures(
+    printed: list[tuple[IRBar, int]], global_time_signature: str, style: str,
+) -> str:
+    """One rhythm measure per printed drum bar, so the two streams align."""
+    note, rest = ("c", "r") if style == "staff" else ("c", "s")
+    measures: list[str] = []
+    current_ts = global_time_signature
+    for bar, span in printed:
+        current_ts = bar.time_signature or current_ts
+        bpb, unit = _parse_time_signature(current_ts)
+        if bar.lyrics and span == 1:
+            body = _lyric_rhythm(bar.lyrics, bpb, unit, note, rest)
+        elif style == "staff":
+            body = _whole_bar_rest(bpb, unit) + (f"*{span}" if span > 1 else "")
+        else:
+            body = f"s{unit}*{bpb * span}"
+        measures.append(f"      {body} |")
+    return "\n".join(measures)
+
+
+def _lyrics_template_parts(
+    printed: list[tuple[IRBar, int]], global_time_signature: str, style: str,
+) -> dict[str, str]:
+    """Template fragments that wrap the drum staff with the lyrics contexts.
+
+    ``staff``: a small one-line RhythmicStaff labelled "Vox" above the drums,
+    with the syllables under it; it disappears on systems with no lyrics.
+    ``line``: a NullVoice inside the DrumStaff carries the rhythm (it takes
+    up horizontal space but prints nothing) and the syllables sit below.
+    """
+    rhythm = _lyric_rhythm_measures(printed, global_time_signature, style)
+    words = _lyric_words(printed)
+    lyrics_ctx = (
+        f'  \\new Lyrics \\with {{ \\override LyricText.font-size = #-1 }}'
+        f' \\lyricsto "{_LYRICS_VOICE}" {{\n    {words}\n  }}\n'
+    )
+    if style == "staff":
+        vocal = (
+            "  <<\n"
+            "  \\new RhythmicStaff \\with {\n"
+            '    instrumentName = "Vox"\n'
+            '    shortInstrumentName = "Vox"\n'
+            "    fontSize = #-2\n"
+            "    \\override StaffSymbol.staff-space = #(magstep -2)\n"
+            "    \\RemoveAllEmptyStaves\n"
+            "  } {\n"
+            f'    \\new Voice = "{_LYRICS_VOICE}" {{\n'
+            "      \\numericTimeSignature\n"
+            f"      \\time {global_time_signature}\n"
+            f"{rhythm}\n"
+            "    }\n"
+            "  }\n"
+            f"{lyrics_ctx}"
+        )
+        return {
+            "{{VOCAL_STAFF}}": vocal,
+            "{{DRUM_STAFF_OPEN}}": "",
+            "{{DRUM_STAFF_CLOSE}}": "\n  >>",
+        }
+    null_voice = (
+        f'\n    \\new NullVoice = "{_LYRICS_VOICE}" {{\n'
+        f"{rhythm}\n"
+        "    }\n"
+        "  >>\n"
+    )
+    return {
+        "{{VOCAL_STAFF}}": "  <<\n",
+        "{{DRUM_STAFF_OPEN}}": "<< ",
+        "{{DRUM_STAFF_CLOSE}}": f"{null_voice}{lyrics_ctx}  >>",
+    }
+
+
 class _BarGroupState:
     """Running state for ``_group_bars``: tempo display, tempo command, and meter.
 
@@ -1267,8 +1441,22 @@ def _group_bars(
     forced_voice_split_ids: set | None = None,
     compact: bool = False,
     feel: str | None = None,
+    printed: list[tuple[IRBar, int]] | None = None,
 ) -> list[str]:
+    """Group IR bars into LilyPond measure strings.
+
+    When ``printed`` is a list, every bar the drum staff actually engraves
+    is appended to it as ``(bar, n)`` — ``n > 1`` for a compressed
+    multi-bar rest spanning ``n`` bars. Bars folded into a repeat are
+    engraved once, so the list mirrors the printed timeline and the vocal
+    staff can follow it bar for bar.
+    """
     measures: list[str] = []
+    if printed is None:
+        printed = []
+    # End index of an explicit ``repeat:`` block being written out in full
+    # because its passes carry lyrics.
+    written_out_end = -1
     i = 0
     state = _BarGroupState(
         is_top_level=is_top_level,
@@ -1282,8 +1470,21 @@ def _group_bars(
     while i < len(bars):
         bar = bars[i]
 
-        # 1. Handle explicit phrase repeats
-        if is_top_level and bar.repeat_times is not None and bar.repeat_times > 1:
+        # 1. Handle explicit phrase repeats. A repeat whose passes carry
+        # lyrics is written out in full instead, since each pass has its own
+        # words.
+        is_repeat_start = (
+            is_top_level
+            and bar.repeat_times is not None
+            and bar.repeat_times > 1
+            and i >= written_out_end
+        )
+        if is_repeat_start:
+            span = _explicit_repeat_span(bars, i)
+            if any(b.lyrics for b in bars[i : i + span]):
+                written_out_end = i + span
+                is_repeat_start = False
+        if is_repeat_start:
             num_repeats = bar.repeat_times
             phrase_end = i + 1
             while phrase_end < len(bars):
@@ -1310,6 +1511,7 @@ def _group_bars(
             )
             inner_body = "\n".join(inner_measures)
             measures.append(f"{ts_change_cmd}{tempo_change_cmd}{mark}{forced_bar}      \\repeat volta {num_repeats} {{\n{inner_body}\n      }}")
+            printed.extend((pb, 1) for pb in pattern_bars)
             i += num_repeats * phrase_length
             continue
 
@@ -1376,6 +1578,7 @@ def _group_bars(
                 f"{ts_change_cmd}{tempo_change_cmd}{mark}"
                 f"      {' '.join(skip_tokens)} |{break_cmd}"
             )
+            printed.append((bar, 1))
             i += 1
             continue
 
@@ -1423,6 +1626,7 @@ def _group_bars(
                 )
             else:
                 measures.append(f"{ts_change_cmd}{tempo_change_cmd}{mark}      {rest_token} |")
+            printed.append((bar, num_rests))
             i += num_rests
             continue
 
@@ -1444,8 +1648,8 @@ def _group_bars(
             remaining_in_phrase = state.current_bpb - ((current_bar_num - 1) % state.current_bpb)
             max_lookahead = min(len(bars) - i, remaining_in_phrase)
 
-        # Bars with cues, fill_placeholders, bar_text, or dynamic annotations cannot be implicitly merged into repeats
-        has_annotations = bool(bar.cues or bar.fill_placeholders or bar.bar_text or bar.dynamic_starts or bar.dynamic_stops)
+        # Bars with cues, fill_placeholders, bar_text, dynamic annotations, or lyrics cannot be implicitly merged into repeats
+        has_annotations = bool(bar.cues or bar.fill_placeholders or bar.bar_text or bar.dynamic_starts or bar.dynamic_stops or bar.lyrics)
         # Build cue_map and placeholder_map for beat-accurate markup placement (pos → text)
         cue_map: dict[Fraction, str] | None = dict(bar.cues) if bar.cues else None
         placeholder_map: dict[Fraction, str] | None = dict(bar.fill_placeholders) if bar.fill_placeholders else None
@@ -1487,7 +1691,7 @@ def _group_bars(
                 # Don't merge across a time-signature change.
                 if (next_bar.time_signature or state.current_ts) != state.current_ts:
                     break
-                if next_bar.cues or next_bar.fill_placeholders or next_bar.bar_text:
+                if next_bar.cues or next_bar.fill_placeholders or next_bar.bar_text or next_bar.lyrics:
                     break
                 if next_bar.dynamic_starts or next_bar.dynamic_stops:
                     break
@@ -1528,7 +1732,7 @@ def _group_bars(
                 if tb.is_rest or tb.is_placeholder_groove:
                     template_ok = False
                     break
-                if tb.cues or tb.fill_placeholders or tb.bar_text:
+                if tb.cues or tb.fill_placeholders or tb.bar_text or tb.lyrics:
                     template_ok = False
                     break
                 if tb.dynamic_starts or tb.dynamic_stops:
@@ -1562,7 +1766,7 @@ def _group_bars(
                         if cb.is_rest or cb.is_placeholder_groove:
                             cand_ok = False
                             break
-                        if cb.cues or cb.fill_placeholders or cb.bar_text:
+                        if cb.cues or cb.fill_placeholders or cb.bar_text or cb.lyrics:
                             cand_ok = False
                             break
                         if cb.dynamic_starts or cb.dynamic_stops:
@@ -1599,7 +1803,13 @@ def _group_bars(
         if multibar_template_measures is not None:
             mark = _section_mark(bar, override_repeat_times=multibar_iterations, tempo_str=cur_tempo_str, bar_text=bar.bar_text, show_swing=show_swing) if is_top_level else ""
         else:
-            mark = _section_mark(bar, override_repeat_times=num_identical if num_identical > 1 else None, tempo_str=cur_tempo_str, bar_text=bar.bar_text, show_swing=show_swing) if is_top_level else ""
+            if num_identical > 1:
+                override_times = num_identical
+            elif i < written_out_end:
+                override_times = 1  # written-out repeat pass: no "Play Nx"
+            else:
+                override_times = None
+            mark = _section_mark(bar, override_repeat_times=override_times, tempo_str=cur_tempo_str, bar_text=bar.bar_text, show_swing=show_swing) if is_top_level else ""
         if show_swing and mark:
             state.swing_shown = True
 
@@ -1612,25 +1822,37 @@ def _group_bars(
             forced_bar = "      \\bar \".|:\"\n" if i == 0 and is_top_level else ""
             inner_body = "\n".join(f"        {tm} |" for tm in multibar_template_measures)
             measures.append(f"{ts_change_cmd}{tempo_change_cmd}{mark}{forced_bar}      \\repeat volta {multibar_iterations} {{\n{inner_body}\n      }}")
+            printed.extend((tb, 1) for tb in bars[i : i + L])
             i += multibar_iterations * L
         elif num_identical > 1:
             forced_bar = "      \\bar \".|:\"\n" if i == 0 and is_top_level else ""
             measures.append(f"{ts_change_cmd}{tempo_change_cmd}{mark}{forced_bar}      \\repeat volta {num_identical} {{\n        {bar_measure} |\n      }}")
+            printed.append((bar, 1))
             i += num_identical
         else:
             measures.append(f"{ts_change_cmd}{tempo_change_cmd}{mark}{bar_text_line}      {bar_measure} |")
+            printed.append((bar, 1))
             i += 1
 
     return measures
 
 
-def emit_lilypond(ir: IRGroove | IRSong, *, compact: bool = False) -> str:
+def emit_lilypond(
+    ir: IRGroove | IRSong,
+    *,
+    compact: bool = False,
+    lyrics_style: str | None = None,
+) -> str:
     """Emit LilyPond source for either a groove or an arranged song.
 
     When ``compact`` is true, runs of identical bars collapse into one repeat
     block even across implicit 4-bar phrase boundaries. Explicit section-level
     ``repeat: N`` blocks, section boundaries, fills, variations, cues, bar
     text, dynamic spans, and time-signature changes are still respected.
+
+    ``lyrics_style`` (``staff`` / ``line`` / ``off``) overrides the song's
+    ``lyrics_style:`` metadata; the default is ``staff``. Bars carrying
+    lyrics never fold into repeats.
     """
     if isinstance(ir, IRGroove):
         bars = [
@@ -1653,6 +1875,13 @@ def emit_lilypond(ir: IRGroove | IRSong, *, compact: bool = False) -> str:
         time_signature = ir.metadata.time_signature
         feel = ir.metadata.feel
 
+    style = _DEFAULT_LYRICS_STYLE
+    if isinstance(ir, IRSong):
+        style = lyrics_style or ir.metadata.lyrics_style or _DEFAULT_LYRICS_STYLE
+    printed: list[tuple[IRBar, int]] | None = (
+        [] if isinstance(ir, IRSong) and style != "off" and ir.has_lyrics else None
+    )
+
     beats_per_bar, beat_unit = _parse_time_signature(time_signature)
 
     # Determine whether any bar carries a tempo (global or per-section).
@@ -1671,14 +1900,23 @@ def emit_lilypond(ir: IRGroove | IRSong, *, compact: bool = False) -> str:
         forced_voice_split_ids=forced_voice_split_ids,
         compact=compact,
         feel=feel,
+        printed=printed,
     )
     body = "\n".join(measures)
 
+    if printed is not None:
+        staff_parts = _lyrics_template_parts(printed, time_signature, style)
+    else:
+        staff_parts = {"{{VOCAL_STAFF}}": "", "{{DRUM_STAFF_OPEN}}": "", "{{DRUM_STAFF_CLOSE}}": ""}
+
+    fragments = {
+        "{{HEADER}}": _header_block(title),
+        "{{SCORE_HEADER}}": _score_header_block(tempo, time_signature),
+        "{{SCORE_PRELUDE}}": _score_prelude(tempo, time_signature, suppress_metronome_mark=has_any_tempo),
+        "{{BODY}}": body,
+        **staff_parts,
+    }
+    # Single pass, so placeholder-like text inside user strings (titles,
+    # cues, lyrics) is never itself substituted.
     template = _TEMPLATE_PATH.read_text()
-    return (
-        template
-        .replace("{{HEADER}}", _header_block(title))
-        .replace("{{SCORE_HEADER}}", _score_header_block(tempo, time_signature))
-        .replace("{{SCORE_PRELUDE}}", _score_prelude(tempo, time_signature, suppress_metronome_mark=has_any_tempo))
-        .replace("{{BODY}}", body)
-    )
+    return re.sub(r"\{\{[A-Z_]+\}\}", lambda m: fragments.get(m.group(0), m.group(0)), template)

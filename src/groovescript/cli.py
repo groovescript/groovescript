@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .compiler import compile_groove, compile_song
 from .errors import GrooveScriptError
-from .lilypond import emit_lilypond
+from .lilypond import LYRICS_STYLES, emit_lilypond
 from .lint import check_notation, check_style
 from .midi import emit_midi
 from .musicxml import emit_musicxml
@@ -157,7 +157,7 @@ def _run_midi(input_path: str, output_path: str) -> int:
     return 0
 
 
-def _run_musicxml(input_path: str, output_path: str) -> int:
+def _run_musicxml(input_path: str, output_path: str, lyrics_style: str | None = None) -> int:
     """Run the MusicXML export pipeline once. Returns the exit code (0 on success)."""
     rc = _check_output_not_input(input_path, output_path)
     if rc is not None:
@@ -191,13 +191,18 @@ def _run_musicxml(input_path: str, output_path: str) -> int:
             file=sys.stderr,
         )
         return 1
-    xml_bytes = emit_musicxml(ir)
+    xml_bytes = emit_musicxml(ir, include_lyrics=lyrics_style != "off")
     Path(output_path).write_bytes(xml_bytes)
     print(f"Wrote {output_path}")
     return 0
 
 
-def _run_compile(input_path: str, output_path: str, compact: bool = False) -> int:
+def _run_compile(
+    input_path: str,
+    output_path: str,
+    compact: bool = False,
+    lyrics_style: str | None = None,
+) -> int:
     """Run the compile pipeline once. Returns the exit code (0 on success)."""
     rc = _check_output_not_input(input_path, output_path)
     if rc is not None:
@@ -231,7 +236,7 @@ def _run_compile(input_path: str, output_path: str, compact: bool = False) -> in
             file=sys.stderr,
         )
         return 1
-    ly_source = emit_lilypond(ir, compact=compact)
+    ly_source = emit_lilypond(ir, compact=compact, lyrics_style=lyrics_style)
     Path(output_path).write_text(ly_source)
     print(f"Wrote {output_path}")
     notation_warnings = check_notation(ir)
@@ -307,6 +312,17 @@ def main() -> None:
             "by default; pass --no-compact to disable."
         ),
     )
+    compile_cmd.add_argument(
+        "--lyrics-style",
+        choices=LYRICS_STYLES,
+        default=None,
+        help=(
+            "How to engrave timed lyrics: 'staff' (a small vocal rhythm staff "
+            "above the drums, the default), 'line' (a lyrics line under the "
+            "drum staff), or 'off' (drums only). Overrides the "
+            "`lyrics_style:` metadata."
+        ),
+    )
 
     midi_cmd = subparsers.add_parser("midi", help="Export a .gs file to MIDI (.mid)")
     midi_cmd.add_argument("input", help="Input .gs file")
@@ -324,6 +340,15 @@ def main() -> None:
         "--watch",
         action="store_true",
         help="Re-export on every save until Ctrl-C",
+    )
+    musicxml_cmd.add_argument(
+        "--lyrics-style",
+        choices=LYRICS_STYLES,
+        default=None,
+        help=(
+            "Pass 'off' to leave the vocal (lyrics) part out of the export; "
+            "'staff' and 'line' both include it."
+        ),
     )
 
     lint_cmd = subparsers.add_parser("lint", help="Parse and validate a .gs file without compiling")
@@ -352,9 +377,9 @@ def main() -> None:
 
     if args.command == "musicxml":
         if args.watch:
-            _watch(args.input, lambda: _run_musicxml(args.input, args.output))
+            _watch(args.input, lambda: _run_musicxml(args.input, args.output, args.lyrics_style))
             return
-        sys.exit(_run_musicxml(args.input, args.output))
+        sys.exit(_run_musicxml(args.input, args.output, args.lyrics_style))
 
     if args.command == "lint":
         if args.watch:
@@ -364,9 +389,16 @@ def main() -> None:
 
     if args.command == "compile":
         if args.watch:
-            _watch(args.input, lambda: _run_compile(args.input, args.output, compact=args.compact))
+            _watch(
+                args.input,
+                lambda: _run_compile(
+                    args.input, args.output, compact=args.compact, lyrics_style=args.lyrics_style
+                ),
+            )
             return
-        sys.exit(_run_compile(args.input, args.output, compact=args.compact))
+        sys.exit(
+            _run_compile(args.input, args.output, compact=args.compact, lyrics_style=args.lyrics_style)
+        )
 
 
 if __name__ == "__main__":

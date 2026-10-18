@@ -307,6 +307,45 @@ def _check_section_like_refs(song: Song) -> list[StyleWarning]:
     return warnings
 
 
+def _check_lyrics(song: Song) -> list[StyleWarning]:
+    """Lyrics nudges.
+
+    - A section whose last syllable ends in ``-`` hyphenates into nothing
+      (or into the next section's words, which is rarely intended).
+    - More than three beat-placed ``cue``s in one section usually means the
+      author is spelling out a vocal line with cues; ``lyrics:`` pins the
+      syllables to beats and engraves them properly.
+    """
+    warnings: list[StyleWarning] = []
+    for section in song.sections:
+        if section.lyrics:
+            last = max(section.lyrics, key=lambda entry: entry.bar)
+            if last.syllables and last.syllables[-1].hyphen_after:
+                warnings.append(
+                    StyleWarning(
+                        message=(
+                            f"section {section.name!r}: last lyric syllable "
+                            f"{last.syllables[-1].text + '-'!r} ends with a hyphen"
+                        ),
+                        line=last.line,
+                        hint="drop the trailing `-`, or finish the word in this section",
+                    )
+                )
+        beat_cues = [cue for cue in section.cues if cue.beat is not None]
+        if len(beat_cues) > 3:
+            warnings.append(
+                StyleWarning(
+                    message=(
+                        f"section {section.name!r} has {len(beat_cues)} cues "
+                        f"placed on beats; if these are sung words, use a "
+                        f"`lyrics:` block instead"
+                    ),
+                    hint='e.g. `lyrics:` / `bar 1: "1 2& 3" "when the night"`',
+                )
+            )
+    return warnings
+
+
 def _closest_name(target: str, choices: set[str]) -> str | None:
     import difflib
 
@@ -415,6 +454,7 @@ def check_style(source: str, song: Song) -> list[StyleWarning]:
     warnings: list[StyleWarning] = []
     warnings.extend(_check_mixed_groove_styles(source))
     warnings.extend(_check_section_like_refs(song))
+    warnings.extend(_check_lyrics(song))
     warnings.extend(_check_unused_definitions(song))
     # Sort located warnings first (stable on line/column); locationless
     # ones keep their original order at the tail.

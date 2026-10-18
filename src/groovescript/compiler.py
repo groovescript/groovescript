@@ -124,6 +124,19 @@ class IRSection:
 
 
 @dataclass
+class LyricSyllable:
+    """One timed lyric syllable attached to an :class:`IRBar`.
+
+    Lyrics are onsets only: the emitters derive a display duration by
+    letting each syllable last until the next onset (or the bar line).
+    """
+
+    position: Fraction  # bar-relative beat position, like Event.beat_position
+    text: str  # "~" already turned into a space
+    hyphen_after: bool = False
+
+
+@dataclass
 class IRBar:
     """One arranged bar of drum events."""
 
@@ -166,6 +179,9 @@ class IRBar:
     # Empty list means "no tuplet content in this bar" — equivalent to all
     # ``None`` entries — and lets the emitter fall back to the legacy path.
     beat_tuplets: list[object] = field(default_factory=list)
+    # Timed lyric syllables sounding in this bar, sorted by position. They
+    # never influence ``subdivision``; emitters build their own lyric grid.
+    lyrics: list[LyricSyllable] = field(default_factory=list)
 
 
 @dataclass
@@ -175,6 +191,11 @@ class IRSong:
     metadata: Metadata
     bars: list[IRBar]
     sections: list[IRSection]
+
+    @property
+    def has_lyrics(self) -> bool:
+        """True when any bar carries lyric syllables (drives emitter layout)."""
+        return any(bar.lyrics for bar in self.bars)
 
 
 _FRACTION_SUFFIX_LABEL: dict[Fraction, str] = {
@@ -2270,6 +2291,9 @@ def _resolve_inheritance(sections: list[Section]) -> list[Section]:
     - ``with fills``       — fills, fill_placeholders, inline_fills
     - ``with variations``  — variation blocks
     - ``with cues``        — cue annotations
+    - ``with lyrics``      — timed lyrics (keyed by bar: the inheritor's
+                             ``bar N:`` entries replace the parent's entry
+                             for the same bar; other parent bars are kept)
 
     Uses recursive resolution with cycle detection so that chained ``like``
     references (C likes B, B likes A) work correctly — the target section is
@@ -2337,6 +2361,7 @@ def _resolve_inheritance(sections: list[Section]) -> list[Section]:
         inherits_fills = spec.inherits("fills")
         inherits_variations = spec.inherits("variations")
         inherits_cues = spec.inherits("cues")
+        inherits_lyrics = spec.inherits("lyrics")
 
         merged_fills = (
             list(original.fills) + list(section.fills)
@@ -2358,6 +2383,16 @@ def _resolve_inheritance(sections: list[Section]) -> list[Section]:
             list(original.cues) + list(section.cues)
             if inherits_cues else list(section.cues)
         )
+        # Lyrics merge keyed by bar rather than concatenating: two entries
+        # for the same bar would otherwise trip the duplicate-onset check.
+        if inherits_lyrics:
+            own_bars = {entry.bar for entry in section.lyrics}
+            merged_lyrics = [
+                entry for entry in original.lyrics if entry.bar not in own_bars
+            ] + list(section.lyrics)
+            merged_lyrics.sort(key=lambda entry: entry.bar)
+        else:
+            merged_lyrics = list(section.lyrics)
 
         resolved_map[name] = Section(
             name=section.name,
@@ -2371,6 +2406,7 @@ def _resolve_inheritance(sections: list[Section]) -> list[Section]:
             variations=merged_variations,
             inherit=None,
             cues=merged_cues,
+            lyrics=merged_lyrics,
             dynamic_spans=list(original.dynamic_spans) + list(section.dynamic_spans),
             tempo=merged_tempo,
             time_signature=merged_time_signature,
@@ -3511,9 +3547,89 @@ def compile_song(song: Song) -> IRSong:
         bars.extend(new_bars)
         current_bar_number += len(new_bars)
 
+    _attach_section_lyrics(sections, sections_ir, bars, global_ts)
     _split_cross_bar_buzz_events(bars, global_bpb)
 
     return IRSong(metadata=song.metadata, bars=bars, sections=sections_ir)
+
+
+def _attach_section_lyrics(
+    sections: list[Section],
+    sections_ir: list[IRSection],
+    bars: list[IRBar],
+    global_ts: str,
+) -> None:
+    """Resolve each section's ``lyrics:`` entries onto absolute bars.
+
+    Runs after the arrangement is laid out (inheritance, ``play:``
+    expansion, ``repeat:``) so ``bar N`` indexes the section's expanded
+    bars. ``bar 0`` lands in the preceding section's last bar, using that
+    bar's meter. Positions are resolved against the target bar's own time
+    signature, so meter-variation bars work too.
+    """
+    for index, (section, ir_section) in enumerate(zip(sections, sections_ir)):
+        for entry in section.lyrics:
+            if entry.bar == 0:
+                if index == 0:
+                    raise GrooveScriptError(
+                        message=(
+                            f"Section {section.name!r}: lyrics `bar 0:` is a "
+                            f"pickup into the previous section, but this is "
+                            f"the first section"
+                        ),
+                        line=entry.line,
+                        hint="move the pickup syllables to `bar 1:`",
+                    )
+                target = bars[ir_section.start_bar - 2]
+            elif entry.bar > ir_section.bars:
+                raise GrooveScriptError(
+                    message=(
+                        f"Section {section.name!r}: lyrics for bar {entry.bar} "
+                        f"but the section has only {ir_section.bars} "
+                        f"bar{'s' if ir_section.bars != 1 else ''}"
+                    ),
+                    line=entry.line,
+                )
+            else:
+                target = bars[ir_section.start_bar - 1 + entry.bar - 1]
+            ts = target.time_signature or global_ts
+            bpb = _beats_per_bar(ts)
+            new: list[LyricSyllable] = []
+            seen: set[Fraction] = set()
+            for label, token in zip(entry.labels, entry.syllables):
+                try:
+                    pos = _beat_label_to_fraction(label, 1, bpb)
+                except ValueError as exc:
+                    raise GrooveScriptError(
+                        message=(
+                            f"Section {section.name!r}: lyrics bar {entry.bar}: "
+                            f"{exc} ({ts})"
+                        ),
+                        line=entry.line,
+                    ) from None
+                if pos in seen:
+                    raise GrooveScriptError(
+                        message=(
+                            f"Section {section.name!r}: lyrics bar {entry.bar} "
+                            f"has two syllables on {_beat_label_for(pos, bpb)}"
+                        ),
+                        line=entry.line,
+                        hint="join words on one onset with `~` (e.g. oh~yeah)",
+                    )
+                seen.add(pos)
+                new.append(LyricSyllable(pos, token.text, token.hyphen_after))
+            existing = {syl.position for syl in target.lyrics}
+            clash = sorted(existing & seen)
+            if clash:
+                raise GrooveScriptError(
+                    message=(
+                        f"Section {section.name!r}: lyrics pickup `bar 0:` "
+                        f"collides with the previous section's lyrics on "
+                        f"{_beat_label_for(clash[0], bpb)}"
+                    ),
+                    line=entry.line,
+                )
+            target.lyrics = sorted(target.lyrics + new, key=lambda syl: syl.position)
 
 
 def _split_cross_bar_buzz_events(

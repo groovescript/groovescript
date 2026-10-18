@@ -23,12 +23,12 @@ const DEFINITIONS = new Set(['groove','fill','section']);
 
 const META_KWS = new Set([
   'metadata','title','tempo','time_signature','dsl_version',
-  'default_groove','default_bars',
+  'default_groove','default_bars','lyrics_style',
 ]);
 
 const BODY_KWS = new Set([
   'bars','count','notes','repeat','like','with',
-  'play','cue','variation','text','extend',
+  'play','cue','lyrics','variation','text','extend',
   'cresc','decresc','crescendo','decrescendo',
 ]);
 
