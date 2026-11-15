@@ -414,3 +414,30 @@ groove "beat":
 """
     song = parse(src)
     assert song.metadata.feel is None
+
+
+import pytest as _pytest
+
+from groovescript.errors import GrooveScriptError as _GSError
+
+
+@_pytest.mark.parametrize("where", ["top", "section", "variation"])
+@_pytest.mark.parametrize("ts", ["4/0", "4/3", "0/4"])
+def test_invalid_time_signature_is_rejected(where, ts):
+    """Regression: time signatures with a zero / non-power-of-two denominator
+    (or a zero numerator) passed lint but crashed MIDI/MusicXML export with
+    a raw ZeroDivisionError, or produced a wrong MIDI meter."""
+    from groovescript.parser import parse
+
+    top = f"time_signature: {ts}\n" if where == "top" else ""
+    sec = f"  time_signature: {ts}\n" if where == "section" else ""
+    var = (
+        f"  variation at bar 2:\n    time_signature: {ts}\n    add BD at 1\n"
+        if where == "variation" else ""
+    )
+    src = (
+        f'{top}groove "g":\n  BD: 1\n'
+        f'section "A":\n  bars: 2\n  groove: "g"\n{sec}{var}'
+    )
+    with _pytest.raises(_GSError, match="invalid time signature"):
+        parse(src)

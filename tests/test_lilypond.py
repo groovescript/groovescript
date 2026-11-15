@@ -2052,3 +2052,33 @@ def test_fill_replacing_triplet_groove_uses_fill_grid():
     ly = emit_lilypond(ir)
     assert "r4 r4 r4 <bd cymc>4 |" in ly
     assert "6." not in ly.split("\\drummode", 1)[1]
+
+
+def test_straight_bar_on_triplet_grid_emits_plain_quarters():
+    """Regression: a straight bar that kept a 3-slots-per-beat grid emitted
+    quarters as ``6.`` (the dotted-eighth branch fired on any 3-slot run),
+    which LilyPond rejects as "not a duration"."""
+    song = parse(
+        'groove "g":\n'
+        '    HH: 1, 1t, 1l, 2, 3, 4\n    BD: 1, 3\n    SN: 2, 4\n'
+        'section "a":\n  bars: 2\n  groove: "g"\n'
+        '  variation at bar 2:\n    remove HH at 1t, 1l\n'
+    )
+    ly = emit_lilypond(compile_song(song))
+    assert "6." not in ly
+    assert "<hh bd>4 <hh sn>4 <hh bd>4 <hh sn>4 |" in ly
+
+
+def test_meter_change_inside_explicit_repeat_is_restored_after():
+    """Regression: a ``\\time`` change emitted inside an explicit ``repeat:``
+    block was not tracked by the outer bar grouper, so no ``\\time 4/4``
+    was emitted before the following 4/4 section."""
+    song = parse(
+        'groove "g":\n    BD: 1, 3\n    SN: 2, 4\n    HH: *8\n'
+        'section "a":\n  bars: 4\n  groove: "g"\n  repeat: 2\n'
+        '  variation at bar 2:\n    time_signature: 2/4\n    add SN at 1, 2\n'
+        'section "b":\n  bars: 2\n  groove: "g"\n'
+    )
+    ly = emit_lilypond(compile_song(song))
+    after_repeat = ly[ly.index("\\time 2/4"):]
+    assert "\\time 4/4" in after_repeat

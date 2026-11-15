@@ -104,6 +104,26 @@ def _build_fill_bar(label: str | None, items) -> "FillBar":
     return FillBar(label=label, lines=lines, pattern_lines=pattern_lines)
 
 
+
+def _checked_time_signature(token) -> str:
+    """Validate a ``TIME_SIGNATURE`` token and return it as a string.
+
+    The numerator must be positive and the denominator a power of two;
+    anything else (``4/0``, ``4/3``) cannot be engraved and would crash or
+    mis-time the MIDI / MusicXML emitters downstream.
+    """
+    text = str(token)
+    num, den = (int(part) for part in text.split("/"))
+    if num <= 0 or den <= 0 or den & (den - 1):
+        raise GrooveScriptError(
+            message=f"invalid time signature {text!r}",
+            line=getattr(token, "line", None),
+            column=getattr(token, "column", None),
+            length=len(text),
+            hint="the top number must be at least 1 and the bottom number a power of two (1, 2, 4, 8, 16, ...)",
+        )
+    return text
+
 class _GrooveScriptTransformer(Transformer):
     def __init__(self):
         super().__init__()
@@ -170,7 +190,7 @@ class _GrooveScriptTransformer(Transformer):
         return Metadata(tempo=tempo)
 
     def time_signature_line(self, items):
-        return Metadata(time_signature=str(items[0]))
+        return Metadata(time_signature=_checked_time_signature(items[0]))
 
     def dsl_version_line(self, items):
         return Metadata(dsl_version=int(items[0]))
@@ -339,7 +359,7 @@ class _GrooveScriptTransformer(Transformer):
 
     def variation_time_signature_action(self, items):
         token = items[0]
-        return ("__time_signature__", str(token), token.line)
+        return ("__time_signature__", _checked_time_signature(token), token.line)
 
     def pattern_content(self, items):
         # Each item is either:
@@ -996,7 +1016,7 @@ class _GrooveScriptTransformer(Transformer):
         return ("tempo", tempo)
 
     def section_time_signature_line(self, items):
-        return ("time_signature", str(items[0]))
+        return ("time_signature", _checked_time_signature(items[0]))
 
     def section_crash_in_line(self, items):
         return ("crash_in", CrashInSpec())

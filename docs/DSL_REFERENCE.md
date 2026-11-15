@@ -1363,7 +1363,8 @@ section "verse 2":
 
 Bare `like "parent"` inherits only the basic arrangement: `bars`, `groove`,
 `repeat`, `tempo`, `time_signature`, `play`, inline grooves,
-section-level dynamic spans, and the `crash in` flag. To also inherit
+section-level dynamic spans, `break on bar` directives, and the
+`crash in` flag. To also inherit
 `fills`, `variations`, `cues`, or `lyrics`, list the categories after `with`:
 
 ```groovescript
@@ -1377,11 +1378,17 @@ category twice is an error.
 
 Scalar fields on the inheriting section (`bars`, `groove`, `repeat`,
 `tempo`, `play`, `time_signature`) override the inherited values when
-explicitly set. List fields concatenate — inherited first, then the
+explicitly set. Setting `groove:` on the inheritor replaces an inherited
+`play:` block (and vice versa), since a section is either classic or
+play-list. List fields concatenate — inherited first, then the
 inheriting section's additions. If a new entry targets the same bar as
 an inherited entry, the new entry wins. Lyrics are merged by bar instead:
 an inheritor's `bar N:` entry replaces the parent's entry for that bar
 (see [Timed lyrics](#timed-lyrics)).
+
+When several sections share a name, `like "name"` refers to the nearest
+earlier section with that name, so a repeated `section "verse"` can say
+`like "verse"` to copy the previous verse.
 
 Dynamic spans (`cresc …`, `decresc …`) defined inside a groove or fill
 always travel with that groove or fill wherever it's referenced, so a
