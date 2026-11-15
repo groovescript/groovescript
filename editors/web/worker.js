@@ -8,7 +8,8 @@
 //   { type: 'format', id, source }           groovescript fmt
 // Messages out:
 //   { type: 'status', state: 'loading' | 'ready' | 'failed', message }
-//   { type: 'built', id, ok, diagnostics, musicxml, midi, title, barCount, ms }
+//   { type: 'vocabulary', vocab }            instruments, modifiers, library (once)
+//   { type: 'built', id, ok, diagnostics, musicxml, midi, title, barCount, symbols, ms }
 //   { type: 'rendered', id, svgs, timemap, ms } | { type: 'render-failed', id, message }
 //   { type: 'formatted', id, ok, text, diagnostics }
 //
@@ -49,6 +50,9 @@ async function loadPython() {
   // real build is as fast as the rest.
   web.build('groove "warmup":\n  BD: 1\n').destroy?.();
   post({ type: 'status', state: 'ready', message: 'Compiler ready' });
+  const vocab = web.vocabulary_js();
+  post({ type: 'vocabulary', vocab: vocab.toJs({ dict_converter: Object.fromEntries }) });
+  vocab.destroy();
   return web;
 }
 
@@ -97,6 +101,7 @@ async function pumpBuilds() {
         midi,
         title: r.title ?? null,
         barCount: r.bar_count ?? 0,
+        symbols: r.symbols ?? null,
         ms: Math.round(performance.now() - t0),
       }, midi ? [midi.buffer] : []);
     }

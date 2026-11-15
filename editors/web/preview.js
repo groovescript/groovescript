@@ -11,7 +11,9 @@ const PREF_KEY = 'groovescript_preview_wide_v1';
 /**
  * @param {{ showDiagnostics(diags: object[]): void,
  *           getDoc(): import('@codemirror/state').Text,
- *           jumpToProblem(): void }} editor
+ *           jumpToProblem(): void,
+ *           onSymbols?(symbols: object): void,
+ *           onVocabulary?(vocab: object): void }} editor
  */
 export function createPreview(editor) {
   const $ = (id) => document.getElementById(id);
@@ -88,6 +90,7 @@ export function createPreview(editor) {
   worker.onmessage = (e) => {
     const msg = e.data;
     if (msg.type === 'status') onStatus(msg);
+    else if (msg.type === 'vocabulary') editor.onVocabulary?.(msg.vocab);
     else if (msg.type === 'built') onBuilt(msg);
     else if (msg.type === 'rendered') onRendered(msg);
     else if (msg.type === 'render-failed') onRenderFailed(msg);
@@ -109,6 +112,7 @@ export function createPreview(editor) {
   function onBuilt(msg) {
     if (msg.id !== buildSeq) return; // a newer edit is already queued
     editor.showDiagnostics(toEditorDiagnostics(editor.getDoc(), msg.diagnostics));
+    if (msg.symbols) editor.onSymbols?.(msg.symbols);
     const summary = summarize(msg.diagnostics);
     if (summary.level === 'ok') {
       const bars = msg.barCount ? `${msg.barCount} bar${msg.barCount === 1 ? '' : 's'} · ` : '';

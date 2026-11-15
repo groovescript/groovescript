@@ -3,6 +3,7 @@ import {
   EditorState, Compartment,
   defaultKeymap, history, historyKeymap,
   lintGutter, setDiagnostics, nextDiagnostic,
+  autocompletion, snippetCompletion, hoverTooltip,
 } from './vendor/codemirror.bundle.js';
 
 import {
@@ -13,6 +14,7 @@ import {
 
 import { createPreview } from './preview.js';
 import { minimalChange } from './textchange.js';
+import { analyze, options as assistOptions, hoverInfo } from './assist.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -167,6 +169,105 @@ function updateSymbolBarPosition() {
 
 let preview = null;
 
+// ── Completion, hover, go to definition ───────────────────────────────────────
+
+// Filled from the worker: the chart's names (each build) and the static
+// vocabulary (once). See assist.js.
+const assist = { symbols: null, vocab: null };
+
+const WORD_KINDS = new Set(['line-start', 'modifiers', 'instruments', 'instruments+modifiers']);
+
+function completionSource(context) {
+  const text = context.state.doc.toString();
+  const ctx = analyze(text, context.pos);
+  if (!ctx) return null;
+  // Word lists wait for a typed letter (or Ctrl-Space), so typing beats and
+  // pressing Enter never pops a menu. Names open as soon as the quote does.
+  if (WORD_KINDS.has(ctx.kind) && ctx.from === context.pos && !context.explicit) return null;
+  const opts = assistOptions(ctx, assist);
+  if (!opts.length) return null;
+  const quoted = ctx.kind === 'names';
+  return {
+    from: ctx.from,
+    validFor: quoted ? /^[^"]*$/ : /^[\w&-]*$/,
+    options: opts.map((o) => {
+      const base = { label: o.label, detail: o.detail, info: o.info, type: o.type, boost: o.boost };
+      if (o.snippet) return snippetCompletion(o.snippet, base);
+      if (quoted) {
+        return {
+          ...base,
+          apply: (view, completion, from, to) => {
+            const closes = view.state.sliceDoc(to, to + 1) === '"';
+            const insert = completion.label + (closes ? '' : '"');
+            view.dispatch({
+              changes: { from, to, insert },
+              selection: { anchor: from + completion.label.length + 1 },
+              userEvent: 'input.complete',
+            });
+          },
+        };
+      }
+      return { ...base, apply: o.apply ?? o.label };
+    }),
+  };
+}
+
+const hover = hoverTooltip((view, pos) => {
+  const info = hoverInfo(view.state.doc.toString(), pos, assist);
+  if (!info) return null;
+  return {
+    pos: info.from,
+    end: info.to,
+    above: true,
+    create() {
+      const dom = document.createElement('div');
+      dom.className = 'gs-hover';
+      const title = document.createElement('div');
+      title.className = 'gs-hover-title';
+      title.textContent = info.title;
+      dom.appendChild(title);
+      if (info.body) {
+        const body = document.createElement('pre');
+        body.className = 'gs-hover-body';
+        body.textContent = info.body;
+        dom.appendChild(body);
+      }
+      if (info.definitionLine) {
+        const hint = document.createElement('div');
+        hint.className = 'gs-hover-hint';
+        hint.textContent = 'Ctrl/⌘-click or F12 to go to definition';
+        dom.appendChild(hint);
+      }
+      return { dom };
+    },
+  };
+}, { hoverTime: 350 });
+
+function goToDefinition(view, pos = view.state.selection.main.head) {
+  const info = hoverInfo(view.state.doc.toString(), pos, assist);
+  if (!info || !info.definitionLine) return false;
+  const line = view.state.doc.line(info.definitionLine);
+  view.dispatch({
+    selection: { anchor: line.from },
+    effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
+  });
+  view.focus();
+  return true;
+}
+
+const definitionClicks = EditorView.domEventHandlers({
+  mousedown(event, view) {
+    if (!(event.metaKey || event.ctrlKey) || event.button !== 0) return false;
+    const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+    if (pos == null) return false;
+    if (goToDefinition(view, pos)) {
+      event.preventDefault();
+      return true;
+    }
+    return false;
+  },
+});
+
 async function formatDoc(view, btn = null) {
   const before = view.state.doc.toString();
   const result = await preview.format(before);
@@ -195,7 +296,11 @@ document.addEventListener('DOMContentLoaded', () => {
       keymap.of([
         { key: 'Mod-Enter', run: () => { preview.togglePlay(); return true; } },
         { key: 'Shift-Alt-f', run: (v) => { formatDoc(v); return true; } },
+        { key: 'F12', run: (v) => goToDefinition(v) },
       ]),
+      autocompletion({ override: [completionSource], icons: false }),
+      hover,
+      definitionClicks,
       keymap.of([...defaultKeymap, ...historyKeymap]),
       highlightActiveLine(),
       drawSelection(),
@@ -220,6 +325,8 @@ document.addEventListener('DOMContentLoaded', () => {
     showDiagnostics: (diags) => view.dispatch(setDiagnostics(view.state, diags)),
     getDoc: () => view.state.doc,
     jumpToProblem: () => { view.focus(); nextDiagnostic(view); },
+    onSymbols: (symbols) => { assist.symbols = symbols; },
+    onVocabulary: (vocab) => { assist.vocab = vocab; },
   });
   preview.sourceChanged(view.state.doc.toString(), { immediate: true });
 

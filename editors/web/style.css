@@ -426,3 +426,64 @@ body[data-preview="off"] .preview-pane {
   background: var(--accent);
   color: var(--accent-fg);
 }
+
+/* ── Completion and hover tooltips ─────────────────────────────────────────── */
+
+.cm-tooltip {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--btn-radius);
+  font-family: ui-monospace, 'Cascadia Code', Menlo, monospace;
+  font-size: 13px;
+}
+
+.cm-tooltip-autocomplete > ul > li[aria-selected] {
+  background: var(--accent) !important;
+  color: var(--accent-fg) !important;
+}
+
+.cm-completionDetail {
+  color: var(--muted);
+  font-style: normal;
+  margin-left: 1em;
+}
+
+.cm-tooltip-autocomplete > ul > li[aria-selected] .cm-completionDetail {
+  color: inherit;
+}
+
+.cm-completionInfo {
+  white-space: pre-wrap;
+  max-width: min(420px, 80vw);
+}
+
+.gs-hover {
+  padding: 6px 10px;
+  max-width: min(520px, 90vw);
+}
+
+.gs-hover-title {
+  font-weight: 600;
+}
+
+.gs-hover-body {
+  margin: 6px 0 0;
+  font: inherit;
+  white-space: pre;
+  overflow-x: auto;
+  color: var(--text);
+}
+
+.gs-hover-hint {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Lint gutter follows the theme (CodeMirror's default is light-only). */
+.cm-gutters {
+  background: var(--bg) !important;
+  border-right: 1px solid var(--border) !important;
+  color: var(--muted) !important;
+}

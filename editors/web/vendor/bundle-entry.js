@@ -10,3 +10,6 @@ export { tags }
   from '@lezer/highlight';
 export { linter, lintGutter, setDiagnostics, forEachDiagnostic, nextDiagnostic }
   from '@codemirror/lint';
+export { autocompletion, snippetCompletion, startCompletion, closeCompletion, completionStatus, acceptCompletion }
+  from '@codemirror/autocomplete';
+export { hoverTooltip } from '@codemirror/view';
