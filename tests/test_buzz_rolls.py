@@ -619,3 +619,22 @@ section "s":
     ly = _song_ly(src)
     # The buzz is a quarter note starting at 3& so it spans 3& to 4&.
     assert "sn4:32" in ly
+
+
+def test_buzz_roll_kept_in_bars_with_triplets_or_tuplets():
+    """Regression: the beat-by-beat triplet and tuplet emitters ignored buzz
+    durations, so ``SN: 3 buzz:2`` printed as ``sn4 r4`` (no tremolo, wrong
+    length) whenever the bar also had a triplet or tuplet group."""
+    from groovescript.compiler import compile_song
+    from groovescript.lilypond import emit_lilypond
+    from groovescript.parser import parse
+
+    song = parse(
+        'groove "tup":\n    HH: 1{triplet 1, 2, 3}, 2\n    SN: 3 buzz:4\n    BD: 1\n'
+        'groove "trip":\n    HH: 1, 1t, 1l, 2\n    SN: 3 buzz:2\n    BD: 1\n'
+        'section "a":\n  bars: 1\n  groove: "tup"\n'
+        'section "b":\n  bars: 1\n  groove: "trip"\n'
+    )
+    ly = emit_lilypond(compile_song(song))
+    assert "hh4 sn4:32 r4 |" in ly
+    assert "hh4 sn2:32 |" in ly

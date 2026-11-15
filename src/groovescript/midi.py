@@ -417,15 +417,15 @@ def _bars_to_drum_events(
 # ---------------------------------------------------------------------------
 
 def _midi_from_groove(groove: IRGroove) -> bytes:
-    default_ts = "4/4"
-    default_bpm = _DEFAULT_TEMPO
+    default_ts = groove.time_signature
+    default_bpm = groove.tempo if groove.tempo is not None else _DEFAULT_TEMPO
     bticks = _bar_ticks(default_ts)
 
     bar_starts = [i * bticks for i in range(groove.bars)]
 
     tempo_track: list[tuple[int, bytes]] = [
         (0, _timesig_event(default_ts)),
-        (0, _tempo_event(default_bpm)),
+        (0, _tempo_event(default_bpm, _beat_unit(default_ts))),
     ]
 
     drum_track: list[tuple[int, bytes]] = []

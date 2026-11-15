@@ -486,3 +486,24 @@ def test_cli_musicxml_lyrics_off(tmp_path: Path):
 def test_lyrics_fixtures_match_committed_ly(name):
     ir = compile_song(parse_file(str(FIXTURES / f"{name}.gs")))
     assert emit_lilypond(ir) == (FIXTURES / f"{name}.ly").read_text()
+
+
+def test_vocal_staff_aligned_after_explicit_repeat_block():
+    """Regression: the bars of an explicit ``repeat:`` phrase were all recorded
+    as printed even when the inner grouping collapsed them further, so the
+    vocal staff had extra bars and later lyrics fell under the wrong drum bar."""
+    from groovescript.compiler import compile_song
+    from groovescript.lilypond import emit_lilypond
+    from groovescript.parser import parse
+
+    ly = emit_lilypond(compile_song(parse(
+        'groove "g":\n    BD: 1, 3\n    SN: 2, 4\n    HH: *8\n'
+        'section "a":\n  bars: 4\n  groove: "g"\n  repeat: 2\n'
+        'section "b":\n  bars: 2\n  groove: "g"\n'
+        '  lyrics:\n    bar 1: "1 3" "hel- lo"\n    bar 2: "2" "you"\n'
+    )))
+    drum = ly[ly.index("\\repeat volta 2 {"):]
+    assert drum.count(" |\n") == 3  # 1 bar inside the repeat + 2 for section b
+    # Vocal stream: one rest bar for section a, then section b's lyrics.
+    assert "R1 |\n      c2 c2 |\n      r4 c2. |" in ly
+    assert "R1 |\n      R1 |" not in ly

@@ -111,6 +111,10 @@ class IRGroove:
     # when the bar has no tuplet groups. ``bar_beat_tuplets[i]`` maps to
     # groove bar ``i + 1``.
     bar_beat_tuplets: list[list[object]] = field(default_factory=list)
+    # Song-level meter / tempo for a standalone groove export (a file with
+    # grooves but no sections). Set by ``compile_standalone_groove``.
+    time_signature: str = "4/4"
+    tempo: int | None = None
 
 
 @dataclass
@@ -1403,6 +1407,17 @@ def _build_beat_tuplets_from_count(
             )
         annotations[beat_idx] = new
     return annotations
+
+
+def compile_standalone_groove(song: "Song") -> IRGroove:
+    """Compile the first groove of a file that has no sections, honouring
+    the file's ``time_signature:`` and ``tempo:`` metadata."""
+    ts = song.metadata.time_signature
+    bpb, beat_unit = (int(part) for part in ts.split("/"))
+    ir = compile_groove(song.grooves[0], bpb, beat_unit)
+    ir.time_signature = ts
+    ir.tempo = song.metadata.tempo
+    return ir
 
 
 def compile_groove(
@@ -2751,6 +2766,21 @@ def _resolve_groove_extends(
         # count+notes base preserves the base's tuplet annotations and per-beat
         # subdivision (which can't be reconstructed from raw pattern lines).
         merged_count_notes = base.count_notes
+        if merged_count_notes is not None and len(groove.bars) > 1:
+            # A count+notes base is always one bar and ``compile_groove``
+            # overlays only the first extension bar on it, so bars 2+ of
+            # the body would silently vanish.
+            raise GrooveScriptError(
+                message=(
+                    f"Groove {name!r}: a multi-bar extend: body ({len(groove.bars)} "
+                    f"bars) cannot extend {groove.extend!r}, a one-bar "
+                    f"count:/notes: groove"
+                ),
+                hint=(
+                    "write the base groove as pattern lines, or use a one-bar "
+                    "body plus `variation at bar N:` blocks in the section"
+                ),
+            )
 
         # Merge bar_texts: base first, then overlay extending groove's texts.
         merged_texts = dict(base.bar_texts)

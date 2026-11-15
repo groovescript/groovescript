@@ -2095,3 +2095,18 @@ def test_triplet_bar_in_six_eight_scales_durations_to_beat_unit():
     )
     ly = emit_lilypond(compile_song(song))
     assert "\\tuplet 3/2 { <hh bd>16 hh16 hh16 } hh8 hh8 <hh bd>8 hh8 hh8 |" in ly
+
+
+def test_cue_and_hairpin_between_notes_are_not_swallowed():
+    """Regression: bar consolidation only looked at hits, so a cue or hairpin
+    endpoint at an empty position (``beat 2&`` over quarter notes) was merged
+    into the preceding quarter and silently dropped."""
+    song = parse(
+        'groove "q":\n    BD: 1, 3\n    SN: 2, 4\n'
+        'section "a":\n  bars: 2\n  groove: "q"\n'
+        '  cue "Stop" at bar 1 beat 2&\n'
+        '  cresc from bar 2 beat 2& to bar 2 beat 3&\n'
+    )
+    ly = emit_lilypond(compile_song(song))
+    assert 'bd4 sn8 r8^\\markup { \\italic \\fontsize #-1 "Stop" } bd4 sn4 |' in ly
+    assert "bd4 sn8 r8\\< bd8 r8\\! sn4 |" in ly

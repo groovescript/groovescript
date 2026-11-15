@@ -3288,3 +3288,16 @@ def test_undefined_fill_on_placeholder_bar_shows_label():
         'section "A":\n  bars: 2\n  fill "big build" at bar 2\n'
     ))
     assert (Fraction(0), "big build") in song.bars[1].fill_placeholders
+
+
+def test_multi_bar_extend_over_count_notes_base_is_an_error():
+    """Regression: a multi-bar ``extend:`` body over a one-bar count:/notes:
+    base compiled to a single bar, silently dropping bars 2+ of the body."""
+    src = (
+        'groove "base":\n  count: "1 2 3 4"\n  notes: "BD, SN, BD, SN"\n'
+        'groove "two":\n  extend: "base"\n'
+        '  bar 1:\n    HH: 1, 2, 3, 4\n  bar 2:\n    CR: 1\n'
+        'section "A":\n  bars: 2\n  groove: "two"\n'
+    )
+    with pytest.raises(ValueError, match="multi-bar extend: body"):
+        compile_song(parse(src))

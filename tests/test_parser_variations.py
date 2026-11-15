@@ -694,3 +694,21 @@ variation "bad":
 """
     with pytest.raises(GrooveScriptError, match="not supported inside a top-level reusable"):
         parse(src)
+
+
+def test_modify_action_beat_list_commas_optional():
+    """Regression: the comma preprocessor only recognised ``add``/``remove``/
+    ``replace`` actions, so ``modify add accent to SN at 2 4`` (no comma)
+    failed with "unexpected '4'" although commas are documented as optional."""
+    from fractions import Fraction
+
+    from groovescript.compiler import compile_song
+    from groovescript.parser import parse
+
+    song = compile_song(parse(
+        'groove "g":\n    BD: 1, 3\n    SN: 2, 4\n'
+        'section "a":\n  bars: 2\n  groove: "g"\n'
+        '  variation at bar 2:\n    modify add accent to SN at 2 4\n'
+    ))
+    accented = [e.beat_position for e in song.bars[1].events if "accent" in e.modifiers]
+    assert accented == [Fraction(1, 4), Fraction(3, 4)]

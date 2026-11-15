@@ -3,7 +3,9 @@ import sys
 import time
 from pathlib import Path
 
-from .compiler import compile_groove, compile_song
+import functools
+
+from .compiler import compile_song, compile_standalone_groove
 from .errors import GrooveScriptError
 from .lilypond import LYRICS_STYLES, emit_lilypond
 from .lint import check_notation, check_style
@@ -58,7 +60,7 @@ def _parse_or_exit(input_path: str):
 
 def _compile_or_exit(song, input_path: str):
     try:
-        return compile_song(song) if song.sections else compile_groove(song.grooves[0])
+        return compile_song(song) if song.sections else compile_standalone_groove(song)
     except GrooveScriptError as err:
         _attach_source_context(err, input_path)
         _fail(err)
@@ -66,6 +68,47 @@ def _compile_or_exit(song, input_path: str):
         _fail(GrooveScriptError(message=str(err), filename=input_path))
 
 
+def _guard_run(run):
+    """Render any error escaping a ``_run_*`` pipeline as a diagnostic and
+    return exit code 1, instead of a Python traceback.
+
+    Catches what the explicit handlers inside each pipeline don't: an
+    unreadable or non-UTF-8 input, an input that is a directory, an output
+    path whose directory doesn't exist, and errors raised by the emitters.
+    Under ``--watch`` this keeps the watch loop alive.
+    """
+    @functools.wraps(run)
+    def wrapper(input_path: str, *args, **kwargs) -> int:
+        try:
+            return run(input_path, *args, **kwargs)
+        except GrooveScriptError as err:
+            _attach_source_context(err, input_path)
+            print(err.render(), file=sys.stderr)
+        except UnicodeDecodeError:
+            print(
+                GrooveScriptError(
+                    message=f"input file is not valid UTF-8 text: {input_path}",
+                ).render(),
+                file=sys.stderr,
+            )
+        except OSError as err:
+            target = err.filename or input_path
+            reason = err.strerror or str(err)
+            print(
+                GrooveScriptError(message=f"cannot access {target}: {reason}").render(),
+                file=sys.stderr,
+            )
+        except ValueError as err:
+            print(
+                GrooveScriptError(message=str(err), filename=input_path).render(),
+                file=sys.stderr,
+            )
+        return 1
+
+    return wrapper
+
+
+@_guard_run
 def _run_lint(input_path: str, with_style: bool) -> int:
     """Run the lint pipeline once. Returns the exit code (0 on success)."""
     try:
@@ -86,7 +129,7 @@ def _run_lint(input_path: str, with_style: bool) -> int:
     ir = None
     if song.grooves or song.sections:
         try:
-            ir = compile_song(song) if song.sections else compile_groove(song.grooves[0])
+            ir = compile_song(song) if song.sections else compile_standalone_groove(song)
         except GrooveScriptError as err:
             _attach_source_context(err, input_path)
             print(err.render(), file=sys.stderr)
@@ -117,6 +160,7 @@ def _run_lint(input_path: str, with_style: bool) -> int:
     return 0
 
 
+@_guard_run
 def _run_midi(input_path: str, output_path: str) -> int:
     """Run the MIDI export pipeline once. Returns the exit code (0 on success)."""
     rc = _check_output_not_input(input_path, output_path)
@@ -140,7 +184,7 @@ def _run_midi(input_path: str, output_path: str) -> int:
         print(err.render(), file=sys.stderr)
         return 1
     try:
-        ir = compile_song(song) if song.sections else compile_groove(song.grooves[0])
+        ir = compile_song(song) if song.sections else compile_standalone_groove(song)
     except GrooveScriptError as err:
         _attach_source_context(err, input_path)
         print(err.render(), file=sys.stderr)
@@ -157,6 +201,7 @@ def _run_midi(input_path: str, output_path: str) -> int:
     return 0
 
 
+@_guard_run
 def _run_musicxml(input_path: str, output_path: str, lyrics_style: str | None = None) -> int:
     """Run the MusicXML export pipeline once. Returns the exit code (0 on success)."""
     rc = _check_output_not_input(input_path, output_path)
@@ -180,7 +225,7 @@ def _run_musicxml(input_path: str, output_path: str, lyrics_style: str | None = 
         print(err.render(), file=sys.stderr)
         return 1
     try:
-        ir = compile_song(song) if song.sections else compile_groove(song.grooves[0])
+        ir = compile_song(song) if song.sections else compile_standalone_groove(song)
     except GrooveScriptError as err:
         _attach_source_context(err, input_path)
         print(err.render(), file=sys.stderr)
@@ -197,6 +242,7 @@ def _run_musicxml(input_path: str, output_path: str, lyrics_style: str | None = 
     return 0
 
 
+@_guard_run
 def _run_compile(
     input_path: str,
     output_path: str,
@@ -225,7 +271,7 @@ def _run_compile(
         print(err.render(), file=sys.stderr)
         return 1
     try:
-        ir = compile_song(song) if song.sections else compile_groove(song.grooves[0])
+        ir = compile_song(song) if song.sections else compile_standalone_groove(song)
     except GrooveScriptError as err:
         _attach_source_context(err, input_path)
         print(err.render(), file=sys.stderr)
