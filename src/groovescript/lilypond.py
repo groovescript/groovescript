@@ -78,6 +78,15 @@ _DYNAMIC_HAIRPIN: dict[str, str] = {
     "decresc": "\\>",
 }
 
+# Gradual tempo changes print as a dashed text spanner ("rit. - - - -").
+# ``\tweak`` on the post-event sets the text without a separate \override.
+_TEMPO_SPAN_START: dict[str, str] = {
+    "rit": '^\\tweak outside-staff-priority #350 \\tweak staff-padding #3 \\tweak bound-details.left.text \\markup { \\italic "rit." } \\startTextSpan',
+    "accel": '^\\tweak outside-staff-priority #350 \\tweak staff-padding #3 \\tweak bound-details.left.text \\markup { \\italic "accel." } \\startTextSpan',
+}
+_TEMPO_SPAN_STOP = "\\stopTextSpan"
+_HAIRPIN_STOP = "\\!"
+
 _INSTRUMENT_TO_LY: dict[str, str] = {
     "BD": "bd",
     "SN": "sn",
@@ -345,6 +354,58 @@ def _emit_foot_voice_for_buzz(
     return " ".join(tokens)
 
 
+def _has_tempo_changes(bar: IRBar) -> bool:
+    """Bars inside a rit/accel (or carrying "a tempo") never compact into
+    repeats: the printed spanner and the tempo curve are bar-specific."""
+    return bool(bar.tempo_points or bar.tempo_span_starts or bar.tempo_span_stops or bar.tempo_texts)
+
+
+def _snap_to_event(pos: Fraction, events, *, before: bool = False) -> Fraction:
+    """Move a markup position onto a note so the post-event has something
+    to attach to: the first onset at or after ``pos`` (or, with
+    ``before=True`` or when none follows, the last onset at or before it).
+    Returns ``pos`` unchanged for an empty bar."""
+    onsets = sorted({e.beat_position for e in events})
+    if not onsets or pos in onsets:
+        return pos
+    after = [o for o in onsets if o >= pos]
+    prior = [o for o in onsets if o <= pos]
+    if before and prior:
+        return prior[-1]
+    if after:
+        return after[0]
+    return prior[-1]
+
+
+def _span_markup_maps(
+    bar: IRBar, bpb: int,
+) -> tuple[dict[Fraction, str] | None, dict[Fraction, str] | None]:
+    """Build position -> post-event maps for span starts and stops.
+
+    Stops come first on a note (a span may end where the next begins).
+    ``Fraction(-1)`` ("end of bar") resolves to the bar's last onset.
+    """
+    starts: dict[Fraction, str] = {}
+    stops: dict[Fraction, str] = {}
+    last = max((e.beat_position for e in bar.events), default=Fraction(bpb - 1, bpb))
+
+    def add(target: dict[Fraction, str], pos: Fraction, text: str) -> None:
+        current = target.get(pos, "")
+        if text not in current:  # two spans ending on one note need one \!
+            target[pos] = current + text
+
+    for pos, kind in bar.dynamic_starts:
+        add(starts, pos, _DYNAMIC_HAIRPIN[kind])
+    for pos in bar.dynamic_stops:
+        add(stops, last if pos == Fraction(-1) else pos, _HAIRPIN_STOP)
+    for pos, kind in bar.tempo_span_starts:
+        add(starts, _snap_to_event(pos, bar.events), _TEMPO_SPAN_START[kind])
+    for pos in bar.tempo_span_stops:
+        stop = last if pos == Fraction(-1) else _snap_to_event(pos, bar.events, before=True)
+        add(stops, stop, _TEMPO_SPAN_STOP)
+    return starts or None, stops or None
+
+
 def _attach_position_markup(
     token: str,
     pos: Fraction,
@@ -365,10 +426,9 @@ def _attach_position_markup(
         escaped = _ly_str(placeholder_map[pos])
         token = f'{token}^\\markup {{ \\bold \\box \\fontsize #-1 "{escaped}" }}'
     if dynamic_stop_set and pos in dynamic_stop_set:
-        token = f'{token}\\!'
+        token = f'{token}{dynamic_stop_set[pos]}'
     if dynamic_start_map and pos in dynamic_start_map:
-        hairpin = _DYNAMIC_HAIRPIN[dynamic_start_map[pos]]
-        token = f'{token}{hairpin}'
+        token = f'{token}{dynamic_start_map[pos]}'
     return token
 
 
@@ -527,11 +587,10 @@ def _drum_measure_straight(
             # Dynamic hairpin commands (attach to first of doubled pair)
             if dynamic_stop_set and pos in dynamic_stop_set:
                 first, second = token.split(" ", 1)
-                token = f'{first}\\! {second}'
+                token = f'{first}{dynamic_stop_set[pos]} {second}'
             if dynamic_start_map and pos in dynamic_start_map:
-                hairpin = _DYNAMIC_HAIRPIN[dynamic_start_map[pos]]
                 first, second = token.split(" ", 1)
-                token = f'{first}{hairpin} {second}'
+                token = f'{first}{dynamic_start_map[pos]} {second}'
             tokens.append(token)
             i += 1
             continue
@@ -1770,29 +1829,21 @@ def _group_bars(
             max_lookahead = min(len(bars) - i, remaining_in_phrase)
 
         # Bars with cues, fill_placeholders, bar_text, dynamic annotations, or lyrics cannot be implicitly merged into repeats
-        has_annotations = bool(bar.cues or bar.fill_placeholders or bar.bar_text or bar.dynamic_starts or bar.dynamic_stops or bar.lyrics)
+        has_annotations = bool(bar.cues or bar.fill_placeholders or bar.bar_text or bar.dynamic_starts or bar.dynamic_stops or bar.lyrics or _has_tempo_changes(bar))
         # Build cue_map and placeholder_map for beat-accurate markup placement (pos → text)
         cue_map: dict[Fraction, str] | None = dict(bar.cues) if bar.cues else None
         placeholder_map: dict[Fraction, str] | None = dict(bar.fill_placeholders) if bar.fill_placeholders else None
 
-        # Build dynamic maps for hairpin placement
-        dynamic_start_map: dict[Fraction, str] | None = None
-        dynamic_stop_set: set[Fraction] | None = None
-        if bar.dynamic_starts:
-            dynamic_start_map = {pos: kind for pos, kind in bar.dynamic_starts}
-        if bar.dynamic_stops:
-            # Resolve Fraction(-1) sentinel ("end of bar") to the position of
-            # the last event in the bar, so the terminator attaches to a real note.
-            resolved_stops: set[Fraction] = set()
-            for stop_pos in bar.dynamic_stops:
-                if stop_pos == Fraction(-1):
-                    if bar.events:
-                        resolved_stops.add(max(e.beat_position for e in bar.events))
-                    else:
-                        resolved_stops.add(Fraction(state.current_bpb - 1, state.current_bpb))
-                else:
-                    resolved_stops.add(stop_pos)
-            dynamic_stop_set = resolved_stops
+        # Span start/stop commands keyed by position. Each value is the
+        # LilyPond post-event text appended to the note at that position
+        # (hairpins and tempo-change text spanners share the plumbing).
+        dynamic_start_map, dynamic_stop_set = _span_markup_maps(bar, state.current_bpb)
+        # "a tempo" prints like a cue (italic text above the staff).
+        if bar.tempo_texts:
+            cue_map = dict(cue_map or {})
+            for pos, text in bar.tempo_texts:
+                pos = _snap_to_event(pos, bar.events)
+                cue_map[pos] = f"{text}  {cue_map[pos]}" if pos in cue_map else text
 
         num_identical = 1
         bar_measure = _drum_measure(
@@ -1814,7 +1865,7 @@ def _group_bars(
                     break
                 if next_bar.cues or next_bar.fill_placeholders or next_bar.bar_text or next_bar.lyrics:
                     break
-                if next_bar.dynamic_starts or next_bar.dynamic_stops:
+                if next_bar.dynamic_starts or next_bar.dynamic_stops or _has_tempo_changes(next_bar):
                     break
                 if next_bar.beat_tuplets != bar.beat_tuplets:
                     break
@@ -1856,7 +1907,7 @@ def _group_bars(
                 if tb.cues or tb.fill_placeholders or tb.bar_text or tb.lyrics:
                     template_ok = False
                     break
-                if tb.dynamic_starts or tb.dynamic_stops:
+                if tb.dynamic_starts or tb.dynamic_stops or _has_tempo_changes(tb):
                     template_ok = False
                     break
                 if (tb.time_signature or state.current_ts) != state.current_ts:

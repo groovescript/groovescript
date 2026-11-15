@@ -441,6 +441,33 @@ class DynamicSpan:
     line: int | None = None
 
 
+@dataclass
+class TempoSpan:
+    """A gradual tempo change (``rit`` / ``accel``) over a range of bars/beats.
+
+    The tempo moves linearly from whatever tempo is in effect at the start
+    of the span to ``target`` (or a default 80% / 120% of it), then holds
+    there until an ``a tempo`` line or the end of the section.
+    """
+
+    kind: str  # "rit" or "accel"
+    from_bar: int  # 1-indexed within the section
+    to_bar: int  # 1-indexed within the section
+    from_beat: str | None = None  # if None, starts at beginning of bar
+    to_beat: str | None = None  # if None, ends at end of bar
+    target: int | None = None  # ending tempo in BPM; None = default ratio
+    line: int | None = None
+
+
+@dataclass
+class ATempo:
+    """``a tempo at bar N [beat X]``: return to the section's tempo."""
+
+    bar: int  # 1-indexed within the section
+    beat: str | None = None
+    line: int | None = None
+
+
 @dataclass(frozen=True)
 class BreakSpec:
     """A break directive that silences a range of beats/bars within a section.
@@ -525,6 +552,9 @@ class Section:
     # Timed lyrics (``lyrics:`` block), one entry per bar, in source order.
     lyrics: list[LyricLine] = field(default_factory=list)
     dynamic_spans: list[DynamicSpan] = field(default_factory=list)
+    # Gradual tempo changes and ``a tempo`` returns, in source order.
+    tempo_spans: list[TempoSpan] = field(default_factory=list)
+    a_tempos: list[ATempo] = field(default_factory=list)
     tempo: int | None = None  # per-section tempo override
     time_signature: str | None = None  # per-section time signature override
     play: list[PlayItem] | None = None  # mutually exclusive with groove/repeat; bars: allowed as a length assertion

@@ -60,6 +60,7 @@ the language, start with [`GETTING_STARTED.md`](GETTING_STARTED.md) or
   - [Vocal cues and text annotations](#vocal-cues-and-text-annotations)
   - [Timed lyrics](#timed-lyrics)
   - [Crescendos and decrescendos](#crescendos-and-decrescendos)
+  - [Tempo changes (`rit`, `accel`, `a tempo`)](#tempo-changes-rit-accel-a-tempo)
 - [Variations](#variations)
   - [`add`, `remove`, `replace`, `substitute`, `modify`](#variations)
   - [Reusable named variations](#reusable-named-variations)
@@ -177,7 +178,7 @@ feel: swing
 | Field | Values | Default | Notes |
 |---|---|---|---|
 | `title` | string | none | Large centered title on the page. |
-| `tempo` | BPM (integer) | none | Beats per minute of the meter's bottom note (see below). Shown in the score header; sections may override with their own `tempo:`. |
+| `tempo` | BPM (integer) | none | Beats per minute of the meter's bottom note (see below). Shown in the score header; sections may override with their own `tempo:`, and change gradually with [`rit` / `accel`](#tempo-changes-rit-accel-a-tempo). |
 | `time_signature` | `N/M` (numerator 1–99, power-of-two denominator) | `4/4` | Song-level meter, e.g. `3/4`, `6/8`, `12/8`; see [Per-section meter](#per-section-meter) for overrides. |
 | `feel` | `swing` | straight | Notational only; see below. |
 | `lyrics_style` | `staff` \| `line` | `staff` | How [timed lyrics](#timed-lyrics) are engraved. |
@@ -1200,6 +1201,7 @@ section "name":
   bars: 8
   groove: "money beat"
   tempo: 140                           # optional BPM override for this section
+  rit from bar 7 to bar 8              # gradual tempo change (see Tempo changes)
   time_signature: 7/8                  # optional meter override for this section
   fill "name" at bar 4                # whole-bar fill
   fill "name" at bar 8 beat 3         # runs from 3 to end of bar 8
@@ -1795,6 +1797,50 @@ case, the spans ride with the groove or fill wherever it's placed, and
 are automatically inherited by any section that uses it. Section-level
 dynamic spans are inherited by bare `like` along with the other
 section-scoped fields.
+
+### Tempo changes (`rit`, `accel`, `a tempo`)
+
+A section's `tempo:` sets one tempo for the whole section. To slow down or
+speed up *gradually*, add section-level lines:
+
+```groovescript
+section "chorus":
+    bars: 8
+    groove: "rock"
+    rit from bar 4 beat 3 to bar 5 to tempo 100
+    a tempo at bar 6
+```
+
+- `rit from bar N [beat X] to bar M [beat Y] [to tempo T]` — slow down
+  (`ritardando` is a synonym).
+- `accel from bar N [beat X] to bar M [beat Y] [to tempo T]` — speed up
+  (`accelerando` is a synonym).
+- `a tempo at bar N [beat X]` — jump back to the section's tempo.
+
+Bar and beat positions work as for [crescendos](#crescendos-and-decrescendos):
+without `beat`, a change starts at the beginning of its first bar and runs
+to the end of its last bar. `to tempo T` is the BPM the change arrives at;
+without it, `rit` ends at 80% and `accel` at 120% of the tempo in effect
+when the change starts (rounded to a whole BPM).
+
+How the tempo behaves:
+
+- During the change the tempo moves smoothly (in steps of a sixteenth note)
+  from the starting tempo to the target, reaching it exactly at the end.
+- After the change, the new tempo **holds** until an `a tempo` line or the
+  end of the section. The next section starts at its own tempo; if that is
+  the tempo the change started from, the chart prints "a tempo" there for
+  you.
+- Changes in one section may not overlap. `a tempo` is only allowed when
+  the tempo has actually changed, a `rit` must end slower than it starts,
+  and an `accel` faster.
+
+In the PDF, a change prints as "*rit.* - - - -" or "*accel.* - - - -" above
+the staff, from its start to its end, and `a tempo` as italic text. Bars
+inside a change are always written out rather than folded into a repeat.
+The MIDI export (and web editor playback) follows the tempo curve; the
+MusicXML export prints the words. Tempo changes are inherited by bare
+`like`, like dynamic spans.
 
 ## Variations
 

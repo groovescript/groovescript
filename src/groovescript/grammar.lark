@@ -93,6 +93,8 @@ section_line: bars_line
             | section_tempo_line
             | section_time_signature_line
             | section_dynamic_line
+            | section_tempo_span_line
+            | section_a_tempo_line
             | section_crash_in_line
             | section_break_line
             | section_lyrics_block
@@ -186,6 +188,19 @@ section_dynamic_line: DYNAMIC_KIND "from" "bar" INT "to" "bar" INT
                     | DYNAMIC_KIND "bar" INT
 // Longer alternatives must precede their prefixes so Python regex takes the full token.
 DYNAMIC_KIND: "crescendo" | "decrescendo" | "cresc" | "decresc"
+
+// Gradual tempo changes. The ending tempo is optional (default: 80% for rit,
+// 120% for accel of the tempo in effect when the change starts).
+//   rit from bar 7 to bar 8
+//   accel from bar 1 beat 3 to bar 4 to tempo 140
+//   a tempo at bar 9 beat 1
+section_tempo_span_line: TEMPO_SPAN_KIND "from" "bar" INT tempo_beat? "to" "bar" INT tempo_beat? tempo_target?
+tempo_beat: "beat" BEAT_LABEL
+tempo_target: "to" "tempo" INT
+TEMPO_SPAN_KIND: "ritardando" | "accelerando" | "rit" | "accel"
+// One terminal so a bare ``a`` never becomes a keyword (cf. CRASH_IN).
+section_a_tempo_line: A_TEMPO "at" "bar" INT tempo_beat?
+A_TEMPO: /a[ \t]+tempo/
 
 // Top-level reusable variation definition. Referenced from a section via
 // `variation "name" at bar N` (no trailing body). User-defined names

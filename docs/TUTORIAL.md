@@ -216,6 +216,7 @@ Other useful refinements at this stage:
   basic arrangement; `like "verse" with fills, variations` opts into
   more.
 - **Per-section tempo / time signature** overrides.
+- **Gradual tempo changes**: `rit from bar 7 to bar 8`, `a tempo at bar 9`.
 - **Dynamic spans**: `cresc from bar 5 to bar 8`.
 - **Crash-in**: `crash in` replaces the first cymbal hit of bar 1 with
   a crash — a common section entry.

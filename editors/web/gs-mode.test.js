@@ -433,3 +433,18 @@ test('highlight styles use real tags and colour beat labels', () => {
   const toks = tokenizeLine('  BD: 1, 3and');
   assert.ok(toks.some(t => t.text === '3and' && t.type === 'constant'));
 });
+
+test('tempo change keywords', () => {
+  const rit = tokenizeLine('  rit from bar 7 to bar 8 to tempo 96');
+  assert.equal(rit[0].text, 'rit');
+  assert.equal(rit[0].type, 'keyword');
+  assert.ok(rit.some(t => t.text === 'tempo' && t.type === 'keyword'));
+  const accel = tokenizeLine('  accelerando from bar 1 to bar 2');
+  assert.equal(accel[0].type, 'keyword');
+  const aTempo = tokenizeLine('  a tempo at bar 9');
+  assert.equal(aTempo[0].text, 'a');
+  assert.equal(aTempo[0].type, 'keyword');
+  // A lone ``a`` elsewhere is not a keyword.
+  const lone = tokenizeLine('  cue "a" at bar 1');
+  assert.ok(!lone.some(t => t.text === 'a' && t.type === 'keyword'));
+});

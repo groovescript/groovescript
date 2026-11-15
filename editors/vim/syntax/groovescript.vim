@@ -50,12 +50,15 @@ syn keyword gsDefinition groove fill section
 syn keyword gsBodyKeyword bars pattern count notes repeat like
                         \ play cue lyrics variation text extend
                         \ cresc decresc crescendo decrescendo break through
+                        \ rit ritardando accel accelerando
 " `crash in` is a section/top-level flag. Match the multi-word forms so
 " the ``crash`` token highlights as a body keyword here (not as the crash
 " instrument). Defined after the instrument rules below so it takes
 " precedence on the ``crash`` word when followed by ``in``.
 syn match gsBodyKeyword "\<crash\s\+in\>"
 syn match gsBodyKeyword "\<no\s\+crash\s\+in\>"
+" `a tempo` (return to the section tempo after a rit/accel).
+syn match gsBodyKeyword "\<a\s\+tempo\>"
 
 " -- Placement keywords (used in fill/cue/variation/placeholder lines) ------
 " `fill "..." at bar N beat X`, `cue "..." at bar N`, `variation at bar N:`,
