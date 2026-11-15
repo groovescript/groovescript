@@ -1018,3 +1018,26 @@ def test_sixteenth_and_triplet_in_one_beat_fill_the_measure():
     assert _measure_duration(measure) == _bar_total_divs("4/4")
     _split = _split_duration(5 * _DIVS_PER_BEAT // 12)
     assert sum(_split) == 5 * _DIVS_PER_BEAT // 12
+
+
+def test_open_hihat_is_an_x_with_an_open_mark():
+    """Regression test: OH was exported as a ``circle-x`` notehead, which
+    the web preview (Verovio) drew as a slash. It is now an x notehead with
+    <technical><open-string/> (the small "o"), matching LilyPond's ``hho``;
+    a closed HH gets no mark, and a split (tied) OH marks only its attack."""
+    src = """\
+groove "g":
+  HH: 1, 2
+  OH: 1&, 3
+section "s":
+  bars: 1
+  groove: "g"
+"""
+    [m] = _song_measures(src)
+    notes = [n for n in m.findall("note") if n.find("unpitched") is not None]
+    oh = [n for n in notes if n.findtext("unpitched/display-step") == "G" and n.find("notations/technical/open-string") is not None]
+    assert len(oh) == 2  # 1& and the attack of 3 (held to the bar line, tied)
+    assert all(n.findtext("notehead") == "x" for n in notes if n.findtext("unpitched/display-step") == "G")
+    marked = sum(1 for n in notes if n.find("notations/technical/open-string") is not None)
+    assert marked == 2
+    assert "circle-x" not in emit_musicxml(compile_song(parse(src))).decode()
