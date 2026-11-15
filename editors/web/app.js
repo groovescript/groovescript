@@ -282,6 +282,16 @@ async function formatDoc(view, btn = null) {
   if (btn) showFeedback(btn, 'Done ✓', change ? 'Formatted' : 'Already formatted');
 }
 
+// Offline support / installable app (see sw.js). Served over https in
+// production; localhost counts as secure for development.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch((err) => {
+      console.warn('Offline support unavailable:', err);
+    });
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const docContent = loadDoc();
 

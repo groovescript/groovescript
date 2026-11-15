@@ -157,3 +157,30 @@ test('minimalChange replaces only the differing middle', () => {
   const tail = minimalChange('abc', 'abcd');
   assert.deepEqual(tail, { from: 3, to: 3, insert: 'd' });
 });
+
+// ── Service worker ──────────────────────────────────────────────────────────
+
+import { readdirSync, existsSync } from 'node:fs';
+
+const SW = readFileSync(new URL('./sw.js', import.meta.url), 'utf8');
+
+function swList(name) {
+  const body = new RegExp(`const ${name} = \\[([\\s\\S]*?)\\];`).exec(SW)[1];
+  return [...body.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+}
+
+test('service worker pins the same runtime versions as deps.js', () => {
+  assert.match(SW, new RegExp(`const PYODIDE_VERSION = '${PYODIDE_VERSION.replace(/\./g, '\\.')}';`));
+  assert.match(SW, new RegExp(`const VEROVIO_VERSION = '${VEROVIO_VERSION.replace(/\./g, '\\.')}';`));
+});
+
+test('service worker caches every module the editor loads', () => {
+  const shell = new Set(swList('SHELL'));
+  const modules = readdirSync(new URL('.', import.meta.url))
+    .filter((f) => f.endsWith('.js') && !f.endsWith('.test.js') && f !== 'sw.js');
+  for (const f of modules) assert.ok(shell.has(f), `${f} missing from sw.js SHELL`);
+  for (const f of shell) {
+    if (f === './' || f.startsWith('py/')) continue; // py/ is built at deploy time
+    assert.ok(existsSync(new URL(f, import.meta.url)), `${f} listed in SHELL but missing`);
+  }
+});

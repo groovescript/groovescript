@@ -228,9 +228,12 @@ The editor runs the real GrooveScript compiler in your browser (via
   picked up without stopping.
 - **Downloads** — the chart's `.mid` and `.musicxml` exports.
 
-The first visit downloads the compiler runtime (about 6 MB), and the
-first preview the score engraver (about 2 MB); both are cached afterwards.
-Editing still works offline or if the preview can't load.
+The first visit downloads the compiler runtime (about 6 MB) and the score
+engraver (about 2 MB). After that the editor works **offline**: compiling,
+the preview, playback and formatting all run from the cached copy, and the
+latest version loads automatically whenever you're online. On a phone, use
+**Add to Home Screen** (Safari) or **Install app** (Chrome) to open it like
+an app. Editing still works even if the compiler can't load.
 
 To work on the editor itself, see [Development](#development).
 
