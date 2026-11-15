@@ -5,7 +5,9 @@
 
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { token } from './gs-mode.js';
+import {
+  token, BEAT_LABEL_TAG, gsHighlightStyleLight, gsHighlightStyleDark,
+} from './gs-mode.js';
 
 // ── Mock stream ────────────────────────────────────────────────────────────────
 
@@ -414,4 +416,20 @@ test('comment after code', () => {
   const comment = toks.find(t => t.type === 'comment');
   assert.ok(comment, 'comment found');
   assert.ok(comment.text.startsWith('//'));
+});
+
+// Regression test: beat labels were tokenised as 'constant' but never
+// coloured, because `tags.constant` is a modifier function in
+// @lezer/highlight, not a tag (it logged "Modifier constant used at start of
+// tag"). Every style rule must target a real Tag, and the beat-label tag must
+// resolve to a CSS class in both themes.
+test('highlight styles use real tags and colour beat labels', () => {
+  for (const style of [gsHighlightStyleLight, gsHighlightStyleDark]) {
+    for (const spec of style.specs) {
+      assert.notEqual(typeof spec.tag, 'function', 'style rule targets a modifier, not a tag');
+    }
+    assert.ok(style.style([BEAT_LABEL_TAG]), 'beat labels get a highlight class');
+  }
+  const toks = tokenizeLine('  BD: 1, 3and');
+  assert.ok(toks.some(t => t.text === '3and' && t.type === 'constant'));
 });

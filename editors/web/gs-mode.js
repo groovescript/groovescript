@@ -160,11 +160,18 @@ export function token(stream, _state) {
 
 // ── StreamLanguage export ──────────────────────────────────────────────────────
 
+// Beat labels. In @lezer/highlight `tags.constant` is a *modifier* (a function
+// that derives a tag), not a tag itself, so the stream token name 'constant'
+// must be mapped to a concrete derived tag, and the styles must use that same
+// tag. Using `tags.constant` directly silently left beat labels unstyled.
+export const BEAT_LABEL_TAG = tags.constant(tags.name);
+
 export const grooveScriptLanguage = StreamLanguage.define({
   startState: () => null,
   token,
   tokenTable: {
     def: tags.definitionKeyword,
+    constant: BEAT_LABEL_TAG,
   },
 });
 
@@ -178,7 +185,7 @@ export const gsHighlightStyleLight = HighlightStyle.define([
   { tag: tags.keyword,            color: '#1565c0' },
   { tag: tags.typeName,           color: '#ad1457' },
   { tag: tags.modifier,           color: '#00695c' },
-  { tag: tags.constant,           color: '#c62828' },
+  { tag: BEAT_LABEL_TAG,          color: '#c62828' },
   { tag: tags.operator,           color: '#f57f17' },
 ]);
 
@@ -190,7 +197,7 @@ export const gsHighlightStyleDark = HighlightStyle.define([
   { tag: tags.keyword,            color: '#61afef' },
   { tag: tags.typeName,           color: '#e06c75' },
   { tag: tags.modifier,           color: '#56b6c2' },
-  { tag: tags.constant,           color: '#e5c07b' },
+  { tag: BEAT_LABEL_TAG,          color: '#e5c07b' },
   { tag: tags.operator,           color: '#56b6c2' },
 ]);
 
