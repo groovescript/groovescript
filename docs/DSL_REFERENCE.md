@@ -525,9 +525,11 @@ Modifier interaction rules for `double`:
 groove "hihat doubles":
     BD: 1, 3
     SN: 2, 4
-    HH: 1, 1e double, 1&, 1a, 2, 2e double, 2&, 2a,
-        3, 3e double, 3&, 3a, 4, 4e double, 4&, 4a
+    HH: 1, 1e double, 1&, 1a, 2, 2e double, 2&, 2a, 3, 3e double, 3&, 3a, 4, 4e double, 4&, 4a
 ```
+
+Each statement sits on one line; a pattern line cannot be continued onto
+the next line.
 
 ### Buzz rolls
 
