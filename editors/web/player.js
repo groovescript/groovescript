@@ -29,7 +29,9 @@ export class Player {
   /** @param {Uint8Array} midiBytes */
   load(midiBytes) {
     const wasPlaying = this.playing;
-    const pos = wasPlaying ? this.position : 0;
+    // Keep the place in the music, not in seconds: after a tempo edit the
+    // same number of seconds lands in a different bar.
+    const quarters = wasPlaying ? this.quarters : 0;
     if (wasPlaying) this.stop({ silent: true });
     const parsed = parseMidi(midiBytes);
     this.song = {
@@ -37,6 +39,7 @@ export class Player {
       toQuarters: makeSecondsToQuarters(parsed.division, parsed.tempos),
       toSeconds: makeTickToSeconds(parsed.division, parsed.tempos),
     };
+    const pos = this.song.toSeconds(quarters * parsed.division);
     if (wasPlaying && pos < parsed.duration) this.play(pos);
   }
 

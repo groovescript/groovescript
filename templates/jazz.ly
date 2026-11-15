@@ -118,7 +118,7 @@ drumPitchNames =
       \mark \markup \column { \fontsize #-1 \concat { \note { 4 } #1 " = 160" } \vspace #0.3 \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "HEAD: 8" } \vspace #0.3 \italic \fontsize #-1 "Play 7x" }
       \bar ".|:"
       \repeat volta 7 {
-        cymr8 cymr8 <cymr hh sn>8 cymr8 cymr8 cymr8 <cymr hh sn>8 cymr8 |
+        cymr8 cymr8 <cymr hhp sn>8 cymr8 cymr8 cymr8 <cymr hhp sn>8 cymr8 |
       }
       sn16 sn16 sn16 sn16 sn16 sn16 sn16 sn16 tomh16 tomh16 tomh16 tomh16 <bd cymc>4 |
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
@@ -126,14 +126,14 @@ drumPitchNames =
       \once \override Score.RehearsalMark.padding = #2
       \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "SOLOS: 16" } \vspace #0.3 \italic \fontsize #-1 "Play 16x" }
       \repeat volta 16 {
-        cymr8 cymr8 <cymr hh sn>8 cymr8 cymr8 cymr8 <cymr hh sn>8 cymr8 |
+        cymr8 cymr8 <cymr hhp sn>8 cymr8 cymr8 cymr8 <cymr hhp sn>8 cymr8 |
       }
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
       \once \override Score.RehearsalMark.padding = #2
       \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "HEAD OUT: 8" } \vspace #0.3 \italic \fontsize #-1 "Play 7x" }
       \repeat volta 7 {
-        <cymr bd>8 cymr8 <cymr hh>8 cymr8 <cymr bd>8 cymr8 <cymr hh>8 cymr8 |
+        <cymr bd>8 cymr8 <cymr hhp>8 cymr8 <cymr bd>8 cymr8 <cymr hhp>8 cymr8 |
       }
       sn16 sn16 sn16 sn16 sn16 sn16 sn16 sn16 tomh16 tomh16 tomh16 tomh16 <bd cymc>4 |
       \label #'lastPage

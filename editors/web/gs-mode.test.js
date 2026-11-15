@@ -5,6 +5,7 @@
 
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
+import { readFileSync } from 'node:fs';
 import {
   token, BEAT_LABEL_TAG, gsHighlightStyleLight, gsHighlightStyleDark,
 } from './gs-mode.js';
@@ -447,4 +448,33 @@ test('tempo change keywords', () => {
   // A lone ``a`` elsewhere is not a keyword.
   const lone = tokenizeLine('  cue "a" at bar 1');
   assert.ok(!lone.some(t => t.text === 'a' && t.type === 'keyword'));
+});
+
+
+// Regression: the highlighter's keyword sets were hand-copied and drifted
+// from grammar.lark, so CR2 / splash / stack / china and the choke / fermata
+// modifiers rendered as plain text. Check every grammar alternative.
+const GRAMMAR = readFileSync(new URL('../../src/groovescript/grammar.lark', import.meta.url), 'utf8');
+
+test('every grammar INSTRUMENT alternative highlights as an instrument', () => {
+  const m = GRAMMAR.match(/^INSTRUMENT: \/(.*)\/$/m);
+  assert.ok(m, 'INSTRUMENT terminal not found');
+  const names = m[1].split('|').map((alt) => alt.replace(/\(\?!.*\)$/, ''));
+  for (const name of names) {
+    const toks = tokenizeLine(`  ${name}: 1`);
+    assert.equal(toks[0].type, 'typeName', `expected typeName for "${name}"`);
+  }
+});
+
+test('every grammar MODIFIER keyword highlights as a modifier', () => {
+  const m = GRAMMAR.match(/^MODIFIER: (.*)$/m);
+  assert.ok(m, 'MODIFIER terminal not found');
+  const words = [...m[1].matchAll(/"([a-z]+)"|\/([a-z]+)\(/g)].map((x) => x[1] || x[2]);
+  assert.ok(words.includes('choke') && words.includes('fermata'));
+  for (const word of words) {
+    const toks = tokenizeLine(`  SN: 2 ${word}`);
+    const mod = toks.find((t) => t.text === word);
+    assert.ok(mod, `token "${word}" not produced`);
+    assert.equal(mod.type, 'modifier', `expected modifier for "${word}"`);
+  }
 });

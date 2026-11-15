@@ -90,7 +90,7 @@ syn match   gsModifier "\<drag\>\(:[A-Za-z-]\+\)\?"
 syn keyword gsInstrument BD SN HH OH RD RB CR CR2 CB FT HT MT SCS HF
                        \ SP CH ST
 syn keyword gsInstrument bd sn hh oh rd rb cr cr2 cb ft ht mt hf
-                       \ sp ch st
+                       \ sp ch st scs
 " Long-form and lowercase aliases accepted by the parser.
 syn keyword gsInstrument bass kick snare click hihat openhat hat
                        \ open ride crash ridebell bell cowbell
@@ -100,6 +100,8 @@ syn keyword gsInstrument bass kick snare click hihat openhat hat
 " cross-stick and hi-hat-foot / foot-chick contain hyphens, so they need
 " match rules (vim `keyword` doesn't allow hyphens).
 syn match gsInstrument "\<cross-stick\>"
+" hi-hat comes first: the later rule wins, so hi-hat-foot keeps its full span.
+syn match gsInstrument "\<hi-hat\>"
 syn match gsInstrument "\<hi-hat-foot\>"
 syn match gsInstrument "\<foot-chick\>"
 
