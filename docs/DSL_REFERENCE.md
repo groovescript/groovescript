@@ -59,6 +59,9 @@ the language, start with [`GETTING_STARTED.md`](GETTING_STARTED.md) or
   - [`break` — silence a bar/beat range](#break)
   - [Vocal cues and text annotations](#vocal-cues-and-text-annotations)
   - [Timed lyrics](#timed-lyrics)
+    - [Holds, stops and breaths](#holds-stops-and-breaths)
+    - [Several bars in one entry](#several-bars-in-one-entry)
+    - [Backing vocals](#backing-vocals)
   - [Crescendos and decrescendos](#crescendos-and-decrescendos)
   - [Tempo changes (`rit`, `accel`, `a tempo`)](#tempo-changes-rit-accel-a-tempo)
 - [Variations](#variations)
@@ -1705,8 +1708,11 @@ section "verse":
     a later bar (`"mor- ning"`, or `"a-"` in one bar and `"round"` in the
     next).
   - `~` joins words on one onset: `oh~yeah` sings "oh yeah" on one beat.
-  - `_` is reserved for future held syllables and is an error for now.
-- Lining the two strings up in columns is encouraged but not required.
+  - Three marks stand alone as tokens and take an onset like a syllable
+    (see [Holds, stops and breaths](#holds-stops-and-breaths)): `_` holds
+    the previous syllable, `.` ends it, `,` ends it with a breath.
+- Lining the two strings up in columns is encouraged but not required
+  (`groovescript fmt` lines them up for you).
 - **Pickups**: `bar 0:` means "the bar before this section". Lead-in words
   that start on the `4&` before the downbeat stay with the section they
   belong to, but are engraved in the previous section's last bar, using
@@ -1721,10 +1727,60 @@ section "verse":
       bar 1: "1 2 3"  "here we go"
   ```
 
-Lyrics are **onsets only**. On the page, each syllable lasts until the
-next onset in the bar, or to the bar line if it is the last one. This is a
-display convention, not a statement about how long the note is held.
-Lyric onsets never change the drum bar's inferred subdivision.
+Each syllable lasts until the next onset in the bar, or to the bar line
+if it is the last one: the *implied duration*. Use the marks below to hold
+a syllable longer or end it sooner. Lyric onsets never change the drum
+bar's inferred subdivision.
+
+#### Holds, stops and breaths
+
+```groovescript
+  lyrics:
+    bar 1: "1 2& 3"   "When the night"
+    bar 2: "1 2 3"    "_ , falls"      # "night" held to beat 2, breath, "falls"
+    bar 3: "1 3"      "_ ."            # "falls" held over the bar line, ends on 3
+```
+
+- `_` **holds** the syllable that is sounding: no new syllable, the note
+  ties on and an extender line runs under the held syllable. On beat 1 it
+  continues the previous bar's last syllable, so a word can ring across
+  bar lines.
+- `.` **stops** the sounding syllable at that onset; it is silent until
+  the next onset.
+- `,` **breathes**: it stops the syllable like `.` and prints a breath
+  mark.
+
+A `_` must continue something that is sounding (the onset just before it,
+or, on beat 1, the previous bar's last syllable), and a `.` must follow a
+syllable or hold in its own bar; otherwise it is an error. A `,` may stand
+anywhere.
+
+#### Several bars in one entry
+
+`bars N-M:` covers a run of bars with one words string. `|` separates the
+bars' counts, and an empty part is a bar with no lyrics:
+
+```groovescript
+  lyrics:
+    bars 1-3: "1 2& 3 4& | | 2 3" "When the mor- ning comes a- round"
+```
+
+#### Backing vocals
+
+A named block adds a backing-vocal part alongside the lead (`lyrics:`):
+
+```groovescript
+  lyrics:
+    bar 1: "1 2& 3 4&" "When the mor- ning"
+  lyrics "BGV":
+    bar 2: "1 3"       "ooh _"
+```
+
+Each part is engraved on its own (see [Rendering style](#rendering-style))
+and exported as its own MIDI lyric track and MusicXML part. Parts follow
+all the rules above independently: a bar can be listed once per part,
+`bar 0:` pickups work per part, and `like … with lyrics` merges each part
+by bar.
 
 Lyrics may sit on placeholder-groove bars, since the singer still needs
 the words while the groove is TBD. **A bar with lyrics never folds into a
@@ -1734,9 +1790,10 @@ repeat.** Runs of identical drum bars are not compacted across it, and a
 **Errors**: a different number of onsets and syllables (both counts are
 reported), a beat outside the bar's meter, two syllables on one onset,
 `bar N` beyond the section's length (counting `play:` and `repeat:`), the
-same bar listed twice, `_` in the words, `bar 0:` on the first section,
-and a `bar 0:` onset that collides with lyrics the previous section
-already puts there.
+same bar listed twice in one part, `_` inside a word, a `_` or `.` with
+nothing sounding before it, a `bars N-M:` whose `|` parts don't match its
+bar count, `bar 0:` on the first section, and a `bar 0:` onset that
+collides with lyrics the previous section already puts there.
 
 **Inheritance**: `like "verse"` does not copy lyrics, because a second
 verse almost always has different words. `like "verse" with lyrics` does,
@@ -1749,20 +1806,27 @@ and the parent's other bars are kept.
 Lyrics engrave in one of two styles:
 
 - `staff` (default): a small one-line "Vox" rhythm staff above the drum
-  staff, showing the implied rhythm with the syllables under it. It is
-  hidden on systems with no lyrics.
-- `line`: a lyrics line under the drum staff. A hidden rhythm gives each
-  syllable its own column even where there is no drum note.
+  staff, showing the rhythm with the syllables under it, plus one more
+  staff per backing part, labelled with its name. Holds show as ties and
+  breaths as a breath mark. A staff is hidden on systems where its part is
+  silent.
+- `line`: a lyrics line under the drum staff, plus one more line per
+  backing part, labelled with its name. A hidden rhythm gives each
+  syllable its own column even where there is no drum note; a breath
+  prints after the syllable it ends.
 
 Choose the style with `lyrics_style: staff|line` in the metadata, or
 override it per run with `compile … --lyrics-style staff|line|off`. `off`
 prints a drums-only chart from the same source.
 
-**Other outputs**: MIDI export adds a "Lyrics" track with one lyric meta
-event per syllable. A hyphenated syllable keeps its trailing `-`, the
-karaoke convention. MusicXML export adds a "Voice" part of rhythm notes
-carrying `<lyric>` elements with begin/middle/end `<syllabic>` values;
-`musicxml … --lyrics-style off` leaves it out. `lint --style` warns about a
+**Other outputs**: MIDI export adds a "Lyrics" track (and a
+"Lyrics: <name>" track per backing part) with one lyric meta event per
+syllable; holds, stops and breaths add none. A hyphenated syllable keeps
+its trailing `-`, the karaoke convention. MusicXML export adds a "Voice"
+part (and one per backing part, named after it) of rhythm notes carrying
+`<lyric>` elements with begin/middle/end `<syllabic>` values, ties and
+`<extend>` lines for holds, and `<breath-mark>`s; `musicxml …
+--lyrics-style off` leaves them out. `lint --style` warns about a
 hyphen on a section's last syllable, and about sections that use more
 than three beat-placed `cue`s, which usually means a vocal line written
 as cues.

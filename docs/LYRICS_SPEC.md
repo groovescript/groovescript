@@ -1,6 +1,6 @@
 # Spec: Timed lyrics
 
-Status: implemented (slices 1–4), 2026-10-18. Slice 5 remains future work.
+Status: implemented (slices 1–4, 2026-10-18; slice 5, 2026-11-15).
 User docs: [DSL reference → Timed lyrics](DSL_REFERENCE.md#timed-lyrics).
 
 ## Goal
@@ -31,7 +31,8 @@ become a separate feature with first-class timing.
 2. **Authoring: count + words pairs.** This mirrors the fill/groove
    `count:` + `notes:` form.
 3. **Scope: onsets only.** There is no pitch, explicit duration, breath
-   mark or harmony part in v1. Durations may follow later, and the syntax
+   mark or harmony part in v1 (slice 5 later added holds, stops, breaths
+   and backing parts; there is still no pitch). Durations may follow later, and the syntax
    reserves room for them.
 4. **Ownership: lyrics belong to the section.** They inherit through
    `like` only when opted in via a new `with lyrics` category, and bars
@@ -63,8 +64,7 @@ section "verse":
     in a later bar. It engraves as a LilyPond `--` hyphen and as
     `syllabic` begin/middle/end in MusicXML.
   - `~` inside a token joins words on one onset (`oh~yeah` → "oh yeah").
-  - `_` is **reserved** for future extenders/holds. It is a parse error in
-    v1, so its meaning can be added later without breaking anything.
+  - `_` was reserved in v1 and became the hold mark in slice 5 (below).
 - Column alignment between the two strings is encouraged but not
   required, in the same spirit as the existing `count`/`notes` pairs.
 - **Pickups**: `bar 0:` means "the bar before this section". Vocal lines
@@ -89,7 +89,7 @@ section "verse":
 - `bar N` beyond the section's expanded length (this includes `play:`
   sections and `repeat:`).
 - A bar listed twice in one `lyrics:` block.
-- `_` in the words string ("reserved for future use").
+- `_` inside a word (slice 5: it must stand alone as the hold mark).
 - `bar 0:` on the song's first section, since there is no preceding bar.
 - A `bar 0:` onset that collides with an onset the previous section
   already puts in its last bar.
@@ -212,8 +212,50 @@ fill bars are.
    `bar 0:` pickups, and play:/placeholder/meter-variation coverage.
 4. **Exports + lint.** MIDI lyric events, the MusicXML vocal part, and the
    lint warnings.
-5. **Later** (not v1): durations/holds via `_`, multi-bar entries
-   (`bars 1-2: "1 2& 3 | 1 3" "…"`), breath marks, backing-vocal lines.
+5. **Holds, multi-bar entries, breaths, backing vocals** (done).
+   Fixtures: `lyrics_holds_and_parts.gs` (staff) and
+   `lyrics_holds_and_parts_line.gs` (line).
+
+## Slice 5 design
+
+**Marks.** Three tokens stand alone in the words string and take an onset
+like a syllable, so the count and words still pair one to one:
+
+- `_` (hold): the sounding syllable continues through the onset. No new
+  syllable; the rhythm ties into the onset and the held syllable gets an
+  extender (`__` in LilyPond, `<extend>` in MusicXML). On beat 1 it
+  continues the previous bar's last syllable, so words ring over bar
+  lines. Must follow something sounding: the previous onset in the bar,
+  or the previous bar's last syllable/hold when on beat 1.
+- `.` (stop): the sounding syllable ends; a rest until the next onset.
+  Must follow a syllable or hold in the same bar (a syllable already ends
+  at the bar line, so a stop that opens a bar would mean nothing).
+- `,` (breath): ends the syllable like `.` and prints a breath mark
+  (`\breathe` on the staff; a breath glyph after the syllable in `line`
+  style, where the rhythm voice prints nothing; `<breath-mark>` on the
+  note that stops in MusicXML). Allowed anywhere.
+
+Marks sing nothing, so MIDI emits no lyric event for them. The implied
+duration rule is unchanged: every onset (syllable, hold or mark) ends the
+previous span. IR: `LyricSyllable.kind` (`syllable`/`hold`/`stop`/
+`breath`), validated in sung order by `_validate_lyric_flow`.
+
+**Multi-bar entries.** `bars N-M: "c1 | c2 | …" "words"`: the count
+splits on `|` into exactly M−N+1 parts (an empty part is a bar with no
+lyrics) and the words are dealt out in order. The parser expands the
+entry into one `LyricLine` per bar, so everything downstream (duplicate
+bars, pickups, inheritance) works unchanged.
+
+**Backing vocals.** `lyrics "<name>":` opens a named part; the unnamed
+block is the lead. `LyricLine.part` carries the name. Each part is a
+separate stream: `IRBar.lyrics` stays the lead and
+`IRBar.vocal_parts[name]` holds the others; `IRSong.lyric_parts` lists
+them lead first, then in order of appearance. Duplicate-bar checks,
+pickups, flow validation and `like … with lyrics` (keyed by part and bar)
+all apply per part. Staff style adds a labelled RhythmicStaff per part;
+line style adds a NullVoice and a Lyrics line per part (italic, with a
+`stanza` label); MIDI adds a "Lyrics: <name>" track; MusicXML adds a part
+named after it. A bar with lyrics in *any* part never compacts.
 
 ## Open questions
 

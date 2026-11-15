@@ -20,7 +20,7 @@ import xml.etree.ElementTree as ET
 from xml.etree.ElementTree import Element, SubElement, ElementTree
 
 from .compiler import Event, IRBar, IRGroove, IRSong
-from .lyrics import lyric_segments
+from .lyrics import lyric_segments, starts_with_hold, ties_out
 
 # Divisions per quarter note. The value must be divisible by every tuplet
 # denominator we want to emit cleanly: lcm(8, 3, 5, 6, 7, 9) = 2520. With
@@ -253,24 +253,33 @@ def _musicxml_from_song(song: IRSong, include_lyrics: bool = True) -> bytes:
     part = SubElement(root, "part", id="P1")
     _fill_part(part, song.bars, default_ts, default_bpm)
 
-    if include_lyrics and song.has_lyrics:
-        root.find("part-list").append(_score_part("P2", "Voice"))  # type: ignore[union-attr]
-        vocal = SubElement(root, "part", id="P2")
-        _fill_vocal_part(vocal, song.bars, default_ts)
+    if include_lyrics:
+        for index, lyric_part in enumerate(song.lyric_parts, start=2):
+            part_id = f"P{index}"
+            label = "Voice" if lyric_part is None else lyric_part
+            root.find("part-list").append(_score_part(part_id, label))  # type: ignore[union-attr]
+            vocal = SubElement(root, "part", id=part_id)
+            _fill_vocal_part(vocal, song.bars, default_ts, lyric_part)
 
     return _serialize(root)
 
 
-def _fill_vocal_part(part: Element, bars: list[IRBar], default_ts: str) -> None:
-    """Emit the "Voice" part: one-line rhythm notes carrying lyrics.
+def _fill_vocal_part(
+    part: Element, bars: list[IRBar], default_ts: str, lyric_part: str | None = None,
+) -> None:
+    """Emit one vocal part: one-line rhythm notes carrying lyrics.
 
     Lyrics can't hang off drum notes (an onset often has no drum hit), so
     they get their own part. Each syllable sounds until the next onset or
     the bar line (the implied-duration display convention); the note
-    carries ``<lyric>`` with ``<syllabic>`` derived from the hyphens.
+    carries ``<lyric>`` with ``<syllabic>`` derived from the hyphens. A hold
+    (``_``) ties the note on and gives the held syllable an ``<extend>``
+    line; a stop (``.``) or breath (``,``) ends it, a breath adding a
+    ``<breath-mark>`` to the note that stops.
     """
     cur_ts = default_ts
     in_word = False  # previous syllable ended with a hyphen
+    last_note: Element | None = None  # most recent vocal note, for breath marks
     for i, bar in enumerate(bars):
         ts = bar.time_signature if bar.time_signature is not None else cur_ts
         measure = SubElement(part, "measure", number=str(bar.number))
@@ -288,30 +297,42 @@ def _fill_vocal_part(part: Element, bars: list[IRBar], default_ts: str) -> None:
                 SubElement(details, "staff-lines").text = "1"
         cur_ts = ts
         bar_divs = _bar_total_divs(ts)
-        if not bar.lyrics:
+        syllables = bar.part_lyrics(lyric_part)
+        if not syllables:
             _add_whole_rest(measure, bar_divs)
+            last_note = None
             continue
+        next_syllables = bars[i + 1].part_lyrics(lyric_part) if i + 1 < len(bars) else []
         beats_per_bar, beat_unit = (int(x) for x in ts.split("/"))
         divs_per_beat = Fraction(4 * _DIVS_PER_BEAT, beat_unit)
-        for seg in lyric_segments(bar.lyrics, beats_per_bar):
+        segments = lyric_segments(syllables, beats_per_bar)
+        tie_after = ties_out(segments, starts_with_hold(next_syllables))
+        for idx, seg in enumerate(segments):
             pieces = _split_duration_exact(int((seg.end - seg.start) * divs_per_beat))
-            if seg.syllable is None:
+            if seg.breath and last_note is not None:
+                _add_breath_mark(last_note)
+            if not seg.sounding:
                 for dur in pieces:
                     _append_rest(measure, dur)
+                last_note = None
                 continue
             syl = seg.syllable
-            if in_word:
-                syllabic = "middle" if syl.hyphen_after else "end"
-            else:
-                syllabic = "begin" if syl.hyphen_after else "single"
-            in_word = syl.hyphen_after
+            lyric = None
+            if syl.kind == "syllable":
+                if in_word:
+                    syllabic = "middle" if syl.hyphen_after else "end"
+                else:
+                    syllabic = "begin" if syl.hyphen_after else "single"
+                in_word = syl.hyphen_after
+                lyric = (syllabic, syl.text)
             for k, dur in enumerate(pieces):
-                _append_vocal_note(
+                last_note = _append_vocal_note(
                     measure,
                     dur,
-                    tie_stop=k > 0,
-                    tie_start=k < len(pieces) - 1,
-                    lyric=(syllabic, syl.text) if k == 0 else None,
+                    tie_stop=k > 0 or seg.is_hold,
+                    tie_start=k < len(pieces) - 1 or tie_after[idx],
+                    lyric=lyric if k == 0 else None,
+                    extend=lyric is not None and k == 0 and tie_after[idx],
                 )
 
 
@@ -335,7 +356,8 @@ def _append_vocal_note(
     tie_start: bool,
     tie_stop: bool,
     lyric: tuple[str, str] | None,
-) -> None:
+    extend: bool = False,
+) -> Element:
     """Append one rhythm note of the vocal part (element order per schema)."""
     note = SubElement(parent, "note")
     unp = SubElement(note, "unpitched")
@@ -366,6 +388,26 @@ def _append_vocal_note(
         lyric_el = SubElement(note, "lyric", number="1")
         SubElement(lyric_el, "syllabic").text = syllabic
         SubElement(lyric_el, "text").text = text
+        if extend:
+            SubElement(lyric_el, "extend", type="start")
+    return note
+
+
+def _add_breath_mark(note: Element) -> None:
+    """Add a breath mark after ``note`` (``<articulations><breath-mark/>``),
+    placed before any ``<lyric>`` to keep schema order."""
+    notations = note.find("notations")
+    if notations is None:
+        notations = Element("notations")
+        lyric = note.find("lyric")
+        if lyric is not None:
+            note.insert(list(note).index(lyric), notations)
+        else:
+            note.append(notations)
+    artic = notations.find("articulations")
+    if artic is None:
+        artic = SubElement(notations, "articulations")
+    SubElement(artic, "breath-mark")
 
 
 def _fill_part(

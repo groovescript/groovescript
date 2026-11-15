@@ -176,9 +176,15 @@ section_fill_placeholder_line: "fill" "placeholder" "at" "bar" INT
 // is a pickup into the preceding section's last bar.
 // The header is one terminal (keyword + colon) so a bare ``lyrics`` can still
 // lex as an INHERIT_CATEGORY at the end of ``like "x" with … lyrics``.
+// ``lyrics "BGV":`` (one terminal again) opens a named backing-vocal part.
+// ``bars N-M:`` spans several bars: ``|`` separates the bars' counts and one
+// words string runs across them.
 section_lyrics_block: LYRICS_HEADER lyrics_entry+
+                    | LYRICS_PART_HEADER lyrics_entry+
 LYRICS_HEADER.2: /lyrics[ \t]*:/
+LYRICS_PART_HEADER.2: /lyrics[ \t]+"(?:[^"\\]|\\.)*"[ \t]*:/
 lyrics_entry: "bar" INT ":" ESCAPED_STRING ESCAPED_STRING
+            | "bars" INT "-" INT ":" ESCAPED_STRING ESCAPED_STRING  -> lyrics_range_entry
 section_cue_line: "cue" ESCAPED_STRING "at" "bar" INT
                 | "cue" ESCAPED_STRING "at" "bar" INT "beat" BEAT_LABEL
 section_dynamic_line: DYNAMIC_KIND "from" "bar" INT "to" "bar" INT

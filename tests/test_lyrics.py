@@ -84,8 +84,9 @@ def test_parse_lyrics_count_words_mismatch_reports_both_counts():
     assert exc.value.line == 9
 
 
-def test_parse_lyrics_underscore_is_reserved():
-    with pytest.raises(GrooveScriptError, match="reserved for future use"):
+def test_parse_lyrics_underscore_inside_a_word_is_rejected():
+    """``_`` is the hold mark and must stand alone (it used to be reserved)."""
+    with pytest.raises(GrooveScriptError, match="must be a token on its own"):
         parse(_song(
             'section "v":\n'
             "  bars: 1\n"
@@ -507,3 +508,210 @@ def test_vocal_staff_aligned_after_explicit_repeat_block():
     # Vocal stream: one rest bar for section a, then section b's lyrics.
     assert "R1 |\n      c2 c2 |\n      r4 c2. |" in ly
     assert "R1 |\n      R1 |" not in ly
+
+
+# ── Slice 5: holds, stops, breaths, multi-bar entries, backing parts ─────────
+
+def _section(lyrics: str, bars: int = 4, name: str = "v", extra: str = "") -> str:
+    body = "".join(f"  {line}\n" for line in lyrics.strip("\n").splitlines())
+    return f'section "{name}":\n  bars: {bars}\n  groove: "g"\n{extra}{body}'
+
+
+def _kinds(syllables) -> list[tuple[str, str]]:
+    return [(syl.kind, syl.text) for syl in syllables]
+
+
+def test_marks_parse_as_their_own_onsets():
+    song = parse(_song(_section('''
+lyrics:
+  bar 1: "1 2 3 4" "round _ . ,"
+''')))
+    [entry] = song.sections[0].lyrics
+    assert [(t.kind, t.text) for t in entry.syllables] == [
+        ("syllable", "round"), ("hold", ""), ("stop", ""), ("breath", ""),
+    ]
+
+
+def test_hold_carries_a_syllable_across_the_bar_line():
+    ir = _compile(_song(_section('''
+lyrics:
+  bar 1: "3"   "round"
+  bar 2: "1 3" "_ ."
+''')))
+    assert _kinds(ir.bars[0].lyrics) == [("syllable", "round")]
+    assert _kinds(ir.bars[1].lyrics) == [("hold", ""), ("stop", "")]
+
+
+@pytest.mark.parametrize("lyrics, message", [
+    # a hold after a rest has nothing to continue
+    ('bar 1: "1 3" "hey ."\n  bar 2: "1" "_"', "nothing is sounding just before it"),
+    # a hold on beat 3 of an otherwise silent bar
+    ('bar 1: "3" "_"', "nothing is sounding just before it"),
+    # a hold on beat 1 after a bar with no lyrics
+    ('bar 1: "1" "hey"\n  bar 3: "1" "_"', "nothing is sounding just before it"),
+    # a stop that opens a bar (the syllable already ended at the bar line)
+    ('bar 1: "1" "hey"\n  bar 2: "2" "."', "nothing is sounding there"),
+])
+def test_marks_must_follow_something_sounding(lyrics, message):
+    with pytest.raises(GrooveScriptError) as exc:
+        _compile(_song(_section("lyrics:\n  " + lyrics)))
+    assert message in exc.value.message
+    assert exc.value.line is not None
+
+
+def test_breath_may_stand_anywhere():
+    ir = _compile(_song(_section('''
+lyrics:
+  bar 1: "1 2" "hey ,"
+  bar 2: "3 4" ", you"
+''')))
+    assert _kinds(ir.bars[1].lyrics) == [("breath", ""), ("syllable", "you")]
+
+
+def test_multi_bar_entry_deals_words_across_bars():
+    song = parse(_song(_section('''
+lyrics:
+  bars 1-3: "1 2& | | 3 4" "when the mor- ning"
+''')))
+    entries = song.sections[0].lyrics
+    assert [(e.bar, e.labels, [t.text for t in e.syllables]) for e in entries] == [
+        (1, ["1", "2&"], ["when", "the"]),
+        (3, ["3", "4"], ["mor", "ning"]),
+    ]
+    ir = _compile(_song(_section('''
+lyrics:
+  bars 1-3: "1 2& | | 3 4" "when the mor- ning"
+''')))
+    assert _texts(ir.bars[0]) == ["when", "the"]
+    assert ir.bars[1].lyrics == []
+    assert _texts(ir.bars[2]) == ["mor", "ning"]
+
+
+@pytest.mark.parametrize("entry, message", [
+    ('bars 1-2: "1 | 2 | 3" "a b c"', "covers 2 bars but the count has 3"),
+    ('bars 3-1: "1" "a"', "runs backwards"),
+    ('bars 1-2: "1 | 2" "a"', "count has 2 onset(s) but words has 1"),
+    ('bars 1-2: "1 | 2" "a b"\n  bar 2: "3" "c"', "given more than once"),
+])
+def test_multi_bar_entry_errors(entry, message):
+    with pytest.raises(GrooveScriptError) as exc:
+        _compile(_song(_section("lyrics:\n  " + entry)))
+    assert message in exc.value.message
+
+
+def test_named_backing_part_is_separate_from_the_lead():
+    ir = _compile(_song(_section('''
+lyrics:
+  bar 1: "1 3" "hey you"
+lyrics "BGV":
+  bar 1: "2"   "ooh"
+  bar 2: "1"   "ah"
+''')))
+    assert _texts(ir.bars[0]) == ["hey", "you"]
+    assert [s.text for s in ir.bars[0].vocal_parts["BGV"]] == ["ooh"]
+    assert ir.bars[1].lyrics == [] and ir.bars[1].has_any_lyrics
+    assert ir.lyric_parts == [None, "BGV"]
+
+
+def test_backing_part_alone_and_empty_name():
+    ir = _compile(_song(_section('lyrics "Harmony":\n  bar 1: "1" "ooh"')))
+    assert ir.lyric_parts == ["Harmony"] and ir.has_lyrics
+    with pytest.raises(GrooveScriptError, match="cannot be empty"):
+        parse(_song(_section('lyrics "":\n  bar 1: "1" "ooh"')))
+
+
+def test_like_with_lyrics_merges_each_part_by_bar():
+    src = _song(
+        _section('lyrics:\n  bar 1: "1" "one"\nlyrics "BGV":\n  bar 1: "1" "ooh"\n  bar 2: "1" "ah"')
+        + 'section "v2":\n  like "v" with lyrics\n  lyrics "BGV":\n    bar 2: "3" "yeah"\n'
+    )
+    ir = _compile(src)
+    v2 = ir.bars[4:]
+    assert _texts(v2[0]) == ["one"]
+    assert [s.text for s in v2[0].vocal_parts["BGV"]] == ["ooh"]
+    assert [(s.position, s.text) for s in v2[1].vocal_parts["BGV"]] == [(Fraction(1, 2), "yeah")]
+
+
+def test_lilypond_staff_style_ties_holds_and_prints_breaths():
+    ly = emit_lilypond(_compile(_song(_section('''
+lyrics:
+  bar 1: "1 3"   "round _"
+  bar 2: "1 2 3" "_ , you"
+'''))))
+    vocal = ly[ly.index("\\new RhythmicStaff"):ly.index("\\new DrumStaff")]
+    # bar 1: two half notes tied, then tied over the bar line into bar 2.
+    assert "c2~ c2~ |" in vocal
+    assert "c4 \\breathe r4 c2 |" in vocal
+    assert '"round" __ "you"' in vocal
+
+
+def test_lilypond_backing_parts_get_their_own_staff_and_line():
+    src = _song(_section('''
+lyrics:
+  bar 1: "1" "hey"
+lyrics "BGV":
+  bar 1: "3" "ooh"
+'''))
+    staff = emit_lilypond(_compile(src))
+    assert staff.count("\\new RhythmicStaff") == 2
+    assert 'instrumentName = "Vox"' in staff and 'instrumentName = "BGV"' in staff
+    assert '\\lyricsto "lyricsrhythm2"' in staff
+    line = emit_lilypond(_compile(src), lyrics_style="line")
+    assert line.count("\\new NullVoice") == 2
+    assert '\\set stanza = "BGV:"' in line
+
+
+def test_lilypond_line_style_shows_breath_on_the_syllable():
+    ly = emit_lilypond(_compile(_song(_section('lyrics:\n  bar 1: "1 3" "hey ,"'))), lyrics_style="line")
+    assert '\\markup { "hey" \\musicglyph "scripts.rcomma" }' in ly
+    assert "\\breathe" not in ly
+
+
+def test_bars_with_only_backing_lyrics_do_not_compact():
+    """Regression guard: compaction must check every vocal part, not just
+    the lead (``bar.lyrics``)."""
+    plain = emit_lilypond(_compile(_song(_section("", bars=8))))
+    assert "\\repeat volta" in plain
+    ly = emit_lilypond(_compile(_song(_section(
+        'lyrics "BGV":\n  bars 1-8: "1|1|1|1|1|1|1|1" "a b c d e f g h"', bars=8,
+    ))))
+    assert "\\repeat volta" not in ly
+
+
+def test_midi_has_a_lyric_track_per_part_and_skips_marks():
+    data = emit_midi(_compile(_song(_section('''
+lyrics:
+  bar 1: "1 2 3" "hey _ ."
+lyrics "BGV":
+  bar 1: "1" "ooh"
+'''))))
+    assert b"Lyrics" in data and b"Lyrics: BGV" in data
+    assert data.count(b"\xff\x05") == 2  # "hey" and "ooh" only
+
+
+def test_musicxml_parts_holds_stops_and_breaths():
+    xml = emit_musicxml(_compile(_song(_section('''
+lyrics:
+  bar 1: "1 2 3 4" "hey _ , you"
+lyrics "BGV":
+  bar 1: "1" "ooh"
+'''))))
+    root = ET.fromstring(xml)
+    names = [p.findtext("part-name") for p in root.findall("part-list/score-part")]
+    assert names == ["Drumset", "Voice", "BGV"]
+    voice = root.find("part[@id='P2']/measure")
+    notes = voice.findall("note")
+    # hey (quarter, tie start + extend), hold (tie stop, breath mark), rest, you
+    assert notes[0].findtext("lyric/text") == "hey"
+    assert notes[0].find("lyric/extend") is not None
+    assert notes[0].find("tie[@type='start']") is not None
+    assert notes[1].find("tie[@type='stop']") is not None and notes[1].find("lyric") is None
+    assert notes[1].find("notations/articulations/breath-mark") is not None
+    assert notes[2].find("rest") is not None
+    assert notes[3].findtext("lyric/text") == "you"
+
+
+def test_lint_trailing_hyphen_checks_each_part():
+    song = parse(_song(_section('lyrics:\n  bar 1: "1" "done"\nlyrics "BGV":\n  bar 1: "1 2" "ah- ."')))
+    warnings = [w for w in check_style("", song) if "hyphen" in w.message]
+    assert len(warnings) == 1 and 'part "BGV"' in warnings[0].message

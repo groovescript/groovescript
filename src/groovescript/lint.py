@@ -318,14 +318,21 @@ def _check_lyrics(song: Song) -> list[StyleWarning]:
     """
     warnings: list[StyleWarning] = []
     for section in song.sections:
-        if section.lyrics:
-            last = max(section.lyrics, key=lambda entry: entry.bar)
-            if last.syllables and last.syllables[-1].hyphen_after:
+        parts: list[str | None] = []
+        for entry in section.lyrics:
+            if entry.part not in parts:
+                parts.append(entry.part)
+        for part in parts:
+            entries = [entry for entry in section.lyrics if entry.part == part]
+            last = max(entries, key=lambda entry: entry.bar)
+            sung = [token for token in last.syllables if token.kind == "syllable"]
+            if sung and sung[-1].hyphen_after:
+                part_note = "" if part is None else f' (part "{part}")'
                 warnings.append(
                     StyleWarning(
                         message=(
-                            f"section {section.name!r}: last lyric syllable "
-                            f"{last.syllables[-1].text + '-'!r} ends with a hyphen"
+                            f"section {section.name!r}{part_note}: last lyric syllable "
+                            f"{sung[-1].text + '-'!r} ends with a hyphen"
                         ),
                         line=last.line,
                         hint="drop the trailing `-`, or finish the word in this section",
