@@ -12,19 +12,22 @@ the language, start with [`GETTING_STARTED.md`](GETTING_STARTED.md) or
   - [Bare suffix resolution](#bare-suffix-resolution)
   - [`dsl_version`](#dsl_version)
 - [Metadata](#metadata)
-  - [`title`, `tempo`, `time_signature`, `default_groove`, `default_bars`](#metadata)
+  - [`title`, `tempo`, `time_signature`, `feel`, `lyrics_style`](#metadata)
+  - [Default groove and default bars](#default-groove-and-default-bars)
 - [Instruments](#instruments)
   - [Canonical / lowercase / verbose aliases](#instruments)
   - [Foot- vs hand-played classification](#instruments)
+  - [Mutually exclusive instruments (`HH`/`OH`, `RD`/`RB`)](#mutually-exclusive-instruments)
 - [Beat labels](#beat-labels)
   - [16th-note suffixes `e`, `&` / `and`, `a`](#beat-labels)
   - [Triplet suffixes `trip` / `let` (`t` / `l`)](#beat-labels)
+  - [Double-digit beat numbers for compound meter](#beat-labels)
   - [`*N` / `*Nt` — hit on every Nth note (straight or triplet)](#beat-labels)
   - [`*N except` — star exclusion](#star-exclusion-n-except)
+  - [Subdivision inference and mixed grids](#subdivision-inference)
   - [Tuplet groups `<beat>{<kind> <slots>}`](#tuplet-groups)
   - [`*<kind>` — fill the bar with one named tuplet per beat](#kind-star-shorthand)
   - [Tuplet groups in count-form fills](#tuplet-groups-in-count-form-fills)
-  - [Double-digit beat numbers for compound meter](#beat-labels)
 - [Modifiers](#modifiers)
   - [`ghost`, `accent`, `choke`, `fermata`, `flam` / `flam:<inst>`, `drag` / `drag:<inst>`](#modifiers)
   - [`double` / `32nd` (double strokes)](#modifiers)
@@ -51,6 +54,7 @@ the language, start with [`GETTING_STARTED.md`](GETTING_STARTED.md) or
   - [Multi-bar rests (`rest xN`)](#multi-bar-rests)
   - [`like` inheritance](#like-inheritance)
   - [Per-section meter](#per-section-meter)
+    - [Meter change on a single bar](#meter-change-on-a-single-bar)
   - [`crash in` — start a section on a crash](#crash-in)
   - [`break` — silence a bar/beat range](#break)
   - [Vocal cues and text annotations](#vocal-cues-and-text-annotations)
@@ -160,12 +164,29 @@ dsl_version: 1            # the GrooveScript DSL version this file targets
 
 ## Metadata
 
+Metadata lines sit at the top of the file, before any groove, fill or
+section:
+
 ```groovescript
 title: "Song Name"
 tempo: 120
 time_signature: 4/4
 feel: swing
 ```
+
+| Field | Values | Default | Notes |
+|---|---|---|---|
+| `title` | string | none | Large centered title on the page. |
+| `tempo` | BPM (integer) | none | Shown in the score header; sections may override with their own `tempo:`. |
+| `time_signature` | `N/M` (numerator 1–99) | `4/4` | Song-level meter, e.g. `3/4`, `6/8`, `12/8`; see [Per-section meter](#per-section-meter) for overrides. |
+| `feel` | `swing` | straight | Notational only; see below. |
+| `lyrics_style` | `staff` \| `line` | `staff` | How [timed lyrics](#timed-lyrics) are engraved. |
+| `default_groove` | groove name | none | Groove for sections that omit `groove:`. See [below](#default-groove-and-default-bars). |
+| `default_bars` | integer | none | Bar count for sections that omit `bars:`. |
+| `dsl_version` | integer | current | See [`dsl_version`](#dsl_version). |
+
+A bare top-level `crash in` line is also allowed here; see [Top-level
+`crash in`](#top-level-crash-in-and-the-per-section-no-crash-in-opt-out).
 
 The `feel` field is optional and defaults to straight (omitted). Currently
 `swing` is the only accepted value. When set, the compiled sheet music
@@ -178,35 +199,8 @@ beat positions or note durations.
 The **MusicXML** and **MIDI** exporters parse the field but currently
 ignore it: MusicXML output contains no swing direction, and MIDI playback
 is rendered with straight eighth notes regardless of `feel`. If you need
-the swing indication in MusicXML, render through LilyPond and import the
-resulting PDF, or open a feature request.
-
-`lyrics_style: staff` or `lyrics_style: line` picks how
-[timed lyrics](#timed-lyrics) are engraved (default `staff`).
-
-Per-bar subdivision is inferred automatically from the content of each
-bar — the beat labels you write (`1`, `2&`, `3e`, `4trip`, …) and any
-`*N` / `*Nt` star hits together determine the grid GrooveScript uses
-when emitting LilyPond. There is no `subdivision:` keyword and no
-`default_subdivision` metadata field — just write the rhythm you want
-and the compiler picks the right grid.
-
-Mixed subdivisions — straight 16ths (or 8ths) combined with triplets in
-the same bar — are supported. The compiler uses the least common
-multiple of the two grids to accommodate both. For example, a bar with
-both 8th-note content and triplets uses 6 slots per beat; a bar mixing
-16ths and triplets uses 12 slots per beat:
-
-```groovescript
-groove "mixed":
-    BD: 1, 3
-    SN: 2, 4
-    HH: 1, 1&, 2, 2&, 3trip, 3let, 4trip, 4let
-```
-
-Time signatures 4/4, 3/4, 6/8, 12/8, and generally any `N/M` with a
-numerator from 1–99 are supported.
-
+the swing indication in MusicXML, add it in your notation software after
+import, or open a feature request.
 ### Default groove and default bars
 
 The metadata block can declare defaults that apply to any section that
@@ -231,7 +225,7 @@ its own `bars:` or `groove:` overrides the default.
 A section that declares `bars:` without a `groove:` — and has no
 `default_groove` either — renders as a [placeholder
 groove](#placeholder-grooves): each bar is an empty measure with a boxed
-rehearsal label. This is the iteration-1 form of a chart: print the
+rehearsal label. This is the [tutorial's iteration 1](TUTORIAL.md#iteration-1--form-and-tempo) form of a chart: print the
 form, pencil in the grooves by hand, or fill in `groove:` lines later.
 
 ## Instruments
@@ -316,6 +310,42 @@ the straight form (and three-halves of that for the triplet form), so
 produces 12. A star that does not divide the time signature evenly (for
 example `*4t` in 3/4 would yield 4.5 hits) is rejected at parse time.
 
+Beat numbers go up to 99, so compound meters like 12/8 can address every
+eighth note directly — `BD: 1, 7`, `SN: 4, 10`, `HH: 1, 2, …, 12`. Any
+suffix that applies to single-digit beats also works on double-digit ones
+(`12&`, `12trip`, `10e`, etc.).
+
+The token `and` is a long-form alias for `&` anywhere a beat suffix is
+accepted — `1and` parses identically to `1&`, both in pattern lines and in
+fill `count:` strings (`"1 and 2 and 3 and 4 and"`).
+
+### Subdivision inference
+
+Each bar's grid (its subdivision) is inferred automatically from the
+bar's content — the beat labels you write (`1`, `2&`, `3e`, `4trip`, …) and any
+`*N` / `*Nt` star hits together determine the grid GrooveScript uses
+when emitting LilyPond. There is no `subdivision:` keyword and no
+`default_subdivision` metadata field — just write the rhythm you want
+and the compiler picks the right grid.
+
+Mixed subdivisions — straight 16ths (or 8ths) combined with triplets in
+the same bar — are supported. The compiler uses the least common
+multiple of the two grids to accommodate both. For example, a bar with
+both 8th-note content and triplets uses 6 slots per beat; a bar mixing
+16ths and triplets uses 12 slots per beat:
+
+```groovescript
+groove "mixed":
+    BD: 1, 3
+    SN: 2, 4
+    HH: 1, 1&, 2, 2&, 3trip, 3let, 4trip, 4let
+```
+
+[Tuplet groups](#tuplet-groups) join the same calculation: the grid is
+the LCM of every label's needs and every tuplet's ratio, so a bar mixing
+16ths with sextuplets uses 12 slots per beat. Fill bars get their own
+grid, independent of the surrounding groove bars.
+
 ### Star exclusion (`*N except`)
 
 Add `except <beat_list>` after a star to fill every Nth note **except**
@@ -333,15 +363,6 @@ groove "open hat 16ths":
 Commas in the except list are optional — `*16 except 2a 4a` works too.
 Bare suffix resolution applies in the except list, so `*8 except 1 and`
 expands to `*8 except 1, 1&`.
-
-Beat numbers go up to 99, so compound meters like 12/8 can address every
-eighth note directly — `BD: 1, 7`, `SN: 4, 10`, `HH: 1, 2, …, 12`. Any
-suffix that applies to single-digit beats also works on double-digit ones
-(`12&`, `12trip`, `10e`, etc.).
-
-The token `and` is a long-form alias for `&` anywhere a beat suffix is
-accepted — `1and` parses identically to `1&`, both in pattern lines and in
-fill `count:` strings (`"1 and 2 and 3 and 4 and"`).
 
 ### Tuplet groups
 
@@ -1195,48 +1216,6 @@ the groove before X is kept. The fill's content must therefore not start
 earlier than X — e.g. a fill counted `"2and 3 a 4"` needs `beat 2and`,
 not `beat 3`. A fill with hits before its start beat is a compile error.
 
-#### Meter change on a single bar
-
-A variation block can override the time signature of just the bars it
-targets, for a section that's otherwise a consistent meter except for one
-(or a few) odd bars — e.g. a single 2/4 bar dropped into a 4/4 tune:
-
-```groovescript
-section "verse":
-  bars: 8
-  groove: "money beat"
-  variation at bar 5:
-    time_signature: 2/4        # bar 5 only; bars 1-4 and 6-8 stay 4/4
-```
-
-Because the bar's beat grid no longer matches the surrounding groove, the
-bar starts from an **empty canvas** rather than being diffed against the
-groove's pattern — `remove`/`replace`/`modify` are rejected (there's
-nothing pre-existing to target). This makes the common case — a bar of
-silence in the new meter — a single line:
-
-```groovescript
-  variation at bar 5:
-    time_signature: 2/4
-```
-
-renders as a plain rest bar in 2/4. To notate the bar instead, use `add`
-(or `count:`/`notes:` substitution) to build it up from nothing:
-
-```groovescript
-  variation at bar 5:
-    time_signature: 2/4
-    add BD at 1
-    add SN at 2
-```
-
-A meter-changing variation cannot share a bar with a fill or a `break on
-bar` — both assume the section's uniform beat grid, so the compiler
-rejects the combination rather than silently mis-placing them. It's also
-not currently supported inside groove `extend:` bodies or top-level
-`variation "name":` definitions — only inline, section-level `variation at
-bar N:` blocks.
-
 `repeat: N` divides the section's `bars` into N identical phrases and
 emits a `\repeat volta N { … }` block in LilyPond. The phrase length is
 `bars / N`, which must be a whole number; `bars: 4 repeat: 2` produces two
@@ -1446,6 +1425,48 @@ section "bridge":
 section-scoped scalars (`bars`, `groove`, `repeat`, `tempo`). A section's
 own explicit `time_signature:` always takes precedence over whatever it
 inherits.
+
+#### Meter change on a single bar
+
+A variation block can override the time signature of just the bars it
+targets, for a section that's otherwise a consistent meter except for one
+(or a few) odd bars — e.g. a single 2/4 bar dropped into a 4/4 tune:
+
+```groovescript
+section "verse":
+  bars: 8
+  groove: "money beat"
+  variation at bar 5:
+    time_signature: 2/4        # bar 5 only; bars 1-4 and 6-8 stay 4/4
+```
+
+Because the bar's beat grid no longer matches the surrounding groove, the
+bar starts from an **empty canvas** rather than being diffed against the
+groove's pattern — `remove`/`replace`/`modify` are rejected (there's
+nothing pre-existing to target). This makes the common case — a bar of
+silence in the new meter — a single line:
+
+```groovescript
+  variation at bar 5:
+    time_signature: 2/4
+```
+
+renders as a plain rest bar in 2/4. To notate the bar instead, use `add`
+(or `count:`/`notes:` substitution) to build it up from nothing:
+
+```groovescript
+  variation at bar 5:
+    time_signature: 2/4
+    add BD at 1
+    add SN at 2
+```
+
+A meter-changing variation cannot share a bar with a fill or a `break on
+bar` — both assume the section's uniform beat grid, so the compiler
+rejects the combination rather than silently mis-placing them. It's also
+not currently supported inside groove `extend:` bodies or top-level
+`variation "name":` definitions — only inline, section-level `variation at
+bar N:` blocks.
 
 ### Crash in
 
@@ -1825,6 +1846,10 @@ instrument plays".
 
 Bar lists in `variation at bars …:` may be comma- or space-separated —
 `variation at bars 1 5:` parses the same as `variation at bars 1, 5:`.
+
+A section-level variation block may also carry `time_signature: N/M` to
+change the meter of just the bars it targets; see [Meter change on a
+single bar](#meter-change-on-a-single-bar).
 
 ### Reusable named variations
 

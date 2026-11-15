@@ -4,18 +4,29 @@ Python CLI that compiles `.gs` drum notation files -> LilyPond -> PDF sheet musi
 
 ## Companion docs
 
-- `README.md` -- user-facing language reference and getting-started guide
+- `README.md` -- project overview, install, CLI usage, web editor
+- `docs/GETTING_STARTED.md` -- install + first chart
+- `docs/TUTORIAL.md` -- guided, iterative walkthrough of the language
+- `docs/DSL_REFERENCE.md` -- authoritative, topic-indexed language reference (update this for any syntax change)
+- `docs/LYRICS_SPEC.md` -- design spec for timed lyrics
+- `CONTRIBUTING.md` -- human-facing contributor checklist (keep in sync with the verification steps below)
 
 ## Architecture
 
 ```
 src/groovescript/
-  cli.py              # argparse entry point (compile, lint, --watch)
-  parser.py           # Lark grammar -> parse tree -> AST (via Transformer)
+  cli.py              # argparse entry point (compile, lint, midi, musicxml, --watch)
+  parser.py           # Public parse entry point (CURRENT_DSL_VERSION); Lark grammar -> AST
+  parser_preprocess.py # Source rewrites run before Lark (commas, count/notes quoting)
+  parser_transformer.py # Lark Transformer: parse tree -> AST
+  parser_notation.py  # Instrument / beat-label / count / notes token parsing
+  parser_errors.py    # Lark exceptions -> GrooveScriptError diagnostics
+  errors.py           # GrooveScriptError + Rust-style diagnostic rendering
   ast_nodes.py        # Dataclasses for AST
   compiler.py         # AST -> IR (flat event list per bar)
   lilypond.py         # IR -> LilyPond source
   midi.py             # IR -> MIDI file bytes (Format 1, GM drums on channel 10)
+  musicxml.py         # IR -> MusicXML (also feeds the web editor's Verovio preview)
   lyrics.py           # Implied-duration rhythm for timed lyrics (shared by emitters)
   lilypond_template.ly # Static LilyPond boilerplate (loaded by lilypond.py)
   grammar.lark        # Lark EBNF grammar
@@ -29,9 +40,8 @@ editors/web/          # Browser editor (CodeMirror). worker.js runs src/groovesc
                       #   engraves MusicXML with Verovio; player.js plays the MIDI on a synth kit
 tests/
   fixtures/           # .gs / .ly / .pdf reference files
-  test_parser.py
-  test_compiler.py
-  test_lilypond.py
+  test_*.py           # one module per feature area (parser_*, compiler, lilypond, midi, musicxml, lyrics, ...)
+  test_fixtures_fresh.py # committed .ly files must match current compiler output
 docs/                 # Documentation
 charts/               # Real (non-test) charts: .gs source + compiled .ly + .pdf
 ```
@@ -101,7 +111,7 @@ After implementing a change that affects compiled output, always:
 2. Compile any new or affected fixture:
    `uv run groovescript compile tests/fixtures/<name>.gs -o tests/fixtures/<name>.ly`
 3. Render it to PDF: `lilypond -o tests/fixtures/<name> tests/fixtures/<name>.ly`
-4. Update relevant docs if user-visible behavior changed (`README.md`, `CLAUDE.md`)
+4. Update relevant docs if user-visible behavior changed (`docs/DSL_REFERENCE.md`, `README.md`, `docs/TUTORIAL.md`, `CLAUDE.md`)
 5. Update the Vim syntax plugin (`editors/vim/syntax/groovescript.vim`) and the web editor highlighter (`editors/web/gs-mode.js`) if new instruments, modifiers, or keywords were added. New MIDI drum notes also need a voice in `editors/web/drumkit.js`
 6. Commit `.gs`, `.ly`, `.pdf`, updated docs, and code changes together
 
