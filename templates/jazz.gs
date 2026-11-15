@@ -4,15 +4,15 @@ time_signature: 4/4
 dsl_version: 1
 
 // Jazz ride pattern with swing feel.
-// RD carries the quarter-note ride; HH marks 2 and 4 with foot; SN comps lightly.
+// RD carries the quarter-note ride; HF (hi-hat foot) marks 2 and 4; SN comps lightly.
 groove "swing":
     RD: 1, 1&, 2, 2&, 3, 3&, 4, 4&
-    HH: 2, 4
+    HF: 2, 4
     SN: 2, 4
 
 groove "swing open":
     RD: 1, 1&, 2, 2&, 3, 3&, 4, 4&
-    HH: 2, 4
+    HF: 2, 4
     BD: 1, 3
 
 fill "trading four":

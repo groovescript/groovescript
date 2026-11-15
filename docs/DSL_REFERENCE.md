@@ -257,7 +257,7 @@ the output.
 | `SCS`     | `scs`     | `click`, `cross-stick`       | snare cross stick |
 | `HH`      | `hh`      | `hat`, `hihat`, `hi-hat`     | closed hi-hat     |
 | `OH`      | `oh`      | `open`, `openhat`            | open hi-hat       |
-| `HF`      | `hf`      | `hihatfoot`, `footchick`     | hi-hat foot chick |
+| `HF`      | `hf`      | `hihatfoot`, `footchick`, `hi-hat-foot`, `foot-chick` | hi-hat foot chick |
 | `RD`      | `rd`      | `ride`                       | ride (bow)        |
 | `RB`      | `rb`      | `ridebell`, `bell`           | ride bell         |
 | `CR`      | `cr`      | `crash`                      | crash             |

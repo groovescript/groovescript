@@ -130,6 +130,7 @@ export function createPreview(editor) {
       // Valid, but nothing to show yet (no grooves or sections).
       lastGood = null;
       player.stop({ silent: true });
+      renderSeq++; // drop any render still in flight for the old score
       renderedXml = null;
       timemap = [];
       measures = [];
@@ -162,7 +163,11 @@ export function createPreview(editor) {
 
   function sourceChanged(text, { immediate = false } = {}) {
     clearTimeout(debounce);
-    const send = () => worker.postMessage({ type: 'build', id: ++buildSeq, source: text });
+    // Claim the id now, not when the debounce fires: a result for an older
+    // build that arrives during the debounce window describes text that has
+    // since changed, and its line numbers no longer match the document.
+    const id = ++buildSeq;
+    const send = () => worker.postMessage({ type: 'build', id, source: text });
     if (immediate) send();
     else debounce = setTimeout(send, BUILD_DEBOUNCE_MS);
   }

@@ -363,3 +363,37 @@ groove "flam kick":
     song = parse(src)
     ir = compile_groove(song.grooves[0])
     assert check_notation(ir) == []
+
+
+def test_groove_only_file_first_groove_is_not_unused():
+    """Regression: a file with grooves but no sections compiles its first
+    groove on its own, yet lint reported it as "defined but never used"
+    (e.g. tests/fixtures/money_beat.gs)."""
+    from groovescript.lint import check_style
+    from groovescript.parser import parse
+
+    src = 'groove "money beat":\n  BD: 1, 3\n  SN: 2, 4\n'
+    warnings = check_style(src, parse(src))
+    assert not [w for w in warnings if "never used" in w.message]
+
+
+def test_mixed_style_scan_stops_at_next_inline_groove_in_play_block():
+    """Regression: the mixed-style check treated an indented inline groove
+    in a ``play:`` block as running until the next column-0 line, so two
+    separate, internally consistent inline grooves were reported as one
+    mixed groove body."""
+    from groovescript.lint import check_style
+    from groovescript.parser import parse
+
+    src = (
+        'section "song":\n'
+        '  play:\n'
+        '    groove "a":\n'
+        '        BD: 1, 3\n'
+        '        SN: 2, 4\n'
+        '    groove:\n'
+        '        1: BD\n'
+        '        3: SN\n'
+    )
+    warnings = check_style(src, parse(src))
+    assert not [w for w in warnings if "mixes" in w.message]

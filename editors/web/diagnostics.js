@@ -4,7 +4,7 @@
 const SEVERITIES = new Set(['error', 'warning', 'info']);
 
 /**
- * @param {{ lines: number, line(n: number): { from: number, to: number } }} doc
+ * @param {{ lines: number, line(n: number): { from: number, to: number, text?: string } }} doc
  *   A CodeMirror `Text` (or anything with the same shape).
  * @param {Array<{ severity: string, message: string, hint?: string | null,
  *                 line?: number | null, column?: number | null,
@@ -21,8 +21,12 @@ export function toEditorDiagnostics(doc, diags) {
     if (d.line != null && doc.lines > 0) {
       const ln = doc.line(Math.min(Math.max(d.line, 1), doc.lines));
       if (d.column != null) {
-        from = Math.min(ln.from + Math.max(d.column, 1) - 1, ln.to);
-        to = Math.min(from + Math.max(d.length ?? 1, 1), ln.to);
+        // The compiler counts code points; CodeMirror offsets count UTF-16
+        // units, so characters outside the BMP (emoji) take two.
+        const startCp = Math.max(d.column, 1) - 1;
+        const lenCp = Math.max(d.length ?? 1, 1);
+        from = Math.min(ln.from + utf16Offset(ln.text, startCp), ln.to);
+        to = Math.min(ln.from + utf16Offset(ln.text, startCp + lenCp), ln.to);
       } else {
         // No column: underline the line's text, skipping indentation.
         from = ln.from;
@@ -34,6 +38,20 @@ export function toEditorDiagnostics(doc, diags) {
     out.push({ from, to, severity, message });
   }
   return out;
+}
+
+/** UTF-16 length of the first ``cp`` code points of ``text`` (``cp`` when
+ * the line text is unavailable). */
+function utf16Offset(text, cp) {
+  if (typeof text !== 'string') return cp;
+  let units = 0;
+  let seen = 0;
+  for (const ch of text) {
+    if (seen === cp) return units;
+    units += ch.length;
+    seen += 1;
+  }
+  return units + (cp - seen); // past the end: clamped by the caller
 }
 
 /**

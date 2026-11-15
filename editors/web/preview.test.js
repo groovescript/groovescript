@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 import { parseMidi, makeTickToSeconds, makeSecondsToQuarters } from './midi-parse.js';
 import { toEditorDiagnostics, summarize } from './diagnostics.js';
+import { Player } from './player.js';
 import { PYODIDE_VERSION, VEROVIO_VERSION, depUrls } from './deps.js';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -36,7 +37,7 @@ function fakeDoc(text) {
   for (const l of lines) { starts.push(pos); pos += l.length + 1; }
   return {
     lines: lines.length,
-    line: (n) => ({ from: starts[n - 1], to: starts[n - 1] + lines[n - 1].length }),
+    line: (n) => ({ from: starts[n - 1], to: starts[n - 1] + lines[n - 1].length, text: lines[n - 1] }),
   };
 }
 
@@ -183,4 +184,38 @@ test('service worker caches every module the editor loads', () => {
     if (f === './' || f.startsWith('py/')) continue; // py/ is built at deploy time
     assert.ok(existsSync(new URL(f, import.meta.url)), `${f} listed in SHELL but missing`);
   }
+});
+
+
+test('diagnostic columns count emoji as one character (regression)', () => {
+  // Regression: the compiler reports code-point columns but CodeMirror
+  // offsets are UTF-16 units, so every emoji earlier on the line shifted
+  // the squiggle one unit left of the offending token.
+  const text = 'metadata:\n  title: "😀😀😀" junk';
+  const doc = fakeDoc(text);
+  const [d] = toEditorDiagnostics(doc, [
+    { severity: 'error', message: 'x', line: 2, column: 16, length: 4 },
+  ]);
+  assert.equal(text.slice(d.from, d.to), 'junk');
+});
+
+test('player keeps its place in the music when a tempo edit reloads it (regression)', () => {
+  // Regression: Player.load resumed at the same number of *seconds*, so
+  // halving the tempo while playing bar 9 jumped back to bar 5.
+  const song = (bpm) => smf(480, [
+    [[0, ...tempo(bpm)], [0, ...EOT]],
+    [[0, 0x99, 36, 100], [480 * 64, 0x89, 36, 0], [0, ...EOT]],
+  ]);
+  const p = new Player();
+  p.load(song(120));
+  // Pretend to be 10 s into playback at 120 BPM = 20 quarters.
+  p.timer = 1;
+  p.ctx = { currentTime: 10 };
+  p.startAt = 0;
+  p.offset = 0;
+  let resumedAt = null;
+  p.stop = () => { p.timer = null; };
+  p.play = (from) => { resumedAt = from; };
+  p.load(song(60));
+  assert.ok(Math.abs(resumedAt - 20) < 1e-6, `resumed at ${resumedAt}s, want 20s (20 quarters at 60 BPM)`);
 });

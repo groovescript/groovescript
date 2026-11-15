@@ -12,11 +12,13 @@ const INSTRUMENTS = new Set([
   'ride','crash','ridebell','bell','cowbell',
   'lowtom','floortom','hightom','hitom','midtom',
   'hihatfoot','footchick',
-  'cross-stick','hi-hat-foot','foot-chick',
+  'cross-stick','hi-hat-foot','hi-hat','foot-chick','scs',
+  'CR2','cr2','crash2','secondcrash',
+  'SP','sp','splash','ST','st','stack','CH','ch','china',
 ]);
 
 const MODIFIERS = new Set([
-  'ghost','accent','flam','drag','double','buzz',
+  'ghost','accent','choke','fermata','flam','drag','double','buzz',
 ]);
 
 const DEFINITIONS = new Set(['groove','fill','section']);

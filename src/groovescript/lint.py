@@ -98,7 +98,11 @@ def _check_mixed_groove_styles(source: str) -> list[StyleWarning]:
     i = 0
     while i < len(lines):
         if _GROOVE_HEADER_RE.match(lines[i]):
-            # Collect the contiguous indented body below this header.
+            # Collect the body below this header: every following line
+            # indented deeper than the header. Named inline grooves inside
+            # a ``play:`` block are themselves indented, so "any indented
+            # line" would run on into the next, separate inline groove.
+            header_indent = len(lines[i]) - len(lines[i].lstrip())
             body_start = i + 1
             j = body_start
             while j < len(lines):
@@ -106,12 +110,8 @@ def _check_mixed_groove_styles(source: str) -> list[StyleWarning]:
                 if line.strip() == "":
                     j += 1
                     continue
-                # A non-indented line ends the groove body.
-                if not line.startswith((" ", "\t")):
+                if len(line) - len(line.lstrip()) <= header_indent:
                     break
-                # A new top-level ``groove``/``section``/``fill`` would
-                # also end it, but those are not indented, so the check
-                # above already covers them.
                 j += 1
             warnings.extend(_scan_groove_body(lines, body_start, j))
             i = j
@@ -248,6 +248,9 @@ def _check_unused_definitions(song: Song) -> list[StyleWarning]:
     """Warn on top-level grooves/fills that are never referenced."""
     warnings: list[StyleWarning] = []
     used_grooves = _collect_referenced_groove_names(song)
+    if not song.sections and song.grooves:
+        # A sections-less file compiles its first groove on its own.
+        used_grooves = set(used_grooves) | {song.grooves[0].name}
     for groove in song.grooves:
         if groove.name not in used_grooves:
             warnings.append(
