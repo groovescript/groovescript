@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .compiler import IRSong, compile_groove, compile_song
+from .compiler import IRSong, compile_song, compile_standalone_groove
 from .errors import GrooveScriptError
 from .lint import StyleWarning, check_notation, check_style
 from .midi import emit_midi
@@ -117,7 +117,7 @@ def build(source: str, *, style: bool = True, outputs: bool = True) -> BuildResu
         return result
 
     try:
-        ir = compile_song(song) if song.sections else compile_groove(song.grooves[0])
+        ir = compile_song(song) if song.sections else compile_standalone_groove(song)
     except GrooveScriptError as err:
         result.diagnostics.append(_error_diagnostic(err, source))
         return result

@@ -104,3 +104,15 @@ def test_every_fixture_builds_without_internal_errors():
         internal = [d for d in result.diagnostics if "internal error" in d["message"]]
         assert not internal, f"{path.name}: {internal}"
         assert result.ok, f"{path.name}: {result.diagnostics}"
+
+
+def test_groove_only_source_honours_meter_and_tempo():
+    """Regression: the editor compiled a sections-less file's groove in 4/4
+    at 120 regardless of ``time_signature:``/``tempo:``, so beat 6 of a 6/8
+    groove was rejected as out of range."""
+    result = build(
+        'tempo: 90\ntime_signature: 6/8\ngroove "g":\n  BD: 1, 4\n  HH: *8\n  SN: 6\n'
+    )
+    assert result.ok, result.diagnostics
+    assert "<beat-type>8</beat-type>" in result.musicxml
+    assert "<beat-unit>eighth</beat-unit>" in result.musicxml
