@@ -212,6 +212,14 @@ The editor runs the real GrooveScript compiler in your browser (via
   wide screens; on a phone, tap **Preview** / **Edit** to switch. The PDF
   from LilyPond remains the reference rendering; the preview is for
   proofreading as you go, so spacing and some symbols differ.
+- **Completion and hover** — suggestions as you type: groove, fill,
+  section and variation names inside quotes (the chart's own first, then
+  the built-in library), keywords and snippets at the start of a line
+  (`section`, `fill at bar`, `rit from bar … to bar …`, …), instruments,
+  and modifiers after a beat. Ctrl-Space opens the list anywhere. Hover a
+  name to see its definition, an instrument for its aliases, or a
+  modifier or keyword for a one-line explanation; Ctrl/⌘-click or F12
+  jumps to where a groove, fill or section is defined.
 - **Format** — tidies the layout exactly like `groovescript fmt`
   (also Shift+Alt+F); undo reverts it in one step.
 - **Playback** — **▶ Play** (or Ctrl/⌘+Enter) plays the chart's MIDI on a

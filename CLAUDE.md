@@ -101,6 +101,7 @@ lilypond -o output output.ly                           # Render to PDF
 
 - The browser runs the same compiler: `editors/web/scripts/build_py_bundle.py` zips `src/groovescript` + `lark` into `editors/web/py/` (gitignored; built by the Pages deploy). `src/groovescript` must stay pure Python and read only its own package files
 - `web.build()` must never raise; every failure becomes a diagnostic dict
+- Completion / hover data comes from the compiler, not a JS copy: `web.vocabulary()` (instruments with grammar-accepted aliases, `MODIFIER_DOCS`, library definitions) once, and `BuildResult.symbols` (the chart's definitions with line ranges) per build. `editors/web/assist.js` holds the pure context logic. Tests fail if a new instrument lacks an `INSTRUMENT_NAMES` entry or a new grammar modifier lacks `MODIFIER_DOCS`
 - Pyodide / Verovio versions are pinned in `editors/web/deps.js` and `package.json` (a test keeps them in sync). Local dev: `npm ci`, build the bundle, serve `editors/web`, open with `?local-deps`
 
 ## Dependencies

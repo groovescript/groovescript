@@ -93,7 +93,7 @@ def test_outputs_false_skips_emitters():
 
 def test_build_js_is_plain_data():
     data = build_js(SONG)
-    assert set(data) == {"ok", "diagnostics", "musicxml", "midi", "title", "bar_count"}
+    assert set(data) == {"ok", "diagnostics", "musicxml", "midi", "title", "bar_count", "symbols"}
     assert data["ok"] is True
     assert isinstance(data["midi"], bytes)
 
@@ -128,3 +128,71 @@ def test_format_js_reports_errors_instead_of_raising():
     assert result["ok"] is False and result["text"] is None
     [diag] = result["diagnostics"]
     assert diag["severity"] == "error" and diag["line"] == 2
+
+
+# ── Editor vocabulary and symbols ────────────────────────────────────────────
+
+from groovescript.library import get_library_fills, get_library_grooves, get_library_variations
+from groovescript.midi import _NOTE
+from groovescript.parser import parse as _parse
+from groovescript.web import INSTRUMENT_NAMES, MODIFIER_DOCS, chart_symbols, vocabulary
+
+
+def test_build_reports_symbols_with_line_ranges():
+    source = (FIXTURES / "full_song_example.gs").read_text()
+    symbols = build(source).symbols
+    lines = source.split("\n")
+    for kind, keyword in (("grooves", "groove"), ("fills", "fill"), ("sections", "section")):
+        assert symbols[kind], kind
+        for entry in symbols[kind]:
+            header = lines[entry["line"] - 1]
+            assert header.lstrip().startswith(f'{keyword} "{entry["name"]}"')
+            assert entry["end_line"] >= entry["line"]
+
+
+def test_symbols_are_none_when_source_does_not_parse():
+    assert build('groove "g":\n  snars: 1\n').symbols is None
+
+
+def test_chart_symbols_cover_every_definition_kind():
+    source = SONG.replace(
+        'section "verse"',
+        'fill "f":\n  SN: 4\n\nvariation "v":\n  add CR at 1\n\nsection "verse"',
+    )
+    symbols = chart_symbols(source)
+    assert [s["name"] for s in symbols["grooves"]] == ["beat"]
+    assert [s["name"] for s in symbols["fills"]] == ["f"]
+    assert [s["name"] for s in symbols["variations"]] == ["v"]
+    assert [s["name"] for s in symbols["sections"]] == ["verse"]
+
+
+def test_vocabulary_names_every_instrument_the_exporters_know():
+    """Drift guard: a new instrument needs a display name for the editor."""
+    assert set(INSTRUMENT_NAMES) == set(_NOTE)
+
+
+def test_vocabulary_aliases_all_parse():
+    for inst in vocabulary()["instruments"]:
+        assert inst["aliases"][0] == inst["code"]
+        for alias in inst["aliases"]:
+            song = _parse(f'groove "g":\n  {alias}: 1\n')
+            assert song.grooves, alias
+
+
+def test_vocabulary_documents_every_modifier_in_the_grammar():
+    """Drift guard: every MODIFIER alternative in grammar.lark has help."""
+    grammar = (Path(__file__).parent.parent / "src" / "groovescript" / "grammar.lark").read_text()
+    line = next(l for l in grammar.splitlines() if l.startswith("MODIFIER:"))
+    import re as _re
+    names = set(_re.findall(r'"([a-z0-9]+)"', line)) | set(_re.findall(r"/([a-z]+)\(", line))
+    assert names <= set(MODIFIER_DOCS)
+    assert "32nd" in MODIFIER_DOCS  # alias handled by the transformer
+
+
+def test_vocabulary_library_matches_the_compiler_libraries():
+    library = vocabulary()["library"]
+    assert {e["name"] for e in library["grooves"]} == set(get_library_grooves())
+    assert {e["name"] for e in library["fills"]} == set(get_library_fills())
+    assert {e["name"] for e in library["variations"]} == set(get_library_variations())
+    rock = next(e for e in library["grooves"] if e["name"] == "rock")
+    assert rock["text"].startswith('groove "rock":\n  ')

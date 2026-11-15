@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "build": "esbuild vendor/bundle-entry.js --bundle --format=esm --outfile=vendor/codemirror.bundle.js --minify",
-    "test": "node --test gs-mode.test.js preview.test.js"
+    "test": "node --test gs-mode.test.js preview.test.js assist.test.js"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "^6",
     "@codemirror/commands": "^6",
     "@codemirror/language": "^6",
     "@codemirror/lint": "^6",
