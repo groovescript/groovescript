@@ -13,6 +13,7 @@ equals the bar's time signature.
 from __future__ import annotations
 
 import datetime
+import functools
 import io
 from fractions import Fraction
 import xml.etree.ElementTree as ET
@@ -159,9 +160,13 @@ def _duration_attrs(divs: int) -> tuple[str, int, int, int]:
 
 
 def _split_duration(divs: int) -> list[int]:
-    """Decompose *divs* into valid note-duration values (greedy, largest first).
+    """Decompose *divs* into valid note-duration values, largest first.
 
-    Guarantees the returned values sum to *divs* so measure totals stay correct.
+    Tries the plain greedy split first (it is optimal for straight and
+    single-tuplet content). When greedy strands an unrepresentable
+    remainder -- e.g. 5/12 of a beat, where a dotted 16th leaves 1/48 --
+    falls back to the shortest exact decomposition, so the pieces always
+    sum to *divs* when any decomposition exists and measures stay full.
     """
     result: list[int] = []
     remaining = divs
@@ -173,7 +178,47 @@ def _split_duration(divs: int) -> list[int]:
                 break
         else:
             break
-    return result
+    if remaining == 0:
+        return result
+    exact = _exact_split(divs)
+    return list(exact) if exact is not None else result
+
+
+_DUR_SIZES: tuple[int, ...] = tuple(sorted({row[0] for row in _DURATION_TABLE}, reverse=True))
+
+
+@functools.lru_cache(maxsize=None)
+def _exact_split(divs: int) -> tuple[int, ...] | None:
+    """Fewest table durations (largest first) summing exactly to *divs*,
+    or ``None`` if *divs* cannot be expressed. Breadth-first over remainders,
+    so the first hit is a shortest decomposition."""
+    if divs <= 0:
+        return () if divs == 0 else None
+    parent: dict[int, tuple[int, int]] = {}
+    frontier = [divs]
+    seen = {divs}
+    while frontier:
+        next_frontier: list[int] = []
+        for rem in frontier:
+            for d in _DUR_SIZES:
+                if d > rem:
+                    continue
+                nxt = rem - d
+                if nxt in seen:
+                    continue
+                seen.add(nxt)
+                parent[nxt] = (rem, d)
+                if nxt == 0:
+                    pieces: list[int] = []
+                    cur = 0
+                    while cur != divs:
+                        prev, piece = parent[cur]
+                        pieces.append(piece)
+                        cur = prev
+                    return tuple(sorted(pieces, reverse=True))
+                next_frontier.append(nxt)
+        frontier = next_frontier
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -389,7 +434,7 @@ def _fill_part(
                 SubElement(ms, "multiple-rest").text = str(span)
 
         if is_first or bpm != cur_bpm:
-            _add_tempo_direction(measure, bpm)
+            _add_tempo_direction(measure, bpm, int(ts.split("/")[1]))
 
         if bar.section_name is not None:
             _add_rehearsal(measure, bar.section_name)
@@ -1100,13 +1145,23 @@ def _add_time(parent: Element, ts: str) -> None:
     SubElement(time_el, "beat-type").text = d
 
 
-def _add_tempo_direction(parent: Element, bpm: int) -> None:
+_BEAT_UNIT_NAMES: dict[int, str] = {
+    1: "whole", 2: "half", 4: "quarter", 8: "eighth", 16: "16th", 32: "32nd", 64: "64th",
+}
+
+
+def _add_tempo_direction(parent: Element, bpm: int, beat_unit: int = 4) -> None:
+    """Add a metronome mark of ``bpm`` beats per minute, where a beat is a
+    ``1/beat_unit`` note (the meter's denominator, as LilyPond prints it).
+    ``<sound tempo>`` is always quarter notes per minute, so it is scaled."""
     direction = SubElement(parent, "direction", placement="above")
     dt = SubElement(direction, "direction-type")
     metro = SubElement(dt, "metronome", parentheses="no")
-    SubElement(metro, "beat-unit").text = "quarter"
+    SubElement(metro, "beat-unit").text = _BEAT_UNIT_NAMES.get(beat_unit, "quarter")
     SubElement(metro, "per-minute").text = str(bpm)
-    SubElement(direction, "sound", tempo=str(bpm))
+    quarter_bpm = Fraction(bpm * 4, beat_unit)
+    sound_tempo = str(quarter_bpm.numerator) if quarter_bpm.denominator == 1 else f"{float(quarter_bpm):g}"
+    SubElement(direction, "sound", tempo=sound_tempo)
 
 
 def _add_rehearsal(parent: Element, name: str) -> None:

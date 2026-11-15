@@ -3241,3 +3241,50 @@ def test_like_play_parent_with_own_groove_uses_own_groove():
     ))
     assert _bar_hits(song, 3) == [(Fraction(1, 4), "SN")]
     assert _bar_hits(song, 4) == [(Fraction(1, 4), "SN")]
+
+
+@pytest.mark.parametrize("overlay,kind", [
+    ('  fill "f" at bar 3\n', "fill 'f'"),
+    ('  variation at bar 5:\n    add CR at 1\n', "variation"),
+    ('  cue "x" at bar 9\n', "cue 'x'"),
+])
+def test_overlay_targeting_bar_past_section_end_is_an_error(overlay, kind):
+    """Regression: fills, variations and cues aimed at a bar beyond the
+    section's length were silently dropped (lyrics already raised)."""
+    src = (
+        'groove "g":\n  BD: 1, 3\n  SN: 2, 4\n'
+        'fill "f":\n  count "3 4":\n    3: SN\n    4: SN\n'
+        f'section "A":\n  bars: 2\n  groove: "g"\n{overlay}'
+    )
+    with pytest.raises(ValueError, match=f"{kind} at bar \\d+ is out of range"):
+        compile_song(parse(src))
+
+
+_PH_FILL_DEF = 'fill "f":\n  count "3 4":\n    3: SN\n    4: SN\n'
+
+
+@pytest.mark.parametrize("section_src", [
+    'section "A":\n  bars: 2\n  groove: "tbd"\n  fill "f" at bar 2 beat 3\n',
+    'section "A":\n  play:\n    groove placeholder x2\n  fill "f" at bar 2 beat 3\n',
+])
+def test_fill_on_placeholder_groove_bar_is_kept(section_src):
+    """Regression: a fill placed on a placeholder-groove bar (classic or
+    ``play:`` form) was silently dropped, leaving an empty bar."""
+    song = compile_song(parse(
+        'groove placeholder "tbd"\n' + _PH_FILL_DEF + section_src
+    ))
+    bar = song.bars[1]
+    assert [(e.beat_position, e.instrument) for e in bar.events] == [
+        (Fraction(1, 2), "SN"), (Fraction(3, 4), "SN"),
+    ]
+    assert not bar.is_placeholder_groove
+    assert song.bars[0].is_placeholder_groove
+
+
+def test_undefined_fill_on_placeholder_bar_shows_label():
+    """Regression: an undefined fill name (auto-promoted to a fill
+    placeholder) on a placeholder-groove bar lost its label."""
+    song = compile_song(parse(
+        'section "A":\n  bars: 2\n  fill "big build" at bar 2\n'
+    ))
+    assert (Fraction(0), "big build") in song.bars[1].fill_placeholders

@@ -593,6 +593,7 @@ def _drum_measure_straight(
 def _drum_measure_mixed(
     events,
     beats_per_bar: int = 4,
+    beat_unit: int = 4,
     cue_map: dict | None = None,
     placeholder_map: dict | None = None,
     dynamic_start_map: dict | None = None,
@@ -603,7 +604,14 @@ def _drum_measure_mixed(
     Works beat-by-beat.  A beat is "triplet" if any event in that beat falls on
     a triplet-only (1/12-grid) position; otherwise the beat is treated as
     straight (up to two 8th-note slots).
+
+    Durations are relative to the beat (``beat_unit``): in 6/8 a beat is an
+    eighth, so a triplet beat is ``\\tuplet 3/2 { 16 16 16 }`` and a plain
+    beat is ``8``.
     """
+    d_beat = str(beat_unit)
+    d_half = str(beat_unit * 2)
+    d_quarter = str(beat_unit * 4)
     pos_map: dict[Fraction, list[tuple]] = defaultdict(list)
     for event in events:
         ly_name = _INSTRUMENT_TO_LY.get(event.instrument, event.instrument.lower())
@@ -630,7 +638,7 @@ def _drum_measure_mixed(
             for slot_idx in range(3):
                 slot_pos = beat_start + Fraction(slot_idx, triplet_grid)
                 hits = pos_map.get(slot_pos, [])
-                t = _format_hits(hits, "8")
+                t = _format_hits(hits, d_half)
                 t = _attach_markup(t, slot_pos)
                 tuplet_tokens.append(t)
             tokens.append(f"\\tuplet 3/2 {{ {' '.join(tuplet_tokens)} }}")
@@ -647,7 +655,7 @@ def _drum_measure_mixed(
                 for slot_idx in range(4):
                     slot_pos = beat_start + Fraction(slot_idx, sixteenth_grid)
                     hits = pos_map.get(slot_pos, [])
-                    t = _format_hits(hits, "16")
+                    t = _format_hits(hits, d_quarter)
                     t = _attach_markup(t, slot_pos)
                     tokens.append(t)
             else:
@@ -656,18 +664,18 @@ def _drum_measure_mixed(
                 hits_on_and = pos_map.get(beat_start + Fraction(1, beats_per_bar * 2), [])
 
                 if hits_on_beat and not hits_on_and:
-                    t = _format_hits(hits_on_beat, "4")
+                    t = _format_hits(hits_on_beat, d_beat)
                     t = _attach_markup(t, beat_start)
                     tokens.append(t)
                 elif not hits_on_beat and not hits_on_and:
-                    t = _attach_markup("r4", beat_start)
+                    t = _attach_markup(f"r{d_beat}", beat_start)
                     tokens.append(t)
                 else:
-                    t = _format_hits(hits_on_beat, "8")
+                    t = _format_hits(hits_on_beat, d_half)
                     t = _attach_markup(t, beat_start)
                     tokens.append(t)
                     and_pos = beat_start + Fraction(1, beats_per_bar * 2)
-                    t = _format_hits(hits_on_and, "8")
+                    t = _format_hits(hits_on_and, d_half)
                     t = _attach_markup(t, and_pos)
                     tokens.append(t)
 
@@ -904,7 +912,7 @@ def _drum_measure(
             cue_map, placeholder_map, dynamic_start_map, dynamic_stop_set,
         )
     if any(_is_triplet_only(e.beat_position, beats_per_bar) for e in events):
-        return _drum_measure_mixed(events, beats_per_bar, cue_map, placeholder_map, dynamic_start_map, dynamic_stop_set)
+        return _drum_measure_mixed(events, beats_per_bar, beat_unit, cue_map, placeholder_map, dynamic_start_map, dynamic_stop_set)
     return _drum_measure_straight(
         events, subdivision, beats_per_bar, beat_unit,
         cue_map, placeholder_map, dynamic_start_map, dynamic_stop_set,

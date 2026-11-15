@@ -1735,6 +1735,21 @@ def _fill_bar_subdivision(
     return fill_bar.subdivision
 
 
+def _fill_only_bar(
+    fill_bar: IRFillBar,
+    start_pos: Fraction,
+    absolute_bar: int,
+    beats_per_bar: int,
+) -> tuple[list[Event], int, list]:
+    """``(events, subdivision, beat_tuplets)`` for a fill laid over a bar with
+    no groove content (a placeholder-groove bar): just the fill, with rests
+    before ``start_pos``."""
+    events = _apply_fill_overlay([], fill_bar, start_pos, absolute_bar)
+    subdivision = _fill_bar_subdivision(1, fill_bar, start_pos, [])
+    beat_tuplets = _merge_fill_beat_tuplets([], fill_bar.beat_tuplets, start_pos, beats_per_bar)
+    return events, subdivision, beat_tuplets
+
+
 def _apply_fill_overlay(
     groove_events: list[Event],
     fill_bar: IRFillBar,
@@ -2290,6 +2305,34 @@ def _apply_break(events: list[Event], spec: BreakSpec, section_bar_offset: int, 
     return result
 
 
+def _validate_bar_targets(section: Section, total_bars: int) -> None:
+    """Raise :class:`GrooveScriptError` when a fill, fill placeholder,
+    variation or cue targets a bar outside the section.
+
+    Without this check such overlays were silently ignored (unlike lyrics,
+    which already reject out-of-range bars).
+    """
+    def _check(kind: str, bar: int) -> None:
+        if bar < 1 or bar > total_bars:
+            raise GrooveScriptError(
+                message=(
+                    f"Section {section.name!r}: {kind} at bar {bar} is out of "
+                    f"range (the section has {total_bars} bar"
+                    f"{'' if total_bars == 1 else 's'})"
+                ),
+            )
+
+    for fill in section.fills:
+        _check(f"fill {fill.fill_name!r}", fill.bar)
+    for placeholder in section.fill_placeholders:
+        _check(f"fill {placeholder.label!r}", placeholder.bar)
+    for variation in section.variations:
+        for bar in variation.bars:
+            _check("variation", bar)
+    for cue in section.cues:
+        _check(f"cue {cue.text!r}", cue.bar)
+
+
 def _validate_break_specs(specs: list[BreakSpec], section_name: str, total_bars: int) -> None:
     """Raise :class:`GrooveScriptError` for break specs that reference bars outside the section."""
     for spec in specs:
@@ -2577,12 +2620,27 @@ def _collect_section_dynamic_spans(
     return collected
 
 
+def _meter_variation_bpbs(section: Section) -> dict[int, int]:
+    """Map section_bar_offset -> beats-per-bar for meter-override variation bars."""
+    out: dict[int, int] = {}
+    for variation in section.variations:
+        if variation.time_signature is not None:
+            for bar in variation.bars:
+                out[bar - 1] = _beats_per_bar(variation.time_signature)
+    return out
+
+
 def _resolve_dynamic_spans(
     spans: list[DynamicSpan],
     total_bars: int,
     bpb: int,
+    bar_bpb: dict[int, int] | None = None,
 ) -> tuple[dict[int, list[tuple[Fraction, str]]], dict[int, list[Fraction]]]:
     """Resolve DynamicSpan AST nodes into per-bar start/stop annotations.
+
+    ``bar_bpb`` maps section_bar_offset -> beats-per-bar for bars whose meter
+    differs from the section's (``variation at bar N: time_signature:``), so
+    beat labels on those bars resolve against the bar's own grid.
 
     Returns two dicts keyed by section_bar_offset (0-indexed):
     - starts: {offset: [(beat_position, kind), ...]}
@@ -2598,15 +2656,15 @@ def _resolve_dynamic_spans(
         # Resolve start position
         if span.from_beat is not None:
             # Use a generous subdivision (16ths) to resolve the label
-            subdiv = bpb * 4
-            start_pos = _beat_label_to_fraction(span.from_beat, subdiv, bpb)
+            from_bpb = (bar_bpb or {}).get(from_offset, bpb)
+            start_pos = _beat_label_to_fraction(span.from_beat, from_bpb * 4, from_bpb)
         else:
             start_pos = Fraction(0)
 
         # Resolve end position
         if span.to_beat is not None:
-            subdiv = bpb * 4
-            stop_pos = _beat_label_to_fraction(span.to_beat, subdiv, bpb)
+            to_bpb = (bar_bpb or {}).get(to_offset, bpb)
+            stop_pos = _beat_label_to_fraction(span.to_beat, to_bpb * 4, to_bpb)
         else:
             # End of bar = position 0 of the *next* bar, but we represent
             # it as the last slot of the target bar. For the hairpin
@@ -3143,8 +3201,10 @@ def compile_song(song: Song) -> IRSong:
         return out
 
     def _process_play_section(section, bpb, beat_unit, effective_ts, effective_tempo, full_section_name, start_bar_number) -> tuple[list[IRBar], IRSection]:
+        play_item_offsets: list[int] = []
         expanded = _expand_play_block(
-            section.play, _get_groove, bpb, beat_unit, section.name, groove_defs
+            section.play, _get_groove, bpb, beat_unit, section.name, groove_defs,
+            item_offsets=play_item_offsets,
         )
         total_bars = len(expanded)
         if total_bars == 0:
@@ -3177,9 +3237,24 @@ def compile_song(song: Song) -> IRSong:
         ir_section = IRSection(name=section.name, start_bar=start_bar_number, bars=total_bars, tempo=effective_tempo)
         fill_coverage, variation_coverage, placeholder_fill_coverage = _build_coverage_maps(section, fill_map, total_bars, bpb, beat_unit, variation_map)
         all_spans = _collect_section_dynamic_spans(section, None, fill_map, total_bars)
-        dyn_starts, dyn_stops = _resolve_dynamic_spans(all_spans, total_bars, bpb)
+        # Groove-internal spans travel with the groove into play: lists too:
+        # shift them to every bar offset where each ``groove "x" xN`` lands.
+        play_item_ends = play_item_offsets[1:] + [total_bars]
+        for item, play_offset, item_end in zip(section.play, play_item_offsets, play_item_ends):
+            item_bars = item_end - play_offset
+            if isinstance(item, PlayGroove):
+                play_groove = groove_defs.get(item.groove_name)
+                if play_groove is not None and play_groove.dynamic_spans and item.repeat > 0:
+                    cycle_bars = item_bars // item.repeat
+                    for cycle_idx in range(item.repeat):
+                        for span in play_groove.dynamic_spans:
+                            all_spans.append(
+                                _shift_span(span, play_offset + cycle_idx * cycle_bars)
+                            )
+        dyn_starts, dyn_stops = _resolve_dynamic_spans(all_spans, total_bars, bpb, _meter_variation_bpbs(section))
 
         _validate_break_specs(section.breaks, section.name, total_bars)
+        _validate_bar_targets(section, total_bars)
 
         new_bars: list[IRBar] = []
         for section_bar_offset, (template_events, base_subdivision, is_rest, placeholder_info, phrase_position, phrase_length, base_beat_tuplets) in enumerate(expanded):
@@ -3201,23 +3276,35 @@ def compile_song(song: Song) -> IRSong:
                     if label is None:
                         label = nameless_label_for_offset[section_bar_offset]
                     placeholders.append((Fraction(0), label))
+                ph_events: list[Event] = []
+                ph_subdivision = 1
+                ph_beat_tuplets: list = []
+                if section_bar_offset in fill_coverage:
+                    # A fill over a TBD groove: the bar carries the fill
+                    # itself (rests before its start) instead of a blank.
+                    fill_bar, start_pos = fill_coverage[section_bar_offset]
+                    ph_events, ph_subdivision, ph_beat_tuplets = _fill_only_bar(
+                        fill_bar, start_pos, absolute_bar, bpb
+                    )
                 user_placeholders = _collect_bar_placeholders(
-                    section, section_bar_offset, 1, bpb
+                    section, section_bar_offset, ph_subdivision, bpb
                 )
                 placeholders.extend(user_placeholders)
-                bar_cues = _collect_bar_cues(section, section_bar_offset, 1, bpb)
+                placeholders.extend(placeholder_fill_coverage.get(section_bar_offset, []))
+                bar_cues = _collect_bar_cues(section, section_bar_offset, ph_subdivision, bpb)
                 new_bars.append(
                     IRBar(
                         number=absolute_bar,
-                        subdivision=1,
-                        events=[],
+                        subdivision=ph_subdivision,
+                        events=ph_events,
+                        beat_tuplets=ph_beat_tuplets,
                         section_name=full_section_name if section_bar_offset == 0 else None,
                         section_bars=total_bars if section_bar_offset == 0 else None,
                         cues=bar_cues,
                         fill_placeholders=placeholders,
                         tempo=effective_tempo,
                         time_signature=effective_ts,
-                        is_placeholder_groove=True,
+                        is_placeholder_groove=not ph_events,
                         dynamic_starts=dyn_starts.get(section_bar_offset, []),
                         dynamic_stops=dyn_stops.get(section_bar_offset, []),
                     )
@@ -3346,6 +3433,7 @@ def compile_song(song: Song) -> IRSong:
                 f"placeholder groove (no notes to vary)"
             )
         total_bars = section.bars
+        _validate_bar_targets(section, total_bars)
         ir_section = IRSection(
             name=section.name,
             start_bar=start_bar_number,
@@ -3353,6 +3441,10 @@ def compile_song(song: Song) -> IRSong:
             tempo=effective_tempo,
         )
         bpb_local = _beats_per_bar(effective_ts)
+        beat_unit_local = int(effective_ts.split("/")[1])
+        fill_coverage, _, placeholder_fill_coverage = _build_coverage_maps(
+            section, fill_map, total_bars, bpb_local, beat_unit_local, variation_map
+        )
         if placeholder_label is not None:
             section_label = placeholder_label
         else:
@@ -3364,23 +3456,35 @@ def compile_song(song: Song) -> IRSong:
             placeholders: list[tuple[Fraction, str]] = []
             if section_bar_offset == 0:
                 placeholders.append((Fraction(0), section_label))
+            ph_events: list[Event] = []
+            ph_subdivision = 1
+            ph_beat_tuplets: list = []
+            if section_bar_offset in fill_coverage:
+                # A fill over a TBD groove: the bar carries the fill itself
+                # (rests before its start) instead of a blank.
+                fill_bar, start_pos = fill_coverage[section_bar_offset]
+                ph_events, ph_subdivision, ph_beat_tuplets = _fill_only_bar(
+                    fill_bar, start_pos, absolute_bar, bpb_local
+                )
             user_placeholders = _collect_bar_placeholders(
-                section, section_bar_offset, 1, bpb_local
+                section, section_bar_offset, ph_subdivision, bpb_local
             )
             placeholders.extend(user_placeholders)
-            bar_cues = _collect_bar_cues(section, section_bar_offset, 1, bpb_local)
+            placeholders.extend(placeholder_fill_coverage.get(section_bar_offset, []))
+            bar_cues = _collect_bar_cues(section, section_bar_offset, ph_subdivision, bpb_local)
             new_bars.append(
                 IRBar(
                     number=absolute_bar,
-                    subdivision=1,
-                    events=[],
+                    subdivision=ph_subdivision,
+                    events=ph_events,
+                    beat_tuplets=ph_beat_tuplets,
                     section_name=full_section_name if section_bar_offset == 0 else None,
                     section_bars=total_bars if section_bar_offset == 0 else None,
                     cues=bar_cues,
                     fill_placeholders=placeholders,
                     tempo=effective_tempo,
                     time_signature=effective_ts,
-                    is_placeholder_groove=True,
+                    is_placeholder_groove=not ph_events,
                 )
             )
         return new_bars, ir_section
@@ -3434,10 +3538,11 @@ def compile_song(song: Song) -> IRSong:
 
         groove_ast = groove_defs.get(section.groove)
         all_spans = _collect_section_dynamic_spans(section, groove_ast, fill_map, section.bars)
-        dyn_starts, dyn_stops = _resolve_dynamic_spans(all_spans, section.bars, bpb)
+        dyn_starts, dyn_stops = _resolve_dynamic_spans(all_spans, section.bars, bpb, _meter_variation_bpbs(section))
         groove_bar_texts = groove_bar_texts_map.get(section.groove, {})
 
         _validate_break_specs(section.breaks, section.name, section.bars)
+        _validate_bar_targets(section, section.bars)
 
         new_bars: list[IRBar] = []
         for section_bar_offset in range(section.bars):
@@ -3774,8 +3879,12 @@ def _expand_play_block(
     beat_unit: int,
     section_name: str,
     groove_defs: dict[str, "Groove"] | None = None,
+    item_offsets: list[int] | None = None,
 ) -> list[tuple[list[Event], int, bool, tuple[str | None, bool] | None, int | None, int | None, list[object]]]:
     """Expand a play: block into a flat list of per-bar tuples.
+
+    When ``item_offsets`` is given, the 0-indexed bar offset at which each
+    play item starts is appended to it (one entry per item, in order).
 
     Each entry is ``(events, subdivision, is_rest, placeholder_info,
     phrase_position, phrase_length, beat_tuplets)`` where
@@ -3820,6 +3929,8 @@ def _expand_play_block(
             result.append(([], 1, False, (label, i == 0), None, None, []))
 
     for item in play_items:
+        if item_offsets is not None:
+            item_offsets.append(len(result))
         if isinstance(item, PlayGroove):
             source = groove_defs.get(item.groove_name)
             if source is not None and source.is_placeholder:

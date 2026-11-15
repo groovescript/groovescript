@@ -459,3 +459,39 @@ section "s":
     ly = emit_lilypond(ir)
     assert "\\<" in ly
     assert "\\!" in ly
+
+
+def test_groove_internal_span_travels_into_play_list():
+    """Regression: dynamic spans declared inside a groove were collected for
+    classic ``groove:`` sections but dropped when the same groove was used
+    in a ``play:`` list."""
+    from groovescript.compiler import compile_song
+    from groovescript.parser import parse
+
+    song = compile_song(parse(
+        'groove "rock":\n  BD: 1, 3\n  SN: 2, 4\n  cresc from bar 1 to bar 1\n'
+        'section "classic":\n  bars: 1\n  groove: "rock"\n'
+        'section "play":\n  play:\n    groove "rock" x2\n'
+    ))
+    for bar in song.bars:
+        assert [kind for _, kind in bar.dynamic_starts] == ["cresc"], bar.number
+
+
+def test_span_on_meter_variation_bar_uses_that_bars_meter():
+    """Regression: beat labels in a span on a ``variation at bar N:
+    time_signature:`` bar were resolved against the section's meter, so in
+    a 3/4 bar inside a 4/4 section "beat 2" landed at 1/4 of the bar (no
+    note there) and the ``\\<`` was dropped."""
+    from groovescript.compiler import compile_song
+    from groovescript.parser import parse
+
+    song = compile_song(parse(
+        'groove "rock":\n  BD: 1, 3\n  SN: 2, 4\n'
+        'section "A":\n  bars: 2\n  groove: "rock"\n'
+        '  variation at bar 2:\n    time_signature: 3/4\n    add BD at 1, 2, 3\n'
+        '  cresc from bar 2 beat 2 to bar 2 beat 3\n'
+    ))
+    bar = song.bars[1]
+    assert bar.dynamic_starts == [(Fraction(1, 3), "cresc")]
+    assert bar.dynamic_stops == [Fraction(2, 3)]
+    assert "bd4 bd4\\< bd4\\! |" in emit_lilypond(song)

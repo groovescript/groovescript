@@ -988,3 +988,33 @@ section "s":
     [m] = _song_measures(src)
     hf = [n for n in m.findall("note") if n.find("unpitched") is not None]
     assert {(n.findtext("unpitched/display-step"), n.findtext("unpitched/display-octave")) for n in hf} == {("D", "4")}
+
+def test_tempo_in_eighth_meter_uses_eighth_beat_unit():
+    """Regression: MusicXML always wrote a quarter-note metronome mark (and
+    ``<sound tempo>`` of the raw BPM), so a 6/8 chart at ``tempo: 120``
+    played twice as fast as the printed eighth = 120."""
+    src = (
+        'metadata:\n  tempo: 120\n  time_signature: 6/8\n'
+        'groove "g":\n  BD: 1, 4\n  SN: 3\n'
+        'section "A":\n  bars: 1\n  groove: "g"\n'
+    )
+    root = _parse_xml(emit_musicxml(compile_song(parse(src))))
+    assert root.find(".//metronome/beat-unit").text == "eighth"
+    assert root.find(".//metronome/per-minute").text == "120"
+    assert root.find(".//direction/sound").get("tempo") == "60"
+
+
+def test_sixteenth_and_triplet_in_one_beat_fill_the_measure():
+    """Regression: the greedy duration split could not represent the 5/12-beat
+    gap between ``1let`` and ``2`` (dotted 16th + an unrepresentable 1/48),
+    silently dropped the remainder, and wrote a short (invalid) measure."""
+    src = (
+        'metadata:\n  tempo: 120\n'
+        'groove "g":\n  SN: 1, 1e, 1let, 2\n'
+        'section "A":\n  bars: 1\n  groove: "g"\n'
+    )
+    root = _parse_xml(emit_musicxml(compile_song(parse(src))))
+    measure = _measures(root)[0]
+    assert _measure_duration(measure) == _bar_total_divs("4/4")
+    _split = _split_duration(5 * _DIVS_PER_BEAT // 12)
+    assert sum(_split) == 5 * _DIVS_PER_BEAT // 12
