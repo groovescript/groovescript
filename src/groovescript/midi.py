@@ -140,9 +140,15 @@ def _lyrics_track(bars, bar_starts: list[int], default_ts: str) -> list[tuple[in
     return track
 
 
-def _tempo_event(bpm: int) -> bytes:
-    """Build a Set Tempo meta event for the given BPM."""
-    usec = round(60_000_000 / bpm)
+def _tempo_event(bpm: int, beat_unit: int = 4) -> bytes:
+    """Build a Set Tempo meta event for ``bpm`` beats per minute, where a
+    beat is a ``1/beat_unit`` note.
+
+    MIDI tempo is always microseconds per *quarter* note, so a 6/8 chart at
+    ``tempo: 120`` (printed as eighth = 120, matching the LilyPond
+    ``\\tempo 8 = 120``) is 60 quarters per minute.
+    """
+    usec = round(Fraction(60_000_000 * beat_unit, 4 * bpm))
     return b"\xFF\x51\x03" + _u24(usec)
 
 
@@ -152,6 +158,11 @@ def _timesig_event(ts: str) -> bytes:
     n, d = int(n), int(d)
     dd = round(math.log2(d))  # MIDI denominator is log2(d): 4→2, 8→3
     return bytes([0xFF, 0x58, 0x04, n, dd, 24, 8])
+
+
+def _beat_unit(ts: str) -> int:
+    """Return the denominator of a time signature string like '6/8'."""
+    return int(ts.split("/")[1])
 
 
 def _bar_ticks(ts: str) -> int:
@@ -315,7 +326,7 @@ def _midi_from_song(song: IRSong) -> bytes:
     # Tempo track: time-signature and tempo meta events
     tempo_track: list[tuple[int, bytes]] = [
         (0, _timesig_event(default_ts)),
-        (0, _tempo_event(default_bpm)),
+        (0, _tempo_event(default_bpm, _beat_unit(default_ts))),
     ]
     cur_ts = default_ts
     cur_bpm = default_bpm
@@ -324,9 +335,12 @@ def _midi_from_song(song: IRSong) -> bytes:
         if bar.time_signature is not None and bar.time_signature != cur_ts:
             cur_ts = bar.time_signature
             tempo_track.append((tick, _timesig_event(cur_ts)))
+        # Like the LilyPond emitter's ``\\tempo``, a tempo is read in the
+        # beat unit of the meter in force where it is (re)declared, and
+        # holds as an absolute speed across later meter changes.
         if bar.tempo is not None and bar.tempo != cur_bpm:
             cur_bpm = bar.tempo
-            tempo_track.append((tick, _tempo_event(cur_bpm)))
+            tempo_track.append((tick, _tempo_event(cur_bpm, _beat_unit(cur_ts))))
 
     drum_track, choked = _bars_to_drum_events(song.bars, bar_starts, default_ts)
     drum_track = _extend_sustained(drum_track, cur_tick, choked)

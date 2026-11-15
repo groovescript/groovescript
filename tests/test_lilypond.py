@@ -2082,3 +2082,16 @@ def test_meter_change_inside_explicit_repeat_is_restored_after():
     ly = emit_lilypond(compile_song(song))
     after_repeat = ly[ly.index("\\time 2/4"):]
     assert "\\time 4/4" in after_repeat
+
+
+def test_triplet_bar_in_six_eight_scales_durations_to_beat_unit():
+    """Regression: the legacy triplet path hard-coded quarter-beat durations
+    (``\\tuplet 3/2 { 8 8 8 }``, ``4``), so a 6/8 bar with a triplet beat
+    held 6/4 of music and engraved as two bars."""
+    song = parse(
+        'time_signature: 6/8\n'
+        'groove "g":\n    HH: 1, 1t, 1l, 2, 3, 4, 5, 6\n    BD: 1, 4\n'
+        'section "a":\n  bars: 1\n  groove: "g"\n'
+    )
+    ly = emit_lilypond(compile_song(song))
+    assert "\\tuplet 3/2 { <hh bd>16 hh16 hh16 } hh8 hh8 <hh bd>8 hh8 hh8 |" in ly

@@ -806,3 +806,17 @@ def test_unknown_instrument_is_silently_skipped():
     pitches = {p for t, p, v in notes}
     assert 36 in pitches          # BD note present
     assert len(pitches) == 1      # only BD, no mystery pitch
+
+
+def test_tempo_in_eighth_meter_is_per_eighth_note():
+    """Regression: in 6/8 the LilyPond output prints ``\\tempo 8 = 120`` but
+    MIDI wrote quarter = 120, so playback ran at twice the printed tempo.
+    120 eighths per minute is 60 quarters per minute = 1 000 000 µs/quarter."""
+    src = (
+        'metadata:\n  tempo: 120\n  time_signature: 6/8\n'
+        'groove "g":\n  BD: 1, 4\n  SN: 3\n'
+        'section "A":\n  bars: 1\n  groove: "g"\n'
+    )
+    tracks = _parse_tracks(emit_midi(compile_song(parse(src))))
+    assert b"\xFF\x51\x03" + (1_000_000).to_bytes(3, "big") in tracks[0]
+    assert b"\xFF\x51\x03" + (500_000).to_bytes(3, "big") not in tracks[0]
