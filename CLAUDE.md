@@ -15,7 +15,7 @@ Python CLI that compiles `.gs` drum notation files -> LilyPond -> PDF sheet musi
 
 ```
 src/groovescript/
-  cli.py              # argparse entry point (compile, lint, midi, musicxml, --watch)
+  cli.py              # argparse entry point (compile, lint, midi, musicxml, fmt, --watch)
   parser.py           # Public parse entry point (CURRENT_DSL_VERSION); Lark grammar -> AST
   parser_preprocess.py # Source rewrites run before Lark (commas, count/notes quoting)
   parser_transformer.py # Lark Transformer: parse tree -> AST
@@ -35,6 +35,7 @@ src/groovescript/
   variation_library.gs # Built-in variation library (parsed at runtime)
   library.py           # Loader for groove / fill / variation libraries
   lint.py             # Style checker used by `lint --style`
+  fmt.py              # `fmt`: layout from the parse tree (block rules in _BLOCK_RULES); refuses if compiled output changes
   web.py              # Browser entry point: build(source) -> diagnostics + MusicXML + MIDI (never raises)
 editors/web/          # Browser editor (CodeMirror). worker.js runs src/groovescript in Pyodide and
                       #   engraves MusicXML with Verovio; player.js plays the MIDI on a synth kit
@@ -69,6 +70,7 @@ charts/               # Real (non-test) charts: .gs source + compiled .ly + .pdf
 - Placeholder grooves are TBD slots that render as empty bars with a boxed rehearsal label and emit silence in MIDI/MusicXML. Three forms: top-level `groove placeholder "name"` (no body, no colon), section sole `groove: placeholder ["label"]`, and `play:` items `groove placeholder ["label"] xN`. Inside `play:` only, an undefined groove name auto-promotes to a named placeholder using the reference name as label; outside `play:`, an undefined name remains an error. Nameless placeholder spans within one section get numeric suffixes (`"<Section> groove 1"`, `"<Section> groove 2"`, …) only when there's more than one. Variations targeting a placeholder bar are an error; `extend:` cannot reference a placeholder. Fills and cues overlay placeholder bars normally
 - Timed lyrics: section `lyrics:` block of `bar N: "<count>" "<words>"` entries (count uses the fill count tokenizer; `-` hyphenates, `~` joins words, `_` is reserved). Onsets only: emitters show each syllable lasting until the next onset or the bar line (`lyrics.py`), and lyric onsets never affect drum subdivision. Resolved onto `IRBar.lyrics` after arrangement by `_attach_section_lyrics`; `bar 0:` is a pickup into the previous section's last bar. `like … with lyrics` merges keyed by bar (inheritor's `bar N:` replaces the parent's), the one exception to "list fields concatenate". Bars with lyrics never compact, and an explicit `repeat:` block with lyrics is written out in full. LilyPond style is `staff` (RhythmicStaff above the drums) or `line` (NullVoice + Lyrics below), chosen by `--lyrics-style` > `lyrics_style:` metadata > `staff`; the vocal stream follows the drum staff's printed bars (`_group_bars(printed=…)`) so repeats and multi-bar rests stay aligned. MIDI adds a lyric-meta track, MusicXML a "Voice" part
 - Gradual tempo changes: section-level `rit|accel from bar N [beat X] to bar M [beat Y] [to tempo T]` and `a tempo at bar N [beat X]` (`TempoSpan` / `ATempo`). Resolved after arrangement by `_attach_tempo_changes` onto `IRBar.tempo_points` (the playback curve, stepped every 16th) plus `tempo_span_starts` / `tempo_span_stops` / `tempo_texts` for printing. `IRBar.tempo` stays the nominal section tempo: MIDI emits a nominal tempo only when it changes between sections, then every curve point. A change holds to the end of its section; the next section restores (and prints "a tempo" when it returns to the same tempo). Bars with tempo changes never compact. Inherited by bare `like`
+- `fmt` must never change meaning: `format_source` compiles before and after and raises if LilyPond/MIDI/MusicXML differ. New block-opening grammar rules (a header line followed by an indented body) must be added to `fmt._BLOCK_RULES`, or their bodies will not be indented
 - Errors raise `GrooveScriptError` with Rust-style diagnostics; CLI catches and renders, no tracebacks
 - Preprocessors (`_preprocess_commas`, `_quote_unquoted_count_notes`) run before Lark sees the text
 - LilyPond boilerplate lives in `lilypond_template.ly` with `{{HEADER}}`, `{{SCORE_HEADER}}`, `{{SCORE_PRELUDE}}`, `{{BODY}}` placeholders, plus `{{VOCAL_STAFF}}` / `{{DRUM_STAFF_OPEN}}` / `{{DRUM_STAFF_CLOSE}}`, which stay empty unless the song has lyrics
@@ -89,6 +91,7 @@ uv run groovescript midi input.gs -o output.mid        # Export .gs -> .mid
 uv run groovescript midi input.gs -o output.mid --watch  # Re-export on save
 uv run groovescript musicxml input.gs -o output.xml    # Export .gs -> MusicXML
 uv run groovescript musicxml input.gs -o output.xml --watch  # Re-export on save
+uv run groovescript fmt input.gs                      # Rewrite in canonical layout (--check / --diff / - for stdin)
 lilypond -o output output.ly                           # Render to PDF
 ./release                                              # Cut a patch release (bumps pyproject.toml, pushes, tags, GitHub release)
 ./release --minor                                      # Cut a minor release (--major also supported; see `./release --help`)

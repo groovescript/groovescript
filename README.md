@@ -161,9 +161,14 @@ uv run groovescript midi input.gs -o output.mid
 
 # Export to MusicXML (experimental — less tested than LilyPond output)
 uv run groovescript musicxml input.gs -o output.xml
+
+# Rewrite files in the canonical layout (see below)
+uv run groovescript fmt song.gs other.gs
+uv run groovescript fmt --check *.gs      # exit 1 if any file needs formatting
+uv run groovescript fmt --diff song.gs    # show what would change
 ```
 
-Every subcommand accepts `--watch` to re-run on each save until Ctrl-C.
+Every subcommand except `fmt` accepts `--watch` to re-run on each save until Ctrl-C.
 `compile` also takes:
 
 - `--no-compact` — by default, runs of identical bars collapse into one
@@ -176,6 +181,19 @@ Every subcommand accepts `--watch` to re-run on each save until Ctrl-C.
   default), a lyrics line under the drums (`line`), or left out (`off`).
   Overrides the chart's `lyrics_style:` metadata. `musicxml` accepts
   `--lyrics-style off` to drop the vocal part.
+
+### Formatting (`fmt`)
+
+`groovescript fmt` rewrites a chart's layout without touching its meaning:
+two-space indentation by nesting level (worked out from the structure, not
+the old indentation), single spaces around `:` and `,`, the values of
+consecutive pattern lines aligned in one column, and at most one blank line
+in a row, with one above each groove, fill and section. Comments, strings,
+and your choice of commas or spaces in beat lists are kept. Before writing
+anything it compiles the chart both ways and refuses if the PDF, MIDI or
+MusicXML output would differ, so formatting is always safe. It only formats
+charts that compile; fix any errors first. `-` reads stdin and writes
+stdout, for editor integrations.
 
 ## Web editor
 
@@ -194,6 +212,8 @@ The editor runs the real GrooveScript compiler in your browser (via
   wide screens; on a phone, tap **Preview** / **Edit** to switch. The PDF
   from LilyPond remains the reference rendering; the preview is for
   proofreading as you go, so spacing and some symbols differ.
+- **Format** — tidies the layout exactly like `groovescript fmt`
+  (also Shift+Alt+F); undo reverts it in one step.
 - **Playback** — **▶ Play** (or Ctrl/⌘+Enter) plays the chart's MIDI on a
   built-in synthesized kit, highlighting each note as it sounds. Tap any
   bar in the score to play from there. Edits made during playback are

@@ -12,6 +12,7 @@ import {
 } from './gs-mode.js';
 
 import { createPreview } from './preview.js';
+import { minimalChange } from './textchange.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -166,6 +167,20 @@ function updateSymbolBarPosition() {
 
 let preview = null;
 
+async function formatDoc(view, btn = null) {
+  const before = view.state.doc.toString();
+  const result = await preview.format(before);
+  if (view.state.doc.toString() !== before) return; // edited meanwhile; skip
+  if (!result.ok) {
+    if (result.unavailable) return;
+    preview.flash('error', 'Fix the errors before formatting');
+    return;
+  }
+  const change = minimalChange(before, result.text);
+  if (change) view.dispatch({ changes: change, userEvent: 'input.format' });
+  if (btn) showFeedback(btn, 'Done ✓', change ? 'Formatted' : 'Already formatted');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const docContent = loadDoc();
 
@@ -177,7 +192,10 @@ document.addEventListener('DOMContentLoaded', () => {
       EditorView.lineWrapping,
       history(),
       // Before the default keymap, which binds Mod-Enter to insertBlankLine.
-      keymap.of([{ key: 'Mod-Enter', run: () => { preview.togglePlay(); return true; } }]),
+      keymap.of([
+        { key: 'Mod-Enter', run: () => { preview.togglePlay(); return true; } },
+        { key: 'Shift-Alt-f', run: (v) => { formatDoc(v); return true; } },
+      ]),
       keymap.of([...defaultKeymap, ...historyKeymap]),
       highlightActiveLine(),
       drawSelection(),
@@ -204,6 +222,10 @@ document.addEventListener('DOMContentLoaded', () => {
     jumpToProblem: () => { view.focus(); nextDiagnostic(view); },
   });
   preview.sourceChanged(view.state.doc.toString(), { immediate: true });
+
+  // Format button (groovescript fmt, run by the in-browser compiler)
+  const formatBtn = document.getElementById('btn-format');
+  formatBtn.addEventListener('click', () => formatDoc(view, formatBtn));
 
   // Copy button
   const copyBtn = document.getElementById('btn-copy');

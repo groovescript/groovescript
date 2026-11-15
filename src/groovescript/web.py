@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 
 from .compiler import IRSong, compile_song, compile_standalone_groove
 from .errors import GrooveScriptError
+from .fmt import format_source
 from .lint import StyleWarning, check_notation, check_style
 from .midi import emit_midi
 from .musicxml import emit_musicxml
@@ -162,3 +163,18 @@ def _internal_error(exc: Exception, source: str) -> dict:
 def build_js(source: str) -> dict:
     """:func:`build` flattened to a dict for ``pyodide``'s ``to_js``."""
     return build(source).to_dict()
+
+
+def format_js(source: str) -> dict:
+    """``groovescript fmt`` for the editor's Format button: never raises.
+
+    Returns ``{"ok", "text", "diagnostics"}``; ``text`` is the formatted
+    source, or ``None`` when the chart has errors (only valid charts can be
+    formatted) and ``diagnostics`` says why.
+    """
+    try:
+        return {"ok": True, "text": format_source(source), "diagnostics": []}
+    except GrooveScriptError as err:
+        return {"ok": False, "text": None, "diagnostics": [_error_diagnostic(err, source)]}
+    except Exception as exc:  # defence-in-depth, as in build()
+        return {"ok": False, "text": None, "diagnostics": [_internal_error(exc, source)]}

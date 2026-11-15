@@ -142,3 +142,18 @@ test('depUrls points at pinned CDN builds, or node_modules with local', () => {
   assert.equal(local.pyodide, 'https://example.test/editor/node_modules/pyodide/');
   assert.equal(local.verovio, 'https://example.test/editor/node_modules/verovio/dist/');
 });
+
+// ── Formatting edit ─────────────────────────────────────────────────────────
+
+import { minimalChange } from './textchange.js';
+
+test('minimalChange replaces only the differing middle', () => {
+  const before = 'groove "g":\nBD:1\nSN:2\n';
+  const after = 'groove "g":\n  BD: 1\n  SN: 2\n';
+  const c = minimalChange(before, after);
+  assert.equal(before.slice(0, c.from) + c.insert + before.slice(c.to), after);
+  assert.equal(c.from, 'groove "g":\n'.length);
+  assert.equal(minimalChange('same', 'same'), null);
+  const tail = minimalChange('abc', 'abcd');
+  assert.deepEqual(tail, { from: 3, to: 3, insert: 'd' });
+});

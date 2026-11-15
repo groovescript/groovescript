@@ -1,4 +1,5 @@
 import argparse
+import difflib
 import sys
 import time
 from pathlib import Path
@@ -7,6 +8,7 @@ import functools
 
 from .compiler import compile_song, compile_standalone_groove
 from .errors import GrooveScriptError
+from .fmt import format_source
 from .lilypond import LYRICS_STYLES, emit_lilypond
 from .lint import check_notation, check_style
 from .midi import emit_midi
@@ -106,6 +108,58 @@ def _guard_run(run):
         return 1
 
     return wrapper
+
+
+def _run_fmt(inputs: list[str], *, check: bool = False, diff: bool = False) -> int:
+    """Format each input. Returns 1 if any file failed, or (with ``check``
+    / ``diff``) if any file is not already formatted."""
+    status = 0
+    for input_path in inputs:
+        if input_path == "-":
+            source = sys.stdin.read()
+            name = "<stdin>"
+        else:
+            try:
+                source = Path(input_path).read_text()
+            except UnicodeDecodeError:
+                print(GrooveScriptError(message=f"input file is not valid UTF-8 text: {input_path}").render(), file=sys.stderr)
+                status = 1
+                continue
+            except OSError as err:
+                reason = "input file not found" if isinstance(err, FileNotFoundError) else "cannot read input file"
+                print(GrooveScriptError(message=f"{reason}: {input_path}").render(), file=sys.stderr)
+                status = 1
+                continue
+            name = input_path
+        try:
+            formatted = format_source(source)
+        except GrooveScriptError as err:
+            if input_path != "-":
+                _attach_source_context(err, input_path)
+            elif err.source is None:
+                err.source = source
+            print(err.render(), file=sys.stderr)
+            status = 1
+            continue
+        changed = formatted != source
+        if check:
+            if changed:
+                print(f"would reformat {name}")
+                status = 1
+        elif diff:
+            if changed:
+                sys.stdout.writelines(difflib.unified_diff(
+                    source.splitlines(keepends=True),
+                    formatted.splitlines(keepends=True),
+                    fromfile=name, tofile=name,
+                ))
+                status = 1
+        elif input_path == "-":
+            sys.stdout.write(formatted)
+        elif changed:
+            Path(input_path).write_text(formatted)
+            print(f"formatted {name}")
+    return status
 
 
 @_guard_run
@@ -413,7 +467,30 @@ def main() -> None:
         help="Re-lint on every save until Ctrl-C",
     )
 
+    fmt_cmd = subparsers.add_parser(
+        "fmt",
+        help="Rewrite .gs files in the canonical layout (indentation, spacing, alignment)",
+    )
+    fmt_cmd.add_argument(
+        "inputs", nargs="+", metavar="input",
+        help="Files to format in place; '-' reads stdin and writes stdout",
+    )
+    fmt_mode = fmt_cmd.add_mutually_exclusive_group()
+    fmt_mode.add_argument(
+        "--check",
+        action="store_true",
+        help="Change nothing; exit 1 and list the files that are not formatted",
+    )
+    fmt_mode.add_argument(
+        "--diff",
+        action="store_true",
+        help="Change nothing; print a unified diff of what would change",
+    )
+
     args = parser.parse_args()
+
+    if args.command == "fmt":
+        sys.exit(_run_fmt(args.inputs, check=args.check, diff=args.diff))
 
     if args.command == "midi":
         if args.watch:
