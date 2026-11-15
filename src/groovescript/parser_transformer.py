@@ -743,10 +743,11 @@ class _GrooveScriptTransformer(Transformer):
                 cues.append(value)
             elif key == "lyrics":
                 for entry in value:
-                    if any(prev.bar == entry.bar for prev in lyrics):
+                    if any(prev.bar == entry.bar and prev.part == entry.part for prev in lyrics):
+                        part_note = f' (part "{entry.part}")' if entry.part else ""
                         raise GrooveScriptError(
                             message=(
-                                f"Section {name!r}: lyrics for bar {entry.bar} "
+                                f"Section {name!r}: lyrics for bar {entry.bar}{part_note} "
                                 f"are given more than once"
                             ),
                             line=entry.line,
@@ -1202,9 +1203,62 @@ class _GrooveScriptTransformer(Transformer):
         return ("fill_placeholder_many", placeholders)
 
     def section_lyrics_block(self, items):
-        # items[0] is the LYRICS_HEADER token; duplicate bars are checked
-        # in ``section_def`` so multiple blocks in one section merge.
-        return ("lyrics", list(items[1:]))
+        # items[0] is the LYRICS_HEADER / LYRICS_PART_HEADER token; duplicate
+        # bars are checked in ``section_def`` so multiple blocks merge.
+        header = items[0]
+        part = None
+        if header.type == "LYRICS_PART_HEADER":
+            quoted = str(header)[str(header).index('"'):str(header).rindex('"') + 1]
+            part = _ast.literal_eval(quoted).strip()
+            if not part:
+                raise ValueError('lyrics: a vocal part name cannot be empty (use `lyrics:` for the lead)')
+        entries = []
+        for item in items[1:]:
+            for entry in (item if isinstance(item, list) else [item]):
+                entry.part = part
+                entries.append(entry)
+        return ("lyrics", entries)
+
+    @v_args(meta=True)
+    def lyrics_range_entry(self, meta, items):
+        """``bars N-M: "c1 | c2 | …" "words"``: one LyricLine per bar, with
+        the words dealt out in order. An empty count segment is a bar with
+        no lyrics."""
+        first, last = int(items[0]), int(items[1])
+        count_str = _ast.literal_eval(str(items[2]))
+        words_str = _ast.literal_eval(str(items[3]))
+        if last < first:
+            raise ValueError(f"lyrics: `bars {first}-{last}` runs backwards")
+        segments = count_str.split("|")
+        span = last - first + 1
+        if len(segments) != span:
+            raise ValueError(
+                f"lyrics: `bars {first}-{last}` covers {span} bars but the count "
+                f"has {len(segments)} `|`-separated part{'s' if len(segments) != 1 else ''}"
+            )
+        per_bar = [_parse_count_tokens(seg) for seg in segments]
+        syllables = _parse_lyric_words(words_str)
+        total = sum(len(labels) for labels in per_bar)
+        if total != len(syllables):
+            raise ValueError(_format_count_words_mismatch(count_str.replace("|", " "), words_str))
+        if not total:
+            raise ValueError(f"lyrics: bars {first}-{last} have no onsets")
+        line = _meta_line(meta)
+        entries = []
+        cursor = 0
+        for offset, (segment, labels) in enumerate(zip(segments, per_bar)):
+            if not labels:
+                continue
+            entries.append(LyricLine(
+                bar=first + offset,
+                count=segment.strip(),
+                words=words_str,
+                labels=labels,
+                syllables=syllables[cursor:cursor + len(labels)],
+                line=line,
+            ))
+            cursor += len(labels)
+        return entries
 
     @v_args(meta=True)
     def lyrics_entry(self, meta, items):

@@ -136,8 +136,19 @@ class LyricSyllable:
     """
 
     position: Fraction  # bar-relative beat position, like Event.beat_position
-    text: str  # "~" already turned into a space
+    text: str  # "~" already turned into a space; "" for marks
     hyphen_after: bool = False
+    # "syllable", or a mark: "hold" (``_``: the previous syllable keeps
+    # sounding through this onset), "stop" (``.``: it ends here) or
+    # "breath" (``,``: it ends here, with a breath mark).
+    kind: str = "syllable"
+    # Source line of the lyrics entry, for flow diagnostics.
+    line: int | None = field(default=None, compare=False)
+
+    @property
+    def sounding(self) -> bool:
+        """True when a note sounds from this onset (a syllable or a hold)."""
+        return self.kind in ("syllable", "hold")
 
 
 @dataclass
@@ -197,6 +208,18 @@ class IRBar:
     # Timed lyric syllables sounding in this bar, sorted by position. They
     # never influence ``subdivision``; emitters build their own lyric grid.
     lyrics: list[LyricSyllable] = field(default_factory=list)
+    # Backing-vocal parts (``lyrics "BGV":``), keyed by part name, each
+    # sorted by position like ``lyrics`` (which is the lead part).
+    vocal_parts: dict[str, list[LyricSyllable]] = field(default_factory=dict)
+
+    @property
+    def has_any_lyrics(self) -> bool:
+        """Lyrics in the lead or any backing part (blocks compaction)."""
+        return bool(self.lyrics) or any(self.vocal_parts.values())
+
+    def part_lyrics(self, part: str | None) -> list[LyricSyllable]:
+        """The lead part's syllables for ``None``, else the named part's."""
+        return self.lyrics if part is None else self.vocal_parts.get(part, [])
 
 
 @dataclass
@@ -210,7 +233,20 @@ class IRSong:
     @property
     def has_lyrics(self) -> bool:
         """True when any bar carries lyric syllables (drives emitter layout)."""
-        return any(bar.lyrics for bar in self.bars)
+        return any(bar.has_any_lyrics for bar in self.bars)
+
+    @property
+    def lyric_parts(self) -> list[str | None]:
+        """Vocal parts in display order: the lead (``None``) first when it
+        has any lyrics, then backing parts in order of first appearance."""
+        parts: list[str | None] = []
+        if any(bar.lyrics for bar in self.bars):
+            parts.append(None)
+        for bar in self.bars:
+            for name, syllables in bar.vocal_parts.items():
+                if syllables and name not in parts:
+                    parts.append(name)
+        return parts
 
 
 _FRACTION_SUFFIX_LABEL: dict[Fraction, str] = {
@@ -2508,11 +2544,11 @@ def _resolve_inheritance(sections: list[Section]) -> list[Section]:
         # Lyrics merge keyed by bar rather than concatenating: two entries
         # for the same bar would otherwise trip the duplicate-onset check.
         if inherits_lyrics:
-            own_bars = {entry.bar for entry in section.lyrics}
+            own_bars = {(entry.part, entry.bar) for entry in section.lyrics}
             merged_lyrics = [
-                entry for entry in original.lyrics if entry.bar not in own_bars
+                entry for entry in original.lyrics if (entry.part, entry.bar) not in own_bars
             ] + list(section.lyrics)
-            merged_lyrics.sort(key=lambda entry: entry.bar)
+            merged_lyrics.sort(key=lambda entry: (entry.part is not None, entry.part or "", entry.bar))
         else:
             merged_lyrics = list(section.lyrics)
 
@@ -4030,8 +4066,8 @@ def _attach_section_lyrics(
                         hint="join words on one onset with `~` (e.g. oh~yeah)",
                     )
                 seen.add(pos)
-                new.append(LyricSyllable(pos, token.text, token.hyphen_after))
-            existing = {syl.position for syl in target.lyrics}
+                new.append(LyricSyllable(pos, token.text, token.hyphen_after, token.kind, entry.line))
+            existing = {syl.position for syl in target.part_lyrics(entry.part)}
             clash = sorted(existing & seen)
             if clash:
                 raise GrooveScriptError(
@@ -4042,7 +4078,60 @@ def _attach_section_lyrics(
                     ),
                     line=entry.line,
                 )
-            target.lyrics = sorted(target.lyrics + new, key=lambda syl: syl.position)
+            merged = sorted(target.part_lyrics(entry.part) + new, key=lambda syl: syl.position)
+            if entry.part is None:
+                target.lyrics = merged
+            else:
+                target.vocal_parts[entry.part] = merged
+    _validate_lyric_flow(bars)
+
+
+def _validate_lyric_flow(bars: list[IRBar]) -> None:
+    """Check holds and stops make sense in sung order, per vocal part.
+
+    A syllable or hold sounds until the next onset or the bar line. So a
+    hold (``_``) must continue something sounding: the onset just before it
+    in the bar, or (on beat 1) the previous bar's last onset. A stop
+    (``.``) must end something sounding in its own bar. Breaths (``,``)
+    may stand anywhere.
+    """
+    parts: list[str | None] = [None]
+    for bar in bars:
+        parts.extend(name for name in bar.vocal_parts if name not in parts)
+    for part in parts:
+        label = "lyrics" if part is None else f'lyrics "{part}"'
+        prev_bar_ends_sounding = False
+        for bar in bars:
+            syllables = bar.part_lyrics(part)
+            for idx, syl in enumerate(syllables):
+                if idx > 0:
+                    before = syllables[idx - 1].sounding
+                elif syl.position == 0:
+                    before = prev_bar_ends_sounding
+                else:
+                    before = False
+                if syl.kind == "hold" and not before:
+                    raise GrooveScriptError(
+                        message=(
+                            f"{label} bar {bar.number}: `_` holds a syllable, "
+                            f"but nothing is sounding just before it"
+                        ),
+                        line=syl.line,
+                        hint=(
+                            "a hold continues the previous onset in the bar, or "
+                            "the previous bar's last syllable when it is on beat 1"
+                        ),
+                    )
+                if syl.kind == "stop" and not (idx > 0 and before):
+                    raise GrooveScriptError(
+                        message=(
+                            f"{label} bar {bar.number}: `.` ends a syllable, but "
+                            f"nothing is sounding there"
+                        ),
+                        line=syl.line,
+                        hint="a syllable already ends at the bar line; drop the `.`",
+                    )
+            prev_bar_ends_sounding = bool(syllables) and syllables[-1].sounding
 
 
 def _split_cross_bar_buzz_events(

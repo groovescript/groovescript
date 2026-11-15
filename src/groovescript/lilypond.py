@@ -4,7 +4,9 @@ from fractions import Fraction
 from pathlib import Path
 
 from .compiler import IRBar, IRGroove, IRSong, LyricSyllable
-from .lyrics import beat_grid, is_power_of_two, lyric_segments, tuplet_normal
+from .lyrics import (
+    LyricSegment, beat_grid, is_power_of_two, lyric_segments, starts_with_hold, ties_out, tuplet_normal,
+)
 
 # Instruments that are foot-played (duplicated from compiler to avoid a
 # circular dependency on the compiler-internal constant).  Must stay in sync.
@@ -1406,26 +1408,36 @@ def _lyric_span_tokens(
 
 def _lyric_rhythm(
     lyrics: list[LyricSyllable], beats_per_bar: int, beat_unit: int, note: str, rest: str,
+    *, tie_into_next_bar: bool = False, breaths: bool = True,
 ) -> str:
     """Hidden/visible rhythm for one bar of lyrics (implied durations).
 
     When every onset sits on a power-of-two grid the bar is cut on one
     straight grid. Otherwise each beat is cut on its own grid, and beats
     whose grid is not a power of two are wrapped in ``\\tuplet``; spans
-    crossing a beat line are tied.
+    crossing a beat line are tied. A note followed by a hold (``_``) ties
+    into it, so ``\\lyricsto`` skips the hold. With ``breaths``, a breath
+    (``,``) prints ``\\breathe`` where the sound stops.
     """
     segments = lyric_segments(lyrics, beats_per_bar)
+    tie_after = ties_out(segments, tie_into_next_bar)
     onsets = [seg.start for seg in segments if seg.syllable is not None]
     offsets = [o - int(o) for o in onsets]
     grid = beat_grid(offsets)
     tokens: list[str] = []
+
+    def breathe(seg: LyricSegment, out: list[str]) -> None:
+        if breaths and seg.breath:
+            out.append("\\breathe")
+
     if is_power_of_two(grid):
-        for seg in segments:
+        for idx, seg in enumerate(segments):
             run = int((seg.end - seg.start) * grid)
             durations = _dot_merge(
                 _slot_run_to_lily_durations(run, grid * beats_per_bar, beats_per_bar, beat_unit)
             )
-            tokens.extend(_lyric_span_tokens(durations, seg.syllable is not None, False, note, rest))
+            breathe(seg, tokens)
+            tokens.extend(_lyric_span_tokens(durations, seg.sounding, tie_after[idx], note, rest))
         return " ".join(tokens)
     for beat in range(beats_per_bar):
         lo, hi = Fraction(beat), Fraction(beat + 1)
@@ -1433,14 +1445,16 @@ def _lyric_rhythm(
         straight = is_power_of_two(beat_grid_n)
         written = beat_grid_n if straight else tuplet_normal(beat_grid_n)
         beat_tokens: list[str] = []
-        for seg in segments:
+        for idx, seg in enumerate(segments):
             start, end = max(seg.start, lo), min(seg.end, hi)
             if start >= end:
                 continue
+            if start == seg.start:
+                breathe(seg, beat_tokens)
             run = int((end - start) * beat_grid_n)
             durations = _dot_merge(_slot_run_to_lily_durations(run, written, 1, beat_unit))
             beat_tokens.extend(_lyric_span_tokens(
-                durations, seg.syllable is not None, end < seg.end, note, rest,
+                durations, seg.sounding, end < seg.end or tie_after[idx], note, rest,
             ))
         if straight:
             tokens.extend(beat_tokens)
@@ -1449,14 +1463,30 @@ def _lyric_rhythm(
     return " ".join(tokens)
 
 
-def _lyric_words(printed: list[tuple[IRBar, int]]) -> str:
-    """The ``\\lyricsto`` text: quoted syllables with ``--`` hyphens."""
+# Breath mark glyph, appended to the previous syllable in ``line`` style
+# (the rhythm there is a NullVoice, which prints no \\breathe).
+_BREATH_MARKUP = '\\musicglyph "scripts.rcomma"'
+
+
+def _lyric_words(printed: list[tuple[IRBar, int]], part: str | None, style: str) -> str:
+    """The ``\\lyricsto`` text for one vocal part: quoted syllables with
+    ``--`` hyphens and ``__`` extenders under held syllables."""
+    events = [syl for bar, _ in printed for syl in bar.part_lyrics(part)]
     words: list[str] = []
-    for bar, _ in printed:
-        for syl in bar.lyrics:
+    last_syllable: int | None = None  # index into ``words``
+    for i, syl in enumerate(events):
+        if syl.kind == "syllable":
             words.append(f'"{_ly_str(syl.text)}"')
+            last_syllable = len(words) - 1
+            nxt = events[i + 1] if i + 1 < len(events) else None
+            if nxt is not None and nxt.kind == "hold":
+                words.append("__")
             if syl.hyphen_after:
                 words.append("--")
+        elif syl.kind == "breath" and style == "line" and last_syllable is not None:
+            text = words[last_syllable]
+            if not text.startswith("\\markup"):
+                words[last_syllable] = f"\\markup {{ {text} {_BREATH_MARKUP} }}"
     # A hyphen with no following syllable would be dangling; drop it.
     if words and words[-1] == "--":
         words.pop()
@@ -1464,17 +1494,23 @@ def _lyric_words(printed: list[tuple[IRBar, int]]) -> str:
 
 
 def _lyric_rhythm_measures(
-    printed: list[tuple[IRBar, int]], global_time_signature: str, style: str,
+    printed: list[tuple[IRBar, int]], global_time_signature: str, style: str, part: str | None,
 ) -> str:
     """One rhythm measure per printed drum bar, so the two streams align."""
     note, rest = ("c", "r") if style == "staff" else ("c", "s")
     measures: list[str] = []
     current_ts = global_time_signature
-    for bar, span in printed:
+    for idx, (bar, span) in enumerate(printed):
         current_ts = bar.time_signature or current_ts
         bpb, unit = _parse_time_signature(current_ts)
-        if bar.lyrics and span == 1:
-            body = _lyric_rhythm(bar.lyrics, bpb, unit, note, rest)
+        syllables = bar.part_lyrics(part)
+        if syllables and span == 1:
+            nxt = printed[idx + 1] if idx + 1 < len(printed) else None
+            tie_next = nxt is not None and nxt[1] == 1 and starts_with_hold(nxt[0].part_lyrics(part))
+            body = _lyric_rhythm(
+                syllables, bpb, unit, note, rest,
+                tie_into_next_bar=tie_next, breaths=style == "staff",
+            )
         elif style == "staff":
             body = _whole_bar_rest(bpb, unit) + (f"*{span}" if span > 1 else "")
         else:
@@ -1483,55 +1519,72 @@ def _lyric_rhythm_measures(
     return "\n".join(measures)
 
 
+def _part_label(part: str | None) -> str:
+    return "Vox" if part is None else part
+
+
 def _lyrics_template_parts(
     printed: list[tuple[IRBar, int]], global_time_signature: str, style: str,
+    parts: list[str | None],
 ) -> dict[str, str]:
     """Template fragments that wrap the drum staff with the lyrics contexts.
 
-    ``staff``: a small one-line RhythmicStaff labelled "Vox" above the drums,
-    with the syllables under it; it disappears on systems with no lyrics.
-    ``line``: a NullVoice inside the DrumStaff carries the rhythm (it takes
-    up horizontal space but prints nothing) and the syllables sit below.
+    ``staff``: one small one-line RhythmicStaff per vocal part above the
+    drums ("Vox" for the lead, then each backing part by name), each with
+    its syllables under it; a staff disappears on systems where its part
+    is silent. ``line``: per part, a NullVoice inside the DrumStaff carries
+    the rhythm (it takes up horizontal space but prints nothing) and the
+    syllables sit below, backing lines labelled with their name.
     """
-    rhythm = _lyric_rhythm_measures(printed, global_time_signature, style)
-    words = _lyric_words(printed)
-    lyrics_ctx = (
-        f'  \\new Lyrics \\with {{ \\override LyricText.font-size = #-1 }}'
-        f' \\lyricsto "{_LYRICS_VOICE}" {{\n    {words}\n  }}\n'
-    )
-    if style == "staff":
-        vocal = (
-            "  <<\n"
-            "  \\new RhythmicStaff \\with {\n"
-            '    instrumentName = "Vox"\n'
-            '    shortInstrumentName = "Vox"\n'
-            "    fontSize = #-2\n"
-            "    \\override StaffSymbol.staff-space = #(magstep -2)\n"
-            "    \\RemoveAllEmptyStaves\n"
-            "  } {\n"
-            f'    \\new Voice = "{_LYRICS_VOICE}" {{\n'
-            "      \\numericTimeSignature\n"
-            f"      \\time {global_time_signature}\n"
-            f"{rhythm}\n"
-            "    }\n"
-            "  }\n"
-            f"{lyrics_ctx}"
+    def voice_name(index: int) -> str:
+        return _LYRICS_VOICE if index == 0 else f"{_LYRICS_VOICE}{index + 1}"
+
+    def lyrics_ctx(index: int, part: str | None) -> str:
+        stanza = (
+            f'\\set stanza = "{_ly_str(part)}:" ' if style == "line" and part is not None else ""
         )
+        italic = " \\override LyricText.font-shape = #'italic" if part is not None else ""
+        return (
+            f'  \\new Lyrics \\with {{ \\override LyricText.font-size = #-1{italic} }}'
+            f' \\lyricsto "{voice_name(index)}" {{\n    {stanza}{_lyric_words(printed, part, style)}\n  }}\n'
+        )
+
+    if style == "staff":
+        vocal = "  <<\n"
+        for index, part in enumerate(parts):
+            label = _ly_str(_part_label(part))
+            vocal += (
+                "  \\new RhythmicStaff \\with {\n"
+                f'    instrumentName = "{label}"\n'
+                f'    shortInstrumentName = "{label}"\n'
+                "    fontSize = #-2\n"
+                "    \\override StaffSymbol.staff-space = #(magstep -2)\n"
+                "    \\RemoveAllEmptyStaves\n"
+                "  } {\n"
+                f'    \\new Voice = "{voice_name(index)}" {{\n'
+                "      \\numericTimeSignature\n"
+                f"      \\time {global_time_signature}\n"
+                f"{_lyric_rhythm_measures(printed, global_time_signature, style, part)}\n"
+                "    }\n"
+                "  }\n"
+                f"{lyrics_ctx(index, part)}"
+            )
         return {
             "{{VOCAL_STAFF}}": vocal,
             "{{DRUM_STAFF_OPEN}}": "",
             "{{DRUM_STAFF_CLOSE}}": "\n  >>",
         }
-    null_voice = (
-        f'\n    \\new NullVoice = "{_LYRICS_VOICE}" {{\n'
-        f"{rhythm}\n"
-        "    }\n"
-        "  >>\n"
+    null_voices = "".join(
+        f'\n    \\new NullVoice = "{voice_name(index)}" {{\n'
+        f"{_lyric_rhythm_measures(printed, global_time_signature, style, part)}\n"
+        "    }"
+        for index, part in enumerate(parts)
     )
+    lyrics = "".join(lyrics_ctx(index, part) for index, part in enumerate(parts))
     return {
         "{{VOCAL_STAFF}}": "  <<\n",
         "{{DRUM_STAFF_OPEN}}": "<< ",
-        "{{DRUM_STAFF_CLOSE}}": f"{null_voice}{lyrics_ctx}  >>",
+        "{{DRUM_STAFF_CLOSE}}": f"{null_voices}\n  >>\n{lyrics}  >>",
     }
 
 
@@ -1652,7 +1705,7 @@ def _group_bars(
         )
         if is_repeat_start:
             span = _explicit_repeat_span(bars, i)
-            if any(b.lyrics for b in bars[i : i + span]):
+            if any(b.has_any_lyrics for b in bars[i : i + span]):
                 written_out_end = i + span
                 is_repeat_start = False
         if is_repeat_start:
@@ -1829,7 +1882,7 @@ def _group_bars(
             max_lookahead = min(len(bars) - i, remaining_in_phrase)
 
         # Bars with cues, fill_placeholders, bar_text, dynamic annotations, or lyrics cannot be implicitly merged into repeats
-        has_annotations = bool(bar.cues or bar.fill_placeholders or bar.bar_text or bar.dynamic_starts or bar.dynamic_stops or bar.lyrics or _has_tempo_changes(bar))
+        has_annotations = bool(bar.cues or bar.fill_placeholders or bar.bar_text or bar.dynamic_starts or bar.dynamic_stops or bar.has_any_lyrics or _has_tempo_changes(bar))
         # Build cue_map and placeholder_map for beat-accurate markup placement (pos → text)
         cue_map: dict[Fraction, str] | None = dict(bar.cues) if bar.cues else None
         placeholder_map: dict[Fraction, str] | None = dict(bar.fill_placeholders) if bar.fill_placeholders else None
@@ -1863,7 +1916,7 @@ def _group_bars(
                 # Don't merge across a time-signature change.
                 if (next_bar.time_signature or state.current_ts) != state.current_ts:
                     break
-                if next_bar.cues or next_bar.fill_placeholders or next_bar.bar_text or next_bar.lyrics:
+                if next_bar.cues or next_bar.fill_placeholders or next_bar.bar_text or next_bar.has_any_lyrics:
                     break
                 if next_bar.dynamic_starts or next_bar.dynamic_stops or _has_tempo_changes(next_bar):
                     break
@@ -1904,7 +1957,7 @@ def _group_bars(
                 if tb.is_rest or tb.is_placeholder_groove:
                     template_ok = False
                     break
-                if tb.cues or tb.fill_placeholders or tb.bar_text or tb.lyrics:
+                if tb.cues or tb.fill_placeholders or tb.bar_text or tb.has_any_lyrics:
                     template_ok = False
                     break
                 if tb.dynamic_starts or tb.dynamic_stops or _has_tempo_changes(tb):
@@ -1938,7 +1991,7 @@ def _group_bars(
                         if cb.is_rest or cb.is_placeholder_groove:
                             cand_ok = False
                             break
-                        if cb.cues or cb.fill_placeholders or cb.bar_text or cb.lyrics:
+                        if cb.cues or cb.fill_placeholders or cb.bar_text or cb.has_any_lyrics:
                             cand_ok = False
                             break
                         if cb.dynamic_starts or cb.dynamic_stops:
@@ -2077,7 +2130,7 @@ def emit_lilypond(
     body = "\n".join(measures)
 
     if printed is not None:
-        staff_parts = _lyrics_template_parts(printed, time_signature, style)
+        staff_parts = _lyrics_template_parts(printed, time_signature, style, ir.lyric_parts)
     else:
         staff_parts = {"{{VOCAL_STAFF}}": "", "{{DRUM_STAFF_OPEN}}": "", "{{DRUM_STAFF_CLOSE}}": ""}
 

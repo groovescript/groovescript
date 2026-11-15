@@ -123,18 +123,25 @@ def _meta_text_event(kind: int, text: str) -> bytes:
     return bytes([0xFF, kind]) + _vlq(len(data)) + data
 
 
-def _lyrics_track(bars, bar_starts: list[int], default_ts: str) -> list[tuple[int, bytes]]:
-    """One lyric meta event per syllable on a dedicated "Lyrics" track.
+def _lyrics_track(
+    bars, bar_starts: list[int], default_ts: str, part: str | None = None,
+) -> list[tuple[int, bytes]]:
+    """One lyric meta event per syllable on a dedicated track per vocal part
+    ("Lyrics" for the lead, "Lyrics: <name>" for a backing part).
 
     A syllable that hyphenates into the next keeps its trailing ``-`` — the
-    karaoke convention DAWs use to join syllables back into words.
+    karaoke convention DAWs use to join syllables back into words. Holds,
+    stops and breaths sing nothing new, so they produce no event.
     """
-    track: list[tuple[int, bytes]] = [(0, _meta_text_event(0x03, "Lyrics"))]
+    name = "Lyrics" if part is None else f"Lyrics: {part}"
+    track: list[tuple[int, bytes]] = [(0, _meta_text_event(0x03, name))]
     cur_ts = default_ts
     for bar, bstart in zip(bars, bar_starts):
         cur_ts = bar.time_signature if bar.time_signature is not None else cur_ts
         bticks = _bar_ticks(cur_ts)
-        for syl in bar.lyrics:
+        for syl in bar.part_lyrics(part):
+            if syl.kind != "syllable":
+                continue
             text = f"{syl.text}-" if syl.hyphen_after else syl.text
             track.append((bstart + int(syl.position * bticks), _meta_text_event(0x05, text)))
     return track
@@ -362,8 +369,8 @@ def _midi_from_song(song: IRSong) -> bytes:
     drum_track = _extend_sustained(drum_track, cur_tick, choked)
 
     tracks = [_build_track(tempo_track), _build_track(drum_track)]
-    if song.has_lyrics:
-        tracks.append(_build_track(_lyrics_track(song.bars, bar_starts, default_ts)))
+    for part in song.lyric_parts:
+        tracks.append(_build_track(_lyrics_track(song.bars, bar_starts, default_ts, part)))
 
     header = b"MThd" + _u32(6) + _u16(1) + _u16(len(tracks)) + _u16(TICKS_PER_BEAT)
     return header + b"".join(tracks)

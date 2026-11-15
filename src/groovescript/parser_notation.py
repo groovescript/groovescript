@@ -530,19 +530,28 @@ def _lyric_word_columns(words_str: str) -> list[int]:
     return [m.start() for m in re.finditer(r"\S+", words_str)]
 
 
+# Words-string tokens that take an onset without singing a new syllable.
+_LYRIC_MARKS = {"_": "hold", ".": "stop", ",": "breath"}
+
+
 def _parse_lyric_words(words_str: str) -> list[LyricToken]:
-    """Split a ``lyrics:`` words string into syllables.
+    """Split a ``lyrics:`` words string into tokens, one per onset.
 
     Tokens are whitespace-separated. A trailing ``-`` hyphenates into the
     next syllable; ``~`` joins words on one onset (``oh~yeah`` → "oh yeah").
-    ``_`` is reserved for future extenders/holds and is rejected.
+    Three marks stand alone as tokens: ``_`` holds the previous syllable
+    through the onset, ``.`` ends it there, and ``,`` ends it with a breath
+    mark.
     """
     tokens: list[LyricToken] = []
     for raw in words_str.split():
+        if raw in _LYRIC_MARKS:
+            tokens.append(LyricToken(text="", kind=_LYRIC_MARKS[raw]))
+            continue
         if "_" in raw:
             raise ValueError(
-                f"lyrics: '_' in {raw!r} is reserved for future use "
-                f"(held syllables); remove it"
+                f"lyrics: {raw!r}: '_' (hold) must be a token on its own, "
+                f"e.g. \"round _ _\""
             )
         hyphen_after = raw.endswith("-")
         text = raw[:-1] if hyphen_after else raw

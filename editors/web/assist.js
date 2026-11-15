@@ -65,6 +65,7 @@ const SECTION_BODY = [
   { label: 'no crash in', snippet: 'no crash in', detail: 'opt out of a top-level crash in' },
   { label: 'break', snippet: 'break on bar ${4}', detail: 'silence bars/beats' },
   { label: 'lyrics', snippet: 'lyrics:\n  bar ${1}: "${1 2 3 4}" "${words}"', detail: 'timed lyrics' },
+  { label: 'lyrics "…"', snippet: 'lyrics "${BGV}":\n  bar ${1}: "${1 2 3 4}" "${words}"', detail: 'backing-vocal part' },
 ];
 
 /** Hover help for keywords (instruments and modifiers come from vocab). */

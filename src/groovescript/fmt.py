@@ -15,7 +15,8 @@ comment and every token, and changes only:
   joined), none inside tuplet braces. Strings and comments are untouched,
   as is the author's choice of commas versus spaces in beat lists.
 - alignment: in a run of consecutive ``instrument: beats`` or
-  ``beat: instruments`` lines, the values start in one column.
+  ``beat: instruments`` lines, the values start in one column; in a run of
+  lyrics entries, the count and words strings each start in one column.
 - blank lines: at most one in a row, one before each top-level block
   (above any comment attached to it), none at the start or end.
 
@@ -131,6 +132,7 @@ def format_source(source: str) -> str:
 
     _indent_comments(out, code_depths)
     _align_pattern_runs(out, code_depths)
+    _align_lyric_runs(out, code_depths)
     out = _normalise_blank_lines(out, top_level_starts)
     result = "\n".join(out).rstrip("\n") + "\n"
 
@@ -312,6 +314,40 @@ def _align_pattern_runs(out: list[str], code_depths: list[int | None]) -> None:
                 m = _ALIGNABLE_RE.match(out[k].strip())
                 key = m["key"] + ":"
                 out[k] = INDENT * code_depths[k] + key.ljust(width + 1) + m["rest"]
+        i = max(j, i + 1)
+
+
+# A lyrics entry: ``bar N: "<count>" "<words>"`` / ``bars N-M: …``, plus
+# an optional trailing comment.
+_LYRIC_ENTRY_RE = re.compile(
+    r'^(?P<key>bars? \d+(?:-\d+)?:) (?P<count>"(?:[^"\\]|\\.)*") '
+    r'(?P<words>"(?:[^"\\]|\\.)*")(?P<rest>.*)$'
+)
+
+
+def _align_lyric_runs(out: list[str], code_depths: list[int | None]) -> None:
+    """Line up consecutive lyrics entries: the count strings start in one
+    column and the words strings in another, as the lyrics docs encourage."""
+    i = 0
+    while i < len(out):
+        run = []
+        j = i
+        while j < len(out) and code_depths[j] is not None and _LYRIC_ENTRY_RE.match(out[j].strip()):
+            if run and code_depths[j] != code_depths[run[0]]:
+                break
+            run.append(j)
+            j += 1
+        if len(run) > 1:
+            matches = {k: _LYRIC_ENTRY_RE.match(out[k].strip()) for k in run}
+            key_w = max(len(m["key"]) for m in matches.values())
+            count_w = max(len(m["count"]) for m in matches.values())
+            for k, m in matches.items():
+                out[k] = (
+                    INDENT * code_depths[k]
+                    + m["key"].ljust(key_w) + " "
+                    + m["count"].ljust(count_w) + " "
+                    + m["words"] + m["rest"]
+                )
         i = max(j, i + 1)
 
 

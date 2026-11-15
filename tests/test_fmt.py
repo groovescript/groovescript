@@ -247,3 +247,26 @@ def test_cli_reports_unreadable_input_without_traceback(tmp_path):
     assert "not valid UTF-8" in result.stderr
     assert "cannot read input file" in result.stderr
     assert "Traceback" not in result.stderr
+
+
+def test_lyrics_entries_align_count_and_words_columns():
+    """Regression test: fmt collapsed the hand-aligned gap between a lyrics
+    entry's count and words strings, which the lyrics docs encourage."""
+    src = _dedent('''
+    groove "g":
+      BD: 1
+    section "s":
+      bars: 4
+      groove: "g"
+      lyrics:
+        bar 1: "1 2& 3 4" "When the night falls"
+        bar 2:   "1 3"  "_ down"
+        bars 3-4: "1 | 1 3" "hey you ,"
+    ''')
+    out = format_source(src)
+    assert out.endswith(
+        '  lyrics:\n'
+        '    bar 1:    "1 2& 3 4" "When the night falls"\n'
+        '    bar 2:    "1 3"      "_ down"\n'
+        '    bars 3-4: "1 | 1 3"  "hey you ,"\n'
+    )

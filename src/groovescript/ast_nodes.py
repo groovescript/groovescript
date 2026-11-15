@@ -398,8 +398,12 @@ class Cue:
 
 @dataclass(frozen=True)
 class LyricToken:
-    """One syllable from a ``lyrics:`` words string.
+    """One token from a ``lyrics:`` words string; each takes one onset.
 
+    ``kind`` is ``"syllable"`` (sung), ``"hold"`` (``_``: the previous
+    syllable keeps sounding through this onset), ``"stop"`` (``.``: the
+    sounding syllable ends here, silence until the next onset) or
+    ``"breath"`` (``,``: like stop, plus a breath mark). For syllables,
     ``text`` has ``~`` already turned into a space and the trailing ``-``
     stripped; ``hyphen_after`` records that the syllable hyphenates into
     the next one (which may sit in a later bar).
@@ -407,6 +411,7 @@ class LyricToken:
 
     text: str
     hyphen_after: bool = False
+    kind: str = "syllable"
 
 
 @dataclass
@@ -426,6 +431,9 @@ class LyricLine:
     syllables: list[LyricToken]
     # 1-indexed source line of the entry, for compile-time diagnostics.
     line: int | None = None
+    # Vocal part: ``None`` for the lead (``lyrics:``), else the name from a
+    # ``lyrics "BGV":`` block.
+    part: str | None = None
 
 
 @dataclass
