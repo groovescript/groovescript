@@ -2339,49 +2339,72 @@ def _resolve_inheritance(sections: list[Section]) -> list[Section]:
       win, so an addition that targets the same bar as an inherited entry
       effectively overrides it.
     """
-    section_map = {s.name: s for s in sections}
-    resolved_map: dict[str, Section] = {}
-    resolving: set[str] = set()
+    # Sections are tracked by position, not name: several sections may share
+    # a name (they render as "Verse 1", "Verse 2", ...), and keying by name
+    # would collapse them all into the last one.
+    indices_by_name: dict[str, list[int]] = {}
+    for idx, s in enumerate(sections):
+        indices_by_name.setdefault(s.name, []).append(idx)
+    resolved: dict[int, Section] = {}
+    resolving: set[int] = set()
 
-    def _resolve(name: str) -> None:
-        if name in resolved_map:
+    def _target_index(idx: int, target_name: str) -> int | None:
+        """Pick the section a ``like`` refers to: the nearest earlier section
+        with that name, else the first one (a forward reference)."""
+        candidates = indices_by_name.get(target_name)
+        if not candidates:
+            return None
+        earlier = [c for c in candidates if c < idx]
+        return earlier[-1] if earlier else candidates[0]
+
+    def _resolve(idx: int) -> None:
+        if idx in resolved:
             return
-        section = section_map.get(name)
-        if section is None:
-            return
+        section = sections[idx]
+        name = section.name
         if section.inherit is None:
-            resolved_map[name] = section
+            resolved[idx] = section
             return
-        if name in resolving:
+        if idx in resolving:
             raise ValueError(
                 f"Circular like reference involving section {name!r}"
             )
-        resolving.add(name)
+        resolving.add(idx)
 
         target_name = section.inherit.parent
-        if target_name not in section_map:
+        target_idx = _target_index(idx, target_name)
+        if target_idx is None:
             raise ValueError(
                 f"Section {name!r} references unknown section {target_name!r}"
             )
         # Ensure the target is fully resolved first.
-        _resolve(target_name)
-        original = resolved_map[target_name]
+        _resolve(target_idx)
+        original = resolved[target_idx]
         spec = section.inherit
 
         # Scalars: inheriting section's explicit values override the inherited ones.
-        merged_bars = section.bars if section.bars is not None else original.bars
-        merged_groove = section.groove if section.groove is not None else original.groove
-        merged_repeat = section.repeat if section.repeat is not None else original.repeat
+        # A section is either classic (groove:/repeat:) or play-list (play:),
+        # so when the inheritor picks one form explicitly it must not pick up
+        # the parent's other form (which would otherwise win at compile time).
+        if section.play is not None:
+            merged_play = list(section.play)
+            merged_groove = None
+            merged_repeat = None
+            merged_bars = section.bars
+        elif section.groove is not None:
+            merged_play = None
+            merged_groove = section.groove
+            merged_repeat = section.repeat if section.repeat is not None else original.repeat
+            merged_bars = section.bars if section.bars is not None else original.bars
+        else:
+            merged_play = list(original.play) if original.play is not None else None
+            merged_groove = original.groove
+            merged_repeat = section.repeat if section.repeat is not None else original.repeat
+            merged_bars = section.bars if section.bars is not None else original.bars
         merged_tempo = section.tempo if section.tempo is not None else original.tempo
         merged_time_signature = (
             section.time_signature if section.time_signature is not None else original.time_signature
         )
-        if section.play is not None:
-            merged_play = list(section.play)
-        elif original.play is not None:
-            merged_play = list(original.play)
-        else:
-            merged_play = None
         # crash_in: child's spec wins when set, else inherit parent's. The
         # `no_crash_in` opt-out propagates the same way (and overrides any
         # inherited spec at compile time).
@@ -2424,7 +2447,7 @@ def _resolve_inheritance(sections: list[Section]) -> list[Section]:
         else:
             merged_lyrics = list(section.lyrics)
 
-        resolved_map[name] = Section(
+        resolved[idx] = Section(
             name=section.name,
             bars=merged_bars,
             groove=merged_groove,
@@ -2443,13 +2466,14 @@ def _resolve_inheritance(sections: list[Section]) -> list[Section]:
             play=merged_play,
             crash_in=merged_crash_in,
             no_crash_in=merged_no_crash_in,
+            breaks=list(original.breaks) + list(section.breaks),
         )
-        resolving.discard(name)
+        resolving.discard(idx)
 
-    for section in sections:
-        _resolve(section.name)
+    for idx in range(len(sections)):
+        _resolve(idx)
 
-    return [resolved_map[s.name] for s in sections]
+    return [resolved[idx] for idx in range(len(sections))]
 
 
 def _compile_play_bar_events(

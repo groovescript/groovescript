@@ -452,3 +452,20 @@ section "s":
     ir = _compile(src)
     for bar in ir.bars:
         assert len(bar.events) > 0   # nothing silenced
+
+
+def test_like_keeps_own_and_inherited_breaks():
+    """Regression: ``like`` rebuilt the section without ``breaks``, silently
+    dropping both the inheritor's own ``break on bar`` and the parent's."""
+    from groovescript.compiler import compile_song
+    from groovescript.parser import parse
+
+    song = compile_song(parse(
+        'groove "beat":\n  BD: 1, 3\n  SN: 2, 4\n'
+        'section "A":\n  bars: 2\n  groove: "beat"\n  break on bar 2\n'
+        'section "B":\n  like "A"\n  break on bar 1\n'
+    ))
+    assert song.bars[0].events  # A bar 1 plays
+    assert not song.bars[1].events  # A bar 2: break
+    assert not song.bars[2].events  # B bar 1: own break
+    assert not song.bars[3].events  # B bar 2: inherited break

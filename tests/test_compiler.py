@@ -3192,3 +3192,52 @@ def test_compile_like_inherits_placeholder_groove_through_inline_groove_list():
     assert len(section_starts) == 2
     for bar in section_starts:
         assert bar.fill_placeholders[0] == (Fraction(0), "intro feel")
+
+
+# ── Regression: like / duplicate section names ───────────────────────────
+
+
+def _bar_hits(song, bar_number):
+    bar = song.bars[bar_number - 1]
+    return [(e.beat_position, e.instrument) for e in bar.events]
+
+
+def test_duplicate_section_names_keep_their_own_grooves():
+    """Regression: same-named sections were keyed by name during ``like``
+    resolution, so every one became a copy of the last (even without
+    any ``like``)."""
+    song = compile_song(parse(
+        'groove "g1":\n  BD: 1\n'
+        'groove "g2":\n  SN: 2\n'
+        'section "Verse":\n  bars: 1\n  groove: "g1"\n'
+        'section "Verse":\n  bars: 1\n  groove: "g2"\n'
+    ))
+    assert _bar_hits(song, 1) == [(Fraction(0), "BD")]
+    assert _bar_hits(song, 2) == [(Fraction(1, 4), "SN")]
+
+
+def test_like_same_named_earlier_section_is_not_circular():
+    """Regression: a second ``section "Verse"`` with ``like "Verse"`` raised
+    a circular-reference error; it should copy the earlier Verse."""
+    song = compile_song(parse(
+        'groove "g1":\n  BD: 1\n'
+        'groove "g2":\n  SN: 2\n'
+        'section "Verse":\n  bars: 1\n  groove: "g1"\n'
+        'section "Chorus":\n  bars: 1\n  groove: "g2"\n'
+        'section "Verse":\n  like "Verse"\n'
+    ))
+    assert _bar_hits(song, 3) == [(Fraction(0), "BD")]
+
+
+def test_like_play_parent_with_own_groove_uses_own_groove():
+    """Regression: inheriting from a ``play:`` section kept the parent's
+    play list even when the child set its own ``groove:``, and ``play:``
+    won at compile time."""
+    song = compile_song(parse(
+        'groove "g1":\n  BD: 1\n'
+        'groove "g2":\n  SN: 2\n'
+        'section "A":\n  play:\n    groove "g1" x2\n'
+        'section "B":\n  like "A"\n  bars: 2\n  groove: "g2"\n'
+    ))
+    assert _bar_hits(song, 3) == [(Fraction(1, 4), "SN")]
+    assert _bar_hits(song, 4) == [(Fraction(1, 4), "SN")]

@@ -526,6 +526,9 @@ def _drum_measure_straight(
             continue
 
         consolidated = 1
+        # Tracked separately from ``consolidated``: a quarter in a grid with
+        # 3 slots per beat also spans 3 slots, but is not dotted.
+        dotted = False
         # Do not consolidate across a doubled slot or a buzz-span slot.
         if i % slots_in_quarter == 0 and i + slots_in_quarter <= subdivision:
             blocked = any(
@@ -558,6 +561,7 @@ def _drum_measure_straight(
             )
             if not blocked and not pos_map.get(Fraction(i + 1, subdivision)) and not pos_map.get(Fraction(i + 2, subdivision)):
                 consolidated = 3
+                dotted = True
 
         if consolidated == 1 and i % slots_in_eighth == 0 and i + slots_in_eighth <= subdivision:
             blocked = any(
@@ -573,7 +577,7 @@ def _drum_measure_straight(
                 if match:
                     consolidated = slots_in_eighth
 
-        if consolidated == 3:
+        if dotted:
             # Dotted eighth: undotted-eighth duration with a "." suffix.
             duration = f"{beat_unit * subdivision // (2 * beats_per_bar)}."
         else:
@@ -1509,6 +1513,11 @@ def _group_bars(
                 global_time_signature=state.current_ts,
                 forced_voice_split_ids=forced_voice_split_ids,
             )
+            # The inner call tracks its own meter, so any ``\\time`` change it
+            # emitted inside the repeat must be mirrored here; otherwise the
+            # next bar compares against a stale meter and never switches back.
+            for pb in pattern_bars[1:]:
+                state.compute_time_signature_change(pb)
             inner_body = "\n".join(inner_measures)
             measures.append(f"{ts_change_cmd}{tempo_change_cmd}{mark}{forced_bar}      \\repeat volta {num_repeats} {{\n{inner_body}\n      }}")
             printed.extend((pb, 1) for pb in pattern_bars)
