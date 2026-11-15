@@ -30,6 +30,7 @@ const BODY_KWS = new Set([
   'bars','count','notes','repeat','like','with',
   'play','cue','lyrics','variation','text','extend',
   'cresc','decresc','crescendo','decrescendo',
+  'rit','ritardando','accel','accelerando',
 ]);
 
 const PLACEMENT_KWS = new Set([
@@ -138,6 +139,9 @@ export function token(stream, _state) {
 
     // Bare beat label words
     if (BARE_BEAT_WORDS.has(word)) return 'constant';
+
+    // ``a tempo``: highlight the ``a`` only when ``tempo`` follows.
+    if (word === 'a' && stream.match(/^\s+tempo\b/, false)) return 'keyword';
 
     // Named tuplet kinds (inside ``{kind …}`` groups and ``*<kind>`` stars).
     if (TUPLET_KINDS.has(word)) return 'typeName';

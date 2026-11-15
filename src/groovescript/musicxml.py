@@ -439,6 +439,8 @@ def _fill_part(
         if bar.section_name is not None:
             _add_rehearsal(measure, bar.section_name)
 
+        _add_tempo_change_words(measure, bar, _bar_total_divs(ts), bpm)
+
         bar_divs = _bar_total_divs(ts)
         n, d = ts.split("/")
         beats_per_bar = int(n)
@@ -1162,6 +1164,29 @@ def _add_tempo_direction(parent: Element, bpm: int, beat_unit: int = 4) -> None:
     quarter_bpm = Fraction(bpm * 4, beat_unit)
     sound_tempo = str(quarter_bpm.numerator) if quarter_bpm.denominator == 1 else f"{float(quarter_bpm):g}"
     SubElement(direction, "sound", tempo=sound_tempo)
+
+
+_TEMPO_SPAN_WORDS = {"rit": "rit.", "accel": "accel."}
+
+
+def _add_tempo_change_words(measure: Element, bar: IRBar, bar_divs: int, bpm: int) -> None:
+    """Print gradual tempo changes ("rit.", "accel.") and "a tempo" as
+    italic words above the staff, offset to their beat. The playback curve
+    itself lives in the MIDI export; "a tempo" also carries a <sound>
+    tempo so MusicXML players return to the section tempo."""
+    marks: list[tuple[Fraction, str, bool]] = [
+        (pos, _TEMPO_SPAN_WORDS[kind], False) for pos, kind in bar.tempo_span_starts
+    ]
+    marks += [(pos, text, True) for pos, text in bar.tempo_texts]
+    for pos, text, restores in sorted(marks, key=lambda m: m[0]):
+        direction = SubElement(measure, "direction", placement="above")
+        dt = SubElement(direction, "direction-type")
+        SubElement(dt, "words", {"font-style": "italic"}).text = text
+        offset = int(pos * bar_divs)
+        if offset:
+            SubElement(direction, "offset").text = str(offset)
+        if restores:
+            SubElement(direction, "sound", tempo=str(bpm))
 
 
 def _add_rehearsal(parent: Element, name: str) -> None:

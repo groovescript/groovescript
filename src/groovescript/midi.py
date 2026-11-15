@@ -140,15 +140,16 @@ def _lyrics_track(bars, bar_starts: list[int], default_ts: str) -> list[tuple[in
     return track
 
 
-def _tempo_event(bpm: int, beat_unit: int = 4) -> bytes:
+def _tempo_event(bpm: float, beat_unit: int = 4) -> bytes:
     """Build a Set Tempo meta event for ``bpm`` beats per minute, where a
-    beat is a ``1/beat_unit`` note.
+    beat is a ``1/beat_unit`` note. ``bpm`` may be fractional: gradual
+    ``rit`` / ``accel`` ramps step through non-integer tempos.
 
     MIDI tempo is always microseconds per *quarter* note, so a 6/8 chart at
     ``tempo: 120`` (printed as eighth = 120, matching the LilyPond
     ``\\tempo 8 = 120``) is 60 quarters per minute.
     """
-    usec = round(Fraction(60_000_000 * beat_unit, 4 * bpm))
+    usec = round(Fraction(60_000_000 * beat_unit) / (4 * Fraction(bpm)))
     return b"\xFF\x51\x03" + _u24(usec)
 
 
@@ -329,7 +330,8 @@ def _midi_from_song(song: IRSong) -> bytes:
         (0, _tempo_event(default_bpm, _beat_unit(default_ts))),
     ]
     cur_ts = default_ts
-    cur_bpm = default_bpm
+    cur_bpm: float = default_bpm  # tempo actually sounding
+    cur_nominal = default_bpm  # printed section tempo
     for bar_idx, bar in enumerate(song.bars):
         tick = bar_starts[bar_idx]
         if bar.time_signature is not None and bar.time_signature != cur_ts:
@@ -337,10 +339,24 @@ def _midi_from_song(song: IRSong) -> bytes:
             tempo_track.append((tick, _timesig_event(cur_ts)))
         # Like the LilyPond emitter's ``\\tempo``, a tempo is read in the
         # beat unit of the meter in force where it is (re)declared, and
-        # holds as an absolute speed across later meter changes.
-        if bar.tempo is not None and bar.tempo != cur_bpm:
-            cur_bpm = bar.tempo
-            tempo_track.append((tick, _tempo_event(cur_bpm, _beat_unit(cur_ts))))
+        # holds as an absolute speed across later meter changes. Only a
+        # change of *nominal* tempo (a new section tempo) resets the sounding
+        # tempo; bars held after a rit/accel keep the ramp's end.
+        if bar.tempo is not None and bar.tempo != cur_nominal:
+            cur_nominal = bar.tempo
+            if bar.tempo != cur_bpm:
+                cur_bpm = bar.tempo
+                tempo_track.append((tick, _tempo_event(cur_bpm, _beat_unit(cur_ts))))
+        # Gradual changes / ``a tempo``: one Set Tempo per curve point, in the
+        # same beat unit as the section tempo the curve starts from. The
+        # nominal ``bar.tempo`` above only changes at section starts, and the
+        # compiler adds a point there whenever a change was still held.
+        bar_ticks = _bar_ticks(cur_ts)
+        for pos, bpm in bar.tempo_points:
+            point_tick = tick + int(pos * bar_ticks)
+            if bpm != cur_bpm:
+                tempo_track.append((point_tick, _tempo_event(bpm, _beat_unit(cur_ts))))
+            cur_bpm = bpm
 
     drum_track, choked = _bars_to_drum_events(song.bars, bar_starts, default_ts)
     drum_track = _extend_sustained(drum_track, cur_tick, choked)

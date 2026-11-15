@@ -165,6 +165,17 @@ class IRBar:
     dynamic_starts: list[tuple[Fraction, str]] = field(default_factory=list)
     # Hairpin terminators: list of beat_position where a \! should be placed
     dynamic_stops: list[Fraction] = field(default_factory=list)
+    # Gradual tempo changes. ``tempo_points`` is the playback tempo curve:
+    # (beat_position, bpm) pairs, each setting the tempo from that point on
+    # (MIDI emits one Set Tempo per point; ``tempo`` above stays the nominal
+    # section tempo used for printed tempo marks). ``tempo_span_starts`` /
+    # ``tempo_span_stops`` place the printed "rit. - - -" / "accel. - - -"
+    # spanner (stop ``Fraction(-1)`` = end of bar), and ``tempo_texts``
+    # carries "a tempo" marks.
+    tempo_points: list[tuple[Fraction, float]] = field(default_factory=list)
+    tempo_span_starts: list[tuple[Fraction, str]] = field(default_factory=list)
+    tempo_span_stops: list[Fraction] = field(default_factory=list)
+    tempo_texts: list[tuple[Fraction, str]] = field(default_factory=list)
     # Natural-phrase metadata for the lilypond emitter's multi-bar repeat
     # detector. ``phrase_length`` is the length of the source groove (2 for a
     # two-bar groove, 1 for a one-bar groove); ``phrase_position`` is this
@@ -2519,6 +2530,8 @@ def _resolve_inheritance(sections: list[Section]) -> list[Section]:
             cues=merged_cues,
             lyrics=merged_lyrics,
             dynamic_spans=list(original.dynamic_spans) + list(section.dynamic_spans),
+            tempo_spans=list(original.tempo_spans) + list(section.tempo_spans),
+            a_tempos=list(original.a_tempos) + list(section.a_tempos),
             tempo=merged_tempo,
             time_signature=merged_time_signature,
             play=merged_play,
@@ -3741,9 +3754,216 @@ def compile_song(song: Song) -> IRSong:
         current_bar_number += len(new_bars)
 
     _attach_section_lyrics(sections, sections_ir, bars, global_ts)
+    _attach_tempo_changes(sections, sections_ir, bars, global_ts)
     _split_cross_bar_buzz_events(bars, global_bpb)
 
     return IRSong(metadata=song.metadata, bars=bars, sections=sections_ir)
+
+
+# Tempo assumed for playback when a chart declares none (matches midi.py).
+_DEFAULT_PLAYBACK_TEMPO = 120
+# Ending tempo of a ``rit`` / ``accel`` without ``to tempo N``, as a ratio
+# of the tempo in effect when the change starts.
+_TEMPO_SPAN_DEFAULT_RATIO = {"rit": Fraction(4, 5), "accel": Fraction(6, 5)}
+# Playback resolution of a gradual change: tempo steps per beat.
+_TEMPO_RAMP_STEPS_PER_BEAT = 4
+
+
+def _attach_tempo_changes(
+    sections: list[Section],
+    sections_ir: list[IRSection],
+    bars: list[IRBar],
+    global_ts: str,
+) -> None:
+    """Resolve ``rit`` / ``accel`` spans and ``a tempo`` lines onto bars.
+
+    Runs after the arrangement is laid out, like lyrics, so ``bar N`` indexes
+    each section's expanded bars, and so the tempo a section *ends* on is
+    known when the next one starts: a change still held at a section
+    boundary is undone there (the next section starts at its own tempo),
+    with a printed "a tempo" when that is the tempo the change left.
+    """
+    sounding: float | None = None  # tempo actually in effect at this point
+    prev_nominal: int | None = None
+    for section, ir_section in zip(sections, sections_ir):
+        if ir_section.bars == 0:
+            continue
+        start_idx = ir_section.start_bar - 1
+        nominal = ir_section.tempo if ir_section.tempo is not None else _DEFAULT_PLAYBACK_TEMPO
+        # A rit/accel still held from the previous section, returning to the
+        # same nominal tempo: nothing else marks the return, so print
+        # "a tempo" and add the playback point. (A section with a different
+        # tempo already prints its own tempo mark and MIDI already emits it.)
+        held = sounding is not None and sounding != prev_nominal
+        if held and nominal == prev_nominal:
+            first = bars[start_idx]
+            first.tempo_points.insert(0, (Fraction(0), float(nominal)))
+            first.tempo_texts.append((Fraction(0), "a tempo"))
+        sounding = _apply_section_tempo_changes(
+            section, ir_section, bars, global_ts, nominal
+        )
+        prev_nominal = nominal
+
+
+def _apply_section_tempo_changes(
+    section: Section,
+    ir_section: IRSection,
+    bars: list[IRBar],
+    global_ts: str,
+    nominal: int,
+) -> float:
+    """Attach one section's tempo changes; return the tempo it ends on."""
+    if not section.tempo_spans and not section.a_tempos:
+        return float(nominal)
+    start_idx = ir_section.start_bar - 1
+    name = section.name
+
+    def bar_at(offset: int) -> IRBar:
+        return bars[start_idx + offset]
+
+    def bpb_of(offset: int) -> int:
+        return _beats_per_bar(bar_at(offset).time_signature or global_ts)
+
+    def locate(bar_no: int, beat: str | None, line: int | None, what: str) -> tuple[int, Fraction]:
+        if not 1 <= bar_no <= ir_section.bars:
+            raise GrooveScriptError(
+                message=(
+                    f"Section {name!r}: {what} at bar {bar_no}, but the section "
+                    f"has {ir_section.bars} bar{'s' if ir_section.bars != 1 else ''}"
+                ),
+                line=line,
+            )
+        offset = bar_no - 1
+        if beat is None:
+            return offset, Fraction(0)
+        try:
+            return offset, _beat_label_to_fraction(beat, 1, bpb_of(offset))
+        except ValueError as exc:
+            raise GrooveScriptError(
+                message=f"Section {name!r}: {what}: {exc}",
+                line=line,
+            ) from None
+
+    # Gather changes as (start, end, kind, item) in section bar units, where
+    # a position is ``offset + fraction_of_bar``.
+    changes: list[tuple[Fraction, Fraction, str, object]] = []
+    for span in section.tempo_spans:
+        label = span.kind
+        s_off, s_pos = locate(span.from_bar, span.from_beat, span.line, label)
+        e_off, e_pos = locate(span.to_bar, span.to_beat, span.line, label)
+        start = s_off + s_pos
+        end = e_off + e_pos if span.to_beat is not None else Fraction(e_off + 1)
+        if end <= start:
+            raise GrooveScriptError(
+                message=f"Section {name!r}: `{label}` ends before it starts",
+                line=span.line,
+                hint="the `to bar` position must come after the `from bar` position",
+            )
+        changes.append((start, end, "span", span))
+    for at in section.a_tempos:
+        off, pos = locate(at.bar, at.beat, at.line, "`a tempo`")
+        changes.append((off + pos, off + pos, "a_tempo", at))
+    changes.sort(key=lambda c: (c[0], c[1]))
+
+    sounding = float(nominal)
+    previous_end: Fraction | None = None
+    previous_line: int | None = None
+    for start, end, kind, item in changes:
+        if previous_end is not None and start < previous_end:
+            raise GrooveScriptError(
+                message=(
+                    f"Section {name!r}: tempo changes overlap"
+                    + (f" (the one on line {previous_line} is still running)" if previous_line else "")
+                ),
+                line=item.line,
+                hint="start each rit/accel/a tempo after the previous change ends",
+            )
+        if kind == "a_tempo":
+            if sounding == nominal:
+                raise GrooveScriptError(
+                    message=(
+                        f"Section {name!r}: `a tempo` at bar {item.bar}, but the "
+                        f"tempo is already {nominal}"
+                    ),
+                    line=item.line,
+                    hint="`a tempo` returns to the section tempo after a rit or accel",
+                )
+            off = int(start)
+            bar_at(off).tempo_points.append((start - off, float(nominal)))
+            bar_at(off).tempo_texts.append((start - off, "a tempo"))
+            sounding = float(nominal)
+        else:
+            span = item
+            label = span.kind
+            if span.target is not None:
+                target = float(span.target)
+            else:
+                target = float(round(Fraction(sounding).limit_denominator(1000) * _TEMPO_SPAN_DEFAULT_RATIO[span.kind]))
+            if target < 1:
+                raise GrooveScriptError(
+                    message=f"Section {name!r}: `{label}` target tempo must be at least 1",
+                    line=span.line,
+                )
+            if span.kind == "rit" and target >= sounding:
+                raise GrooveScriptError(
+                    message=(
+                        f"Section {name!r}: `rit` to tempo {_fmt_bpm(target)} would not "
+                        f"slow down from {_fmt_bpm(sounding)}"
+                    ),
+                    line=span.line,
+                    hint="use `accel` to speed up, or pick a lower `to tempo`",
+                )
+            if span.kind == "accel" and target <= sounding:
+                raise GrooveScriptError(
+                    message=(
+                        f"Section {name!r}: `accel` to tempo {_fmt_bpm(target)} would not "
+                        f"speed up from {_fmt_bpm(sounding)}"
+                    ),
+                    line=span.line,
+                    hint="use `rit` to slow down, or pick a higher `to tempo`",
+                )
+            _add_tempo_ramp(bar_at, bpb_of, start, end, sounding, target)
+            s_off = int(start)
+            bar_at(s_off).tempo_span_starts.append((start - s_off, span.kind))
+            if span.to_beat is not None:
+                e_off = int(end)
+                bar_at(e_off).tempo_span_stops.append(end - e_off)
+            else:
+                bar_at(span.to_bar - 1).tempo_span_stops.append(Fraction(-1))
+            sounding = target
+        previous_end = end
+        previous_line = item.line
+    return sounding
+
+
+def _add_tempo_ramp(bar_at, bpb_of, start: Fraction, end: Fraction, begin_bpm: float, end_bpm: float) -> None:
+    """Add a stepped linear ramp from ``begin_bpm`` to ``end_bpm`` over
+    ``[start, end)`` (section bar units). Each step plays at the tempo the
+    curve reaches at the step's end, so the last step lands on ``end_bpm``.
+    """
+    points: list[Fraction] = [start]
+    offset = int(start)
+    while offset < end:
+        step = Fraction(1, bpb_of(offset) * _TEMPO_RAMP_STEPS_PER_BEAT)
+        k = 1
+        while True:
+            x = offset + k * step
+            if x >= offset + 1 or x >= end:
+                break
+            if x > start:
+                points.append(x)
+            k += 1
+        offset += 1
+    length = end - start
+    for idx, x in enumerate(points):
+        x_next = points[idx + 1] if idx + 1 < len(points) else end
+        bpm = begin_bpm + (end_bpm - begin_bpm) * float((x_next - start) / length)
+        off = int(x)
+        bar_at(off).tempo_points.append((x - off, round(bpm, 3)))
+
+
+def _fmt_bpm(bpm: float) -> str:
+    return str(int(bpm)) if float(bpm).is_integer() else f"{bpm:g}"
 
 
 def _attach_section_lyrics(

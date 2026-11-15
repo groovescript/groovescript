@@ -19,7 +19,9 @@ from .ast_nodes import (
     BreakSpec,
     CrashInSpec,
     Cue,
+    ATempo,
     DynamicSpan,
+    TempoSpan,
     Fill,
     FillBar,
     FillLine,
@@ -693,6 +695,8 @@ class _GrooveScriptTransformer(Transformer):
         cues: list[Cue] = []
         lyrics: list[LyricLine] = []
         dynamic_spans: list[DynamicSpan] = []
+        tempo_spans: list[TempoSpan] = []
+        a_tempos: list[ATempo] = []
         breaks: list[BreakSpec] = []
 
         for item in items[1:]:
@@ -751,6 +755,10 @@ class _GrooveScriptTransformer(Transformer):
                     lyrics.append(entry)
             elif key == "dynamic_span":
                 dynamic_spans.append(value)
+            elif key == "tempo_span":
+                tempo_spans.append(value)
+            elif key == "a_tempo":
+                a_tempos.append(value)
             elif key == "crash_in":
                 if crash_in is not None:
                     raise ValueError(
@@ -797,6 +805,8 @@ class _GrooveScriptTransformer(Transformer):
             cues=cues,
             lyrics=lyrics,
             dynamic_spans=dynamic_spans,
+            tempo_spans=tempo_spans,
+            a_tempos=a_tempos,
             tempo=tempo,
             time_signature=time_signature,
             play=play,
@@ -1221,6 +1231,42 @@ class _GrooveScriptTransformer(Transformer):
         bar = int(items[1])
         beat = _normalize_beat_label(str(items[2])) if len(items) > 2 else None
         return ("cue", Cue(text=text, bar=bar, beat=beat))
+
+    def tempo_beat(self, items):
+        return ("tempo_beat", _normalize_beat_label(str(items[0])))
+
+    def tempo_target(self, items):
+        return ("tempo_target", int(items[0]))
+
+    @v_args(meta=True)
+    def section_tempo_span_line(self, meta, items):
+        # [KIND, INT, (tempo_beat)?, INT, (tempo_beat)?, (tempo_target)?]
+        kind = {"ritardando": "rit", "accelerando": "accel"}.get(str(items[0]), str(items[0]))
+        bars: list[int] = []
+        beats: dict[int, str] = {}  # index into ``bars`` the beat belongs to
+        target = None
+        for item in items[1:]:
+            if isinstance(item, tuple) and item[0] == "tempo_beat":
+                beats[len(bars) - 1] = item[1]
+            elif isinstance(item, tuple) and item[0] == "tempo_target":
+                target = item[1]
+            else:
+                bars.append(int(item))
+        return ("tempo_span", TempoSpan(
+            kind=kind,
+            from_bar=bars[0],
+            to_bar=bars[1],
+            from_beat=beats.get(0),
+            to_beat=beats.get(1),
+            target=target,
+            line=_meta_line(meta),
+        ))
+
+    @v_args(meta=True)
+    def section_a_tempo_line(self, meta, items):
+        # [A_TEMPO, INT, (tempo_beat)?]
+        beat = items[2][1] if len(items) > 2 else None
+        return ("a_tempo", ATempo(bar=int(items[1]), beat=beat, line=_meta_line(meta)))
 
     @v_args(meta=True)
     def section_dynamic_line(self, meta, items):
