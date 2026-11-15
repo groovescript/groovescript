@@ -164,7 +164,7 @@ The editor runs the real GrooveScript compiler in your browser (via
   with [Verovio](https://www.verovio.org/). It sits beside the editor on
   wide screens; on a phone, tap **Preview** / **Edit** to switch. The PDF
   from LilyPond remains the reference rendering; the preview is for
-  proofreading as you go, and it draws beams and stems less carefully.
+  proofreading as you go, so spacing and some symbols differ.
 - **Playback** — **▶ Play** (or Ctrl/⌘+Enter) plays the chart's MIDI on a
   built-in synthesized kit, highlighting each note as it sounds. Tap any
   bar in the score to play from there. Edits made during playback are

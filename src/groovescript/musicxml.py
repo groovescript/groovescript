@@ -42,7 +42,7 @@ _DISPLAY: dict[str, tuple[str, int, str, str]] = {
     "SCS": ("C", 5, "x",        "up"),
     "HH":  ("G", 5, "x",        "up"),
     "OH":  ("G", 5, "circle-x", "up"),
-    "HF":  ("E", 3, "x",        "down"),
+    "HF":  ("D", 4, "x",        "down"),  # just below the staff, like LilyPond's hhp
     "RD":  ("F", 5, "x",        "up"),
     "RB":  ("F", 5, "diamond",  "up"),
     "CR":  ("A", 5, "x",        "up"),
@@ -467,6 +467,152 @@ def _musicxml_from_groove(groove: IRGroove) -> bytes:
 # ---------------------------------------------------------------------------
 
 def _add_notes(
+    parent: Element,
+    events: list[Event],
+    bar_divs: int,
+    beats_per_bar: int = 4,
+    beat_unit: int = 4,
+    beat_tuplets: list | None = None,
+) -> None:
+    """Append the measure's notes, then beam them and unify stems.
+
+    See :func:`_emit_notes` for the note layout and :func:`_beam_and_stem`
+    for the engraving pass.
+    """
+    _emit_notes(
+        parent, events, bar_divs,
+        beats_per_bar=beats_per_bar,
+        beat_unit=beat_unit,
+        beat_tuplets=beat_tuplets,
+    )
+    _beam_and_stem(parent, _beam_window_divs(beats_per_bar, beat_unit))
+
+
+# Number of beams for each beamable <type>.
+_BEAM_LEVELS: dict[str, int] = {
+    "eighth": 1, "16th": 2, "32nd": 3, "64th": 4, "128th": 5, "256th": 6,
+}
+
+# Children that must follow <beam> inside <note> (MusicXML schema order:
+# ... stem, notehead, notehead-text, staff, beam*, notations*, lyric*, play).
+_AFTER_BEAM = ("notations", "lyric", "play", "listen")
+
+
+def _beam_window_divs(beats_per_bar: int, beat_unit: int) -> int:
+    """Length in divisions of one beaming group, mirroring LilyPond's
+    default per-beat beaming: a quarter in simple meter, a dotted quarter in
+    compound eighth-note meter (6/8, 9/8, 12/8), a whole bar of 3/8."""
+    if beat_unit == 8 and beats_per_bar % 3 == 0:
+        return _DIVS_PER_BEAT * 3 // 2
+    return _DIVS_PER_BEAT
+
+
+def _beam_and_stem(measure: Element, window: int) -> None:
+    """Engraving pass over one single-voice measure.
+
+    The emitter writes every hit as one voice of chords (like the LilyPond
+    output), but each note carries its instrument's preferred stem
+    direction, so a hand+foot chord asked for stems both ways and nothing
+    was beamed. Here every chord, and every beamed group, gets one stem
+    direction (up when any hand-played note is present, else down), and
+    runs of eighth-or-shorter chords within a beat get <beam> elements,
+    with secondary beams and hooks for 16ths and shorter.
+    """
+    # Collect chords in order with their onsets. Grace notes take no time
+    # and are left alone; rests break beams.
+    chords: list[dict] = []
+    pos = 0
+    for note in measure.iter("note"):
+        if note.find("grace") is not None:
+            continue
+        if note.find("chord") is not None and chords:
+            chords[-1]["notes"].append(note)
+            continue
+        dur_el = note.find("duration")
+        dur = int(dur_el.text) if dur_el is not None else 0
+        type_el = note.find("type")
+        chords.append({
+            "notes": [note],
+            "onset": pos,
+            "end": pos + dur,
+            "rest": note.find("rest") is not None,
+            "levels": _BEAM_LEVELS.get(type_el.text if type_el is not None else "", 0),
+        })
+        pos += dur
+
+    for chord in chords:
+        if not chord["rest"]:
+            _set_stems(chord["notes"], _stem_for(chord["notes"]))
+
+    # Split into beam groups: consecutive beamable chords in one window.
+    groups: list[list[dict]] = []
+    current: list[dict] = []
+    current_window = -1
+    for chord in chords:
+        window_idx = chord["onset"] // window
+        beamable = (
+            not chord["rest"]
+            and chord["levels"] > 0
+            and (chord["end"] - 1) // window == window_idx
+        )
+        if not beamable or window_idx != current_window:
+            if len(current) > 1:
+                groups.append(current)
+            current = []
+            current_window = window_idx
+        if beamable:
+            current.append(chord)
+    if len(current) > 1:
+        groups.append(current)
+
+    for group in groups:
+        notes = [n for chord in group for n in chord["notes"]]
+        _set_stems(notes, _stem_for(notes))
+        depth = max(chord["levels"] for chord in group)
+        for level in range(1, depth + 1):
+            for idx, chord in enumerate(group):
+                if chord["levels"] < level:
+                    continue
+                prev = idx > 0 and group[idx - 1]["levels"] >= level
+                nxt = idx + 1 < len(group) and group[idx + 1]["levels"] >= level
+                if prev and nxt:
+                    value = "continue"
+                elif nxt:
+                    value = "begin"
+                elif prev:
+                    value = "end"
+                else:
+                    # Lone secondary beam: hook toward its neighbour.
+                    value = "forward hook" if idx == 0 else "backward hook"
+                # Beams go on the chord's first note only; readers such as
+                # Verovio treat a <beam> on a <chord/> member as a new beam.
+                _insert_beam(chord["notes"][0], level, value)
+
+
+def _stem_for(notes: list[Element]) -> str:
+    stems = {n.findtext("stem") for n in notes}
+    return "up" if "up" in stems or not stems - {None} else "down"
+
+
+def _set_stems(notes: list[Element], direction: str) -> None:
+    for note in notes:
+        stem = note.find("stem")
+        if stem is not None:
+            stem.text = direction
+
+
+def _insert_beam(note: Element, level: int, value: str) -> None:
+    beam = Element("beam", number=str(level))
+    beam.text = value
+    children = list(note)
+    for idx, child in enumerate(children):
+        if child.tag in _AFTER_BEAM:
+            note.insert(idx, beam)
+            return
+    note.append(beam)
+
+
+def _emit_notes(
     parent: Element,
     events: list[Event],
     bar_divs: int,

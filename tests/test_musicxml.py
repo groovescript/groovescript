@@ -812,3 +812,179 @@ groove "g":
         and n.find("notehead").get("parentheses") == "yes"
     ]
     assert len(sn_paren) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Engraving pass: beams and stem directions
+# ---------------------------------------------------------------------------
+
+def _song_measures(src: str) -> list[ET.Element]:
+    root = ET.fromstring(emit_musicxml(compile_song(parse(src))))
+    return root.findall(".//part/measure")
+
+
+def _chords(measure: ET.Element) -> list[list[ET.Element]]:
+    """Group a measure's non-grace notes into chords."""
+    chords: list[list[ET.Element]] = []
+    for note in measure.findall("note"):
+        if note.find("grace") is not None:
+            continue
+        if note.find("chord") is not None:
+            chords[-1].append(note)
+        else:
+            chords.append([note])
+    return chords
+
+
+def _beams(note: ET.Element) -> dict[str, str]:
+    return {b.get("number"): b.text for b in note.findall("beam")}
+
+
+_EIGHTHS = """\
+groove "g":
+  BD: 1, 3
+  SN: 2, 4
+  HH: *8
+section "s":
+  bars: 1
+  groove: "g"
+"""
+
+
+def test_eighth_notes_are_beamed_in_pairs_per_beat():
+    [m] = _song_measures(_EIGHTHS)
+    chords = _chords(m)
+    assert len(chords) == 8
+    assert [_beams(c[0]).get("1") for c in chords] == ["begin", "end"] * 4
+    # Beams sit on the chord's first note only.
+    assert all(n.find("beam") is None for c in chords for n in c[1:])
+
+
+def test_chords_and_beam_groups_share_one_stem_direction():
+    """Regression test: a hand+foot chord used to ask for stems both up
+    (hi-hat) and down (kick), which engravers resolve arbitrarily. Every
+    note in a beamed group now shares one direction, up when any hand-played
+    instrument is present."""
+    [m] = _song_measures(_EIGHTHS)
+    stems = {n.findtext("stem") for c in _chords(m) for n in c}
+    assert stems == {"up"}
+
+
+def test_feet_only_groups_keep_stems_down():
+    src = """\
+groove "g":
+  BD: 1, 1&, 2
+section "s":
+  bars: 1
+  groove: "g"
+"""
+    [m] = _song_measures(src)
+    notes = [c[0] for c in _chords(m)]
+    assert {n.findtext("stem") for n in notes} == {"down"}
+    assert [_beams(n) for n in notes[:2]] == [{"1": "begin"}, {"1": "end"}]
+
+
+def test_sixteenths_get_secondary_beams_and_hooks():
+    src = """\
+groove "g":
+  SN: 1, 1&, 1a, 2
+section "s":
+  bars: 1
+  groove: "g"
+"""
+    [m] = _song_measures(src)
+    first_beat = [c[0] for c in _chords(m)][:3]
+    # 1 (eighth), 1& (16th), 1a (16th): primary beam across all three,
+    # secondary beam joining the two 16ths.
+    assert [_beams(n) for n in first_beat] == [
+        {"1": "begin"},
+        {"1": "continue", "2": "begin"},
+        {"1": "end", "2": "end"},
+    ]
+
+
+def test_dotted_eighth_sixteenth_uses_backward_hook():
+    src = """\
+groove "g":
+  SN: 1, 1a, 2
+section "s":
+  bars: 1
+  groove: "g"
+"""
+    [m] = _song_measures(src)
+    a, b = [c[0] for c in _chords(m)][:2]
+    assert _beams(a) == {"1": "begin"}
+    assert _beams(b) == {"1": "end", "2": "backward hook"}
+
+
+def test_rests_and_quarter_notes_break_beams():
+    src = """\
+groove "g":
+  SN: 1&, 2, 3, 3&, 4
+section "s":
+  bars: 1
+  groove: "g"
+"""
+    [m] = _song_measures(src)
+    notes = m.findall("note")
+    # Beat 1 is an eighth rest then an eighth: a lone note, so no beam.
+    assert notes[0].find("rest") is not None
+    assert all(n.find("beam") is None for n in notes[:3])  # rest, 1&, quarter on 2
+    beamed = [n for n in notes if n.find("beam") is not None]
+    assert [_beams(n)["1"] for n in beamed] == ["begin", "end"]  # 3 / 3&
+
+
+def test_compound_meter_beams_by_dotted_quarter():
+    src = """\
+time_signature: 6/8
+groove "g":
+  HH: *8
+section "s":
+  bars: 1
+  groove: "g"
+"""
+    [m] = _song_measures(src)
+    values = [_beams(c[0]).get("1") for c in _chords(m)]
+    assert values == ["begin", "continue", "end"] * 2
+
+
+def test_tuplets_are_beamed_within_their_beat():
+    src = """\
+groove "g":
+  HH: 1, 2{sextuplet 1, 2, 3, 4, 5, 6}, 3, 4
+section "s":
+  bars: 1
+  groove: "g"
+"""
+    [m] = _song_measures(src)
+    sextuplet = [c[0] for c in _chords(m)][1:7]
+    assert [_beams(n)["1"] for n in sextuplet] == [
+        "begin", "continue", "continue", "continue", "continue", "end",
+    ]
+
+
+def test_beam_element_follows_notehead_and_precedes_notations():
+    src = _EIGHTHS.replace("SN: 2, 4", "SN: 2 accent, 4")
+    [m] = _song_measures(src)
+    for note in m.findall("note"):
+        tags = [child.tag for child in note]
+        if "beam" in tags:
+            assert tags.index("beam") > tags.index("notehead")
+            if "notations" in tags:
+                assert tags.index("beam") < tags.index("notations")
+
+
+def test_hihat_foot_sits_just_below_the_staff():
+    """Regression test: the hi-hat pedal (HF) was placed at E3, about an
+    octave below the staff, instead of D4 just under the bottom line
+    (where LilyPond's ``hhp`` and standard drum notation put it)."""
+    src = """\
+groove "g":
+  HF: 2, 4
+section "s":
+  bars: 1
+  groove: "g"
+"""
+    [m] = _song_measures(src)
+    hf = [n for n in m.findall("note") if n.find("unpitched") is not None]
+    assert {(n.findtext("unpitched/display-step"), n.findtext("unpitched/display-octave")) for n in hf} == {("D", "4")}
