@@ -2395,6 +2395,52 @@ def _validate_bar_targets(section: Section, total_bars: int) -> None:
         _check(f"cue {cue.text!r}", cue.bar)
 
 
+def _check_library_meter(
+    section: Section,
+    effective_ts: str,
+    library_grooves: set[str],
+    library_fills: set[str],
+    library_variations: set[str],
+) -> None:
+    """Reject built-in library entries used in a section that isn't in 4/4.
+
+    Every built-in groove, fill and variation is written as one bar of 4/4.
+    Used elsewhere they either fail with an unexplained "beat 4 is out of
+    range" (3/4, 2/4) or compile to the wrong music (6/8 maps their four
+    quarter-note beats onto the first four eighths). Name the entry instead.
+    """
+    if effective_ts == "4/4":
+        return
+    used: list[tuple[str, str]] = []
+    if section.play is not None:
+        used += [
+            ("groove", item.groove_name) for item in section.play
+            if isinstance(item, PlayGroove) and item.groove_name in library_grooves
+        ]
+    elif section.groove is not None and section.groove in library_grooves:
+        used.append(("groove", section.groove))
+    used += [
+        ("fill", fp.fill_name) for fp in section.fills
+        if fp.fill_name in library_fills
+    ]
+    used += [
+        ("variation", v.name) for v in section.variations
+        if v.is_reference and v.name in library_variations
+    ]
+    if used:
+        kind, name = used[0]
+        raise GrooveScriptError(
+            message=(
+                f"Section {section.name!r} is in {effective_ts}, but the built-in "
+                f"{kind} {name!r} is written for 4/4"
+            ),
+            hint=(
+                f"define your own {kind} in {effective_ts} (built-in entries are "
+                f"single bars of 4/4)"
+            ),
+        )
+
+
 def _validate_break_specs(specs: list[BreakSpec], section_name: str, total_bars: int) -> None:
     """Raise :class:`GrooveScriptError` for break specs that reference bars outside the section."""
     for spec in specs:
@@ -3176,8 +3222,12 @@ def compile_song(song: Song) -> IRSong:
 
     from .library import get_library_grooves
     library = get_library_grooves()
+    # Names resolved to built-in entries (not user definitions); the library
+    # is written in 4/4, which ``_check_library_meter`` enforces.
+    library_groove_names: set[str] = set()
     for name in referenced_grooves:
         if name not in groove_defs and name in library:
+            library_groove_names.add(name)
             groove_defs[name] = library[name]
             groove_bar_texts_map[name] = library[name].bar_texts
 
@@ -3227,8 +3277,10 @@ def compile_song(song: Song) -> IRSong:
             referenced_fills.add(fill.extend)
     from .library import get_library_fills
     library_fills = get_library_fills()
+    library_fill_names: set[str] = set()
     for name in referenced_fills:
         if name not in fill_map and name in library_fills:
+            library_fill_names.add(name)
             fill_map[name] = library_fills[name]
 
     _resolve_fill_extends(fill_map)
@@ -3238,6 +3290,7 @@ def compile_song(song: Song) -> IRSong:
     # variations take precedence over built-in library entries, and any
     # referenced name not defined locally is pulled from the library.
     variation_map: dict[str, VariationDef] = {v.name: v for v in song.variations}
+    library_variation_names: set[str] = set()
     referenced_variations: set[str] = set()
     for section in sections:
         for variation in section.variations:
@@ -3248,6 +3301,7 @@ def compile_song(song: Song) -> IRSong:
         library_variations = get_library_variations()
         for name in referenced_variations:
             if name not in variation_map and name in library_variations:
+                library_variation_names.add(name)
                 variation_map[name] = library_variations[name]
 
     # Count occurrences of base section names
@@ -3758,6 +3812,10 @@ def compile_song(song: Song) -> IRSong:
         effective_ts = section.time_signature if section.time_signature is not None else global_ts
         bpb = _beats_per_bar(effective_ts)
         beat_unit = _beat_unit(effective_ts)
+        _check_library_meter(
+            section, effective_ts, library_groove_names,
+            library_fill_names, library_variation_names,
+        )
 
         # Apply automatic numbering: "VERSE 1" instead of "VERSE" if "VERSE 2" exists
         base_name = section.name.lower()

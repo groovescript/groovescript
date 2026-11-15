@@ -789,7 +789,9 @@ GrooveScript includes a built-in library of common drum patterns that you
 can reference by name in your sections without defining them.
 
 Each built-in is a single bar of 4/4 and can be referenced from any
-section without a `groove "…":` block in your file. The **Notation**
+4/4 section without a `groove "…":` block in your file. Using one in a
+section in another meter is an error; define your own groove for it
+(a definition with the same name replaces the built-in). The **Notation**
 column shows the exact pattern lines, so you can see at a glance where
 the kick, snare, hats, and other voices land.
 
@@ -1120,7 +1122,8 @@ base — the base still compiles to its original events elsewhere.
 
 GrooveScript ships with a library of stock drum fills you can drop into
 any section without defining them in your file. Each entry is one bar
-of 4/4 and is referenced exactly like a user-defined fill:
+of 4/4 (so it can only be placed in 4/4 sections) and is referenced
+exactly like a user-defined fill:
 
 ```groovescript
 section "verse":
@@ -2018,7 +2021,8 @@ variations in the same section.
 ### Library of variations
 
 GrooveScript ships a built-in library of reusable variations that any
-section can reference without defining them locally:
+4/4 section can reference without defining them locally (they target
+4/4 beat positions, so other meters are rejected):
 
 | Name             | Actions                                          |
 |------------------|--------------------------------------------------|

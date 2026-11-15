@@ -620,8 +620,15 @@ def _parse_notes_tokens(notes_str: str) -> list[list[InstrumentHit]]:
             i += 1
             continue
 
+        if c == ")":
+            # A ``)`` with no matching ``(``: the identifier loop below stops
+            # on it without advancing, so it must be rejected here.
+            raise ValueError(f"unexpected ')' in notes: {notes_str!r}")
+
         if c == "(":
-            j = s.index(")", i)
+            j = s.find(")", i)
+            if j == -1:
+                raise ValueError(f"unclosed '(' in notes: {notes_str!r}")
             inner = s[i + 1 : j]
             # Finish any previous group before starting a new paren group.
             if current_group is not None:

@@ -1259,7 +1259,82 @@ def _add_rehearsal(parent: Element, name: str) -> None:
     rehearsal.text = name
 
 
+def _note_tuplet_ratio(note: Element) -> tuple[int, int] | None:
+    tm = note.find("time-modification")
+    if tm is None:
+        return None
+    return int(tm.findtext("actual-notes")), int(tm.findtext("normal-notes"))
+
+
+def _add_tuplet_notation(note: Element, kind: str) -> None:
+    """Attach ``<tuplet type=kind>`` to ``note``, creating ``<notations>`` in
+    schema order (after any ``<beam>``, before any ``<lyric>``)."""
+    notations = note.find("notations")
+    if notations is None:
+        notations = Element("notations")
+        children = list(note)
+        insert_at = len(children)
+        for idx, child in enumerate(children):
+            if child.tag == "lyric":
+                insert_at = idx
+                break
+        note.insert(insert_at, notations)
+    tuplet = Element("tuplet", number="1", type=kind)
+    if kind == "start":
+        tuplet.set("bracket", "yes")
+    notations.insert(0, tuplet)
+
+
+def _bracket_bare_tuplets(root: Element) -> None:
+    """Add ``<tuplet>`` start/stop notations to runs of time-modified notes
+    that were emitted without them.
+
+    The straight-grid path writes triplet notes (``1t``/``1l``, ``trip``/
+    ``let``, ``*8t``) as individual notes carrying ``<time-modification>``
+    only. Readers such as Verovio need the ``<tuplet>`` brackets to group
+    them; without them the notes import as plain eighths and every later
+    position in the score drifts. Explicit tuplet blocks already carry
+    brackets and are left alone.
+
+    A run closes once its notes add up to ``actual`` copies of its shortest
+    note (one complete tuplet), when the ratio changes, or when a
+    non-tuplet note interrupts it.
+    """
+    for measure in root.iter("measure"):
+        run: list[Element] = []
+        run_ratio: tuple[int, int] | None = None
+        run_sum = 0
+        run_min = 0
+
+        def _close(complete: bool) -> None:
+            nonlocal run, run_ratio, run_sum, run_min
+            if complete and len(run) >= 2:
+                _add_tuplet_notation(run[0], "start")
+                _add_tuplet_notation(run[-1], "stop")
+            run, run_ratio, run_sum, run_min = [], None, 0, 0
+
+        for note in measure.iter("note"):
+            if note.find("grace") is not None or note.find("chord") is not None:
+                continue
+            ratio = _note_tuplet_ratio(note)
+            already = note.find("notations/tuplet") is not None
+            if ratio is None or already:
+                _close(False)
+                continue
+            if run_ratio is not None and ratio != run_ratio:
+                _close(False)
+            dur = int(note.findtext("duration"))
+            run.append(note)
+            run_ratio = ratio
+            run_sum += dur
+            run_min = dur if run_min == 0 else min(run_min, dur)
+            if run_sum % (run_min * ratio[0]) == 0:
+                _close(True)
+        _close(False)
+
+
 def _serialize(root: Element) -> bytes:
+    _bracket_bare_tuplets(root)
     ET.indent(root, space="  ")
     buf = io.BytesIO()
     ElementTree(root).write(buf, encoding="UTF-8", xml_declaration=False)
