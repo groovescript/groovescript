@@ -16,14 +16,38 @@
   <header class="header">
     <span class="app-title">GrooveScript</span>
     <div class="header-actions">
+      <button id="btn-preview" class="action-btn secondary" aria-pressed="false" aria-controls="preview">Preview</button>
       <button id="btn-share" class="action-btn" aria-label="Share document">Share</button>
       <button id="btn-copy"  class="action-btn" aria-label="Copy document to clipboard">Copy</button>
     </div>
   </header>
 
-  <div class="editor-container">
-    <div id="editor"></div>
-  </div>
+  <main class="workspace">
+    <section class="pane editor-pane" aria-label="Chart source">
+      <div class="editor-container">
+        <div id="editor"></div>
+      </div>
+      <button id="problems" class="problems" data-level="loading" aria-live="polite"
+              title="Jump to the next problem">
+        <span class="problems-icon" aria-hidden="true"></span>
+        <span class="problems-text">Loading compiler…</span>
+      </button>
+    </section>
+
+    <section id="preview" class="pane preview-pane" aria-label="Score preview">
+      <div class="preview-toolbar">
+        <button id="btn-play" class="action-btn" disabled aria-label="Play">▶ Play</button>
+        <span id="play-pos" class="play-pos" aria-live="off"></span>
+        <span class="toolbar-spacer"></span>
+        <button id="btn-midi" class="tool-btn" disabled aria-label="Download MIDI file">MIDI</button>
+        <button id="btn-xml"  class="tool-btn" disabled aria-label="Download MusicXML file">MusicXML</button>
+      </div>
+      <div id="preview-note" class="preview-note" hidden></div>
+      <div id="score" class="score">
+        <p class="score-empty">The score appears here once the chart compiles.</p>
+      </div>
+    </section>
+  </main>
 
   <div id="symbol-bar" role="toolbar" aria-label="Symbol shortcuts"></div>
 

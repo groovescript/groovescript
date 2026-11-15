@@ -91,7 +91,7 @@ full language.
 
 **No terminal? No problem.** Write charts in the browser and render them to PDF from your phone:
 
-1. **[Open the web editor →](https://groovescript.github.io/groovescript/)** — write `.gs` files with syntax highlighting, no install required
+1. **[Open the web editor →](https://groovescript.github.io/groovescript/)** — write `.gs` files with syntax highlighting, live error checking, a score preview and playback; no install required
 2. **[Use the charts template →](https://github.com/groovescript/charts-template)** — one click to create a private GitHub repo that automatically renders every chart you commit to a PDF
 
 The template repo includes step-by-step instructions for the full iPhone workflow.
@@ -151,8 +151,43 @@ run `./scaffold-chart -h` to list available templates.
 ## Web editor
 
 **[Open the Web Editor →](https://groovescript.github.io/groovescript/)**
-Write and edit `.gs` files in the browser with syntax highlighting, then
-copy or share to your version-control workflow. No installation required.
+Write and edit `.gs` files in the browser, then copy or share them into
+your version-control workflow. No installation required.
+
+The editor runs the real GrooveScript compiler in your browser (via
+[Pyodide](https://pyodide.org/)), so as you type you get:
+
+- **Errors and warnings in place** — the same diagnostics as
+  `groovescript lint --style`, underlined in the text, with a problems bar
+  at the bottom (tap it to jump to the next one).
+- **A live score preview** — the chart engraved from its MusicXML export
+  with [Verovio](https://www.verovio.org/). It sits beside the editor on
+  wide screens; on a phone, tap **Preview** / **Edit** to switch. The PDF
+  from LilyPond remains the reference rendering; the preview is for
+  proofreading as you go, and it draws beams and stems less carefully.
+- **Playback** — **▶ Play** (or Ctrl/⌘+Enter) plays the chart's MIDI on a
+  built-in synthesized kit, highlighting each note as it sounds. Tap any
+  bar in the score to play from there. Edits made during playback are
+  picked up without stopping.
+- **Downloads** — the chart's `.mid` and `.musicxml` exports.
+
+The first visit downloads the compiler runtime (about 6 MB), and the
+first preview the score engraver (about 2 MB); both are cached afterwards.
+Editing still works offline or if the preview can't load.
+
+To work on the editor locally:
+
+```bash
+cd editors/web
+npm ci                                                 # also fetches Pyodide + Verovio
+uv run python scripts/build_py_bundle.py               # bundle src/groovescript for the browser
+python3 -m http.server 8000                            # then open http://localhost:8000/?local-deps
+npm test
+```
+
+`?local-deps` loads Pyodide and Verovio from `node_modules/` instead of
+the jsDelivr CDN. The compiler bundle (`editors/web/py/`) is generated,
+not committed; the Pages deploy builds it from `src/` every time.
 
 ## Editor integration
 

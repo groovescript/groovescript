@@ -24,6 +24,9 @@ src/groovescript/
   variation_library.gs # Built-in variation library (parsed at runtime)
   library.py           # Loader for groove / fill / variation libraries
   lint.py             # Style checker used by `lint --style`
+  web.py              # Browser entry point: build(source) -> diagnostics + MusicXML + MIDI (never raises)
+editors/web/          # Browser editor (CodeMirror). worker.js runs src/groovescript in Pyodide and
+                      #   engraves MusicXML with Verovio; player.js plays the MIDI on a synth kit
 tests/
   fixtures/           # .gs / .ly / .pdf reference files
   test_parser.py
@@ -79,6 +82,12 @@ lilypond -o output output.ly                           # Render to PDF
 ./release --minor                                      # Cut a minor release (--major also supported; see `./release --help`)
 ```
 
+## Web editor
+
+- The browser runs the same compiler: `editors/web/scripts/build_py_bundle.py` zips `src/groovescript` + `lark` into `editors/web/py/` (gitignored; built by the Pages deploy). `src/groovescript` must stay pure Python and read only its own package files
+- `web.build()` must never raise; every failure becomes a diagnostic dict
+- Pyodide / Verovio versions are pinned in `editors/web/deps.js` and `package.json` (a test keeps them in sync). Local dev: `npm ci`, build the bundle, serve `editors/web`, open with `?local-deps`
+
 ## Dependencies
 
 - `lark` (Python package; managed by `uv`)
@@ -93,7 +102,7 @@ After implementing a change that affects compiled output, always:
    `uv run groovescript compile tests/fixtures/<name>.gs -o tests/fixtures/<name>.ly`
 3. Render it to PDF: `lilypond -o tests/fixtures/<name> tests/fixtures/<name>.ly`
 4. Update relevant docs if user-visible behavior changed (`README.md`, `CLAUDE.md`)
-5. Update the Vim syntax plugin (`editors/vim/syntax/groovescript.vim`) and the web editor highlighter (`editors/web/gs-mode.js`) if new instruments, modifiers, or keywords were added
+5. Update the Vim syntax plugin (`editors/vim/syntax/groovescript.vim`) and the web editor highlighter (`editors/web/gs-mode.js`) if new instruments, modifiers, or keywords were added. New MIDI drum notes also need a voice in `editors/web/drumkit.js`
 6. Commit `.gs`, `.ly`, `.pdf`, updated docs, and code changes together
 
 `tests/test_fixtures_fresh.py` fails whenever a committed `.ly` under `tests/fixtures/`, `templates/` or `charts/` no longer matches the compiler's output (with the CLI's default `--compact`). Recompile and re-render the PDF rather than editing the test.
