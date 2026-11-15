@@ -191,11 +191,24 @@ section "chorus":
     add CR accent at 1
 ```
 
-Supported actions: `add`, `remove`, `replace`, and `substitute` (wipes
-the bar and replaces it with a count+notes body). Each action can
-target one instrument or a space-separated list. Supported modifiers
-are `ghost`, `accent`, `choke` (cymbals only), `flam`, `drag`, and
-`double`.
+Supported actions:
+
+- `add`, `remove`, `replace` — change which instruments play at given
+  beats. Each can target one instrument or a space-separated list.
+- `modify add` / `modify remove` — add or strip modifiers on hits that
+  are already there (`modify add flam to SN at 2`), without re-stating
+  the hit.
+- `substitute` — wipe the bar and replace it with a count+notes body.
+
+Common modifiers are `ghost`, `accent`, `flam`, `drag`, `choke`
+(ringing cymbals only), `double`, `buzz` and `fermata`; see
+[DSL reference → Modifiers](DSL_REFERENCE.md#modifiers) for the rules
+on each.
+
+If the same tweak recurs, define it once with a top-level
+`variation "name":` and point bars at it with `variation "name" at bars 4, 8`.
+A small [library of variations](DSL_REFERENCE.md#library-of-variations)
+(`crash-1`, `open-hat-4`, …) ships built in.
 
 Other useful refinements at this stage:
 
@@ -207,8 +220,9 @@ Other useful refinements at this stage:
 - **Crash-in**: `crash in` replaces the first cymbal hit of bar 1 with
   a crash — a common section entry.
 
-See [DSL reference → Variations](DSL_REFERENCE.md#variations)
-and the surrounding sections for full grammars.
+See [DSL reference → Variations](DSL_REFERENCE.md#variations) for the
+full grammar, and [DSL reference → Section](DSL_REFERENCE.md#section)
+for inheritance, meter, crash-in and dynamics.
 
 ## Iteration 5 — cues
 
@@ -275,6 +289,13 @@ haven't already) and build:
 the PDF alongside it — `charts/tutorial.pdf`.
 
 From here, browse [`DSL_REFERENCE.md`](DSL_REFERENCE.md) for anything
-this tutorial skipped: multi-bar grooves, triplet subdivisions, inline
-unnamed grooves, the `play:` arrangement form, bar text, dynamic spans,
-and more.
+this tutorial skipped:
+
+- [Multi-bar grooves](DSL_REFERENCE.md#groove) and
+  [groove extension](DSL_REFERENCE.md#groove-extension-extend)
+- [Triplets and tuplet groups](DSL_REFERENCE.md#tuplet-groups)
+- [Inline unnamed grooves](DSL_REFERENCE.md#inline-unnamed-grooves-inside-a-section)
+- [The `play:` arrangement form](DSL_REFERENCE.md#section-arrangement-play)
+  for sections built from several grooves, one-off bars and rests
+- [`break`](DSL_REFERENCE.md#break) for stops and silent bars
+- [Timed lyrics](DSL_REFERENCE.md#timed-lyrics), if you sing while you play

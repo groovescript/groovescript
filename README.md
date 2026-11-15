@@ -14,7 +14,8 @@ incremental chart-building.
 - **Sections** — the top-level song-structure units (intro, verse, chorus, bridge, …). Each section declares how many bars it runs, which groove it uses, and any fills or variations that occur inside it.
 - **Grooves** — named, reusable drum patterns that repeat for the duration of a section. Define once, reference everywhere.
 - **Fills** — short departures from the groove, placed at a specific bar and beat within a section (e.g., a bar-4 snare roll before the chorus).
-- **Variations** — time-anchored tweaks applied on top of the groove at a particular bar: add, remove, replace, or substitute individual notes without rewriting the whole pattern.
+- **Variations** — time-anchored tweaks applied on top of the groove at a particular bar: add, remove, replace, or re-articulate individual notes (or substitute the whole bar) without rewriting the groove.
+- **Cues and lyrics** — annotations for the reader: text cues ("vocals in", "guitar solo") at a bar/beat, and timed lyrics pinned to exact beat positions for drummers who sing.
 
 ## Minimal chart
 
@@ -44,9 +45,9 @@ section "outro":
   bars: 4
 ```
 
-From here, iterate: fill in the grooves (step 2 of the tutorial), swap
-placeholder fills for real ones (step 3), add variations (step 4), and
-cues (step 5).
+From here, iterate: the [tutorial](docs/TUTORIAL.md) starts from a chart
+like this one and walks through filling in grooves, swapping placeholder
+fills for real ones, adding variations, and placing cues.
 
 Transcribed and placeholder grooves can be mixed within one section;
 see the [Placeholder grooves](docs/DSL_REFERENCE.md#placeholder-grooves)
@@ -81,11 +82,8 @@ section "chorus":
   groove: "money beat"
 ```
 
-More complete fixtures — including tuplet groups, mixed subdivisions,
-meter changes, dynamic spans, swing feel, and timed lyrics — live under
-`tests/fixtures/`, each with its compiled `.ly` and rendered `.pdf`
-committed alongside the `.gs` source. See `DSL_REFERENCE.md` for the
-full language.
+See [`DSL_REFERENCE.md`](docs/DSL_REFERENCE.md) for the full language,
+and [Documentation](#documentation) for worked examples.
 
 ## Get started
 
@@ -96,31 +94,27 @@ full language.
 
 The template repo includes step-by-step instructions for the full iPhone workflow.
 
----
+**Prefer working locally?** Install the CLI (below) and follow
+[`GETTING_STARTED.md`](docs/GETTING_STARTED.md).
 
 ## Documentation
 
-- **[`GETTING_STARTED.md`](docs/GETTING_STARTED.md)** — install GrooveScript and
-  render your first chart.
-- **[`TUTORIAL.md`](docs/TUTORIAL.md)** — guided walkthrough that builds up a
-  multi-section chart step by step (metadata, form, grooves, placeholder
-  fills, variations, real fills).
-- **[`DSL_REFERENCE.md`](docs/DSL_REFERENCE.md)** — comprehensive, topic-indexed
-  reference for every language feature. This is the one to search while
-  you're writing a chart.
+| Doc | Read it when… |
+|---|---|
+| [`GETTING_STARTED.md`](docs/GETTING_STARTED.md) | You want to install GrooveScript and render your first chart. |
+| [`TUTORIAL.md`](docs/TUTORIAL.md) | You want a guided walkthrough that builds up a multi-section chart step by step (form, grooves, fills, variations, cues). |
+| [`DSL_REFERENCE.md`](docs/DSL_REFERENCE.md) | You're writing a chart and need the exact syntax or rules for a feature. Topic-indexed; the one to search. |
+| [`editors/vim/`](editors/vim/README.md) | You want syntax highlighting in Vim / Neovim. |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | You're changing GrooveScript itself (tests, fixtures, source layout). |
+| [`LYRICS_SPEC.md`](docs/LYRICS_SPEC.md) | You want the design rationale behind timed lyrics (a design spec, not user docs). |
+
+Worked examples — tuplet groups, mixed subdivisions, meter changes,
+dynamic spans, swing feel, timed lyrics and more — live under
+[`tests/fixtures/`](tests/fixtures/), each `.gs` committed with its
+compiled `.ly` and rendered `.pdf`. Starter charts live under
+[`templates/`](templates/).
 
 See [GitHub Issues](https://github.com/groovescript/groovescript/issues) for bugs and roadmap.
-
-## Security
-
-**Only compile `.gs` files you trust.**
-
-GrooveScript compiles source files on your local machine and passes the
-generated LilyPond output to the `lilypond` binary for rendering. A malicious
-`.gs` file could embed arbitrary content in the generated `.ly` file; depending
-on your LilyPond version and configuration, that content may be able to read or
-write files on your system. Never compile `.gs` files received from untrusted
-sources without inspecting them first.
 
 ## Installation
 
@@ -130,23 +124,58 @@ sources without inspecting them first.
 
 This installs `uv`, `lilypond` (via `brew` on macOS or `apt` on Linux), and
 Python dependencies in one shot. See
-[`GETTING_STARTED.md`](docs/GETTING_STARTED.md) for the full walkthrough.
+[`GETTING_STARTED.md`](docs/GETTING_STARTED.md) for the manual steps.
 
 ## Usage
+
+### Wrapper scripts
 
 Charts live in the `charts/` directory. Two wrapper scripts in the repo
 root handle the common workflow:
 
 ```bash
-# Create charts/my-song.gs from a template
+# Create charts/my-song.gs from a template (default: rock)
 ./scaffold-chart my-song
+./scaffold-chart -t funk my-song    # pick another template; -h lists them
 
 # Compile charts/my-song.gs → charts/my-song.ly → charts/my-song.pdf
 ./build-pdf my-song
+./build-pdf -v my-song              # show each step
 ```
 
-`./scaffold-chart -t <template>` picks a non-default starting template;
-run `./scaffold-chart -h` to list available templates.
+### Command-line interface
+
+The wrappers call the `groovescript` CLI, which you can also run directly:
+
+```bash
+# .gs → LilyPond (render to PDF with: lilypond -o output output.ly)
+uv run groovescript compile input.gs -o output.ly
+
+# Parse + compile check only, no output. --style adds stylistic warnings
+# (unused grooves/fills, mixed groove styles, dangling `like` refs, …)
+uv run groovescript lint input.gs
+uv run groovescript lint --style input.gs
+
+# Export to MIDI (GM drums on channel 10)
+uv run groovescript midi input.gs -o output.mid
+
+# Export to MusicXML (experimental — less tested than LilyPond output)
+uv run groovescript musicxml input.gs -o output.xml
+```
+
+Every subcommand accepts `--watch` to re-run on each save until Ctrl-C.
+`compile` also takes:
+
+- `--no-compact` — by default, runs of identical bars collapse into one
+  repeat block (12 identical bars print as "Play 12x" rather than three
+  "Play 4x" blocks). Section boundaries, fills, variations, cues, bar text,
+  dynamic spans and time-signature changes still break a run.
+  `--no-compact` keeps the implicit 4-bar phrase chunking instead.
+- `--lyrics-style staff|line|off` — how [timed lyrics](docs/DSL_REFERENCE.md#timed-lyrics)
+  are engraved: a small vocal rhythm staff above the drums (`staff`, the
+  default), a lyrics line under the drums (`line`), or left out (`off`).
+  Overrides the chart's `lyrics_style:` metadata. `musicxml` accepts
+  `--lyrics-style off` to drop the vocal part.
 
 ## Web editor
 
@@ -175,7 +204,44 @@ The first visit downloads the compiler runtime (about 6 MB), and the
 first preview the score engraver (about 2 MB); both are cached afterwards.
 Editing still works offline or if the preview can't load.
 
-To work on the editor locally:
+To work on the editor itself, see [Development](#development).
+
+## Editor integration
+
+A Vim / Neovim syntax-highlighting plugin lives in
+[`editors/vim/`](editors/vim/README.md). The README there covers
+installation on macOS via Homebrew Vim/MacVim/Neovim, using vim-plug or
+Vim's native package loader.
+
+## Security
+
+**Only compile `.gs` files you trust.**
+
+GrooveScript compiles source files on your local machine and passes the
+generated LilyPond output to the `lilypond` binary for rendering. A malicious
+`.gs` file could embed arbitrary content in the generated `.ly` file; depending
+on your LilyPond version and configuration, that content may be able to read or
+write files on your system. Never compile `.gs` files received from untrusted
+sources without inspecting them first.
+
+## Development
+
+```bash
+# Run the test suite
+uv run pytest
+
+# Compile a fixture and render it end-to-end
+uv run groovescript compile tests/fixtures/full_song_example.gs \
+  -o tests/fixtures/full_song_example.ly
+lilypond -o tests/fixtures/full_song_example tests/fixtures/full_song_example.ly
+
+# Cut a release (patch by default; --minor / --major also supported).
+# Bumps pyproject.toml, commits, pushes, tags vX.Y.Z, creates a GitHub release.
+./release
+./release --help     # full flag list (--title, --notes, --notes-file, --dry-run)
+```
+
+To work on the web editor locally:
 
 ```bash
 cd editors/web
@@ -189,71 +255,5 @@ npm test
 the jsDelivr CDN. The compiler bundle (`editors/web/py/`) is generated,
 not committed; the Pages deploy builds it from `src/` every time.
 
-## Editor integration
-
-A Vim / Neovim syntax-highlighting plugin lives in
-[`editors/vim/`](editors/vim/README.md). The README there covers
-installation on macOS via Homebrew Vim/MacVim/Neovim, using vim-plug or
-Vim's native package loader.
-
-## Development
-
-```bash
-# Run the test suite
-uv run pytest
-
-# Compile a fixture and render it end-to-end
-uv run groovescript compile tests/fixtures/full_song_example.gs \
-  -o tests/fixtures/full_song_example.ly
-lilypond -o tests/fixtures/full_song_example tests/fixtures/full_song_example.ly
-
-# Compile collapses long runs of identical bars into a single repeat block
-# by default (e.g. 12 identical bars become "Play 12x" rather than three
-# "Play 4x" blocks). Section boundaries, fills, variations, cues, bar text,
-# dynamic spans, and time-signature changes are still respected. Pass
-# --no-compact to keep the implicit 4-bar phrase chunking instead.
-uv run groovescript compile input.gs -o output.ly --no-compact
-
-# Charts with timed lyrics (`lyrics:` blocks) engrave a small vocal rhythm
-# staff above the drums by default. Pick a lyrics line under the drums
-# instead, or leave the words out entirely:
-uv run groovescript compile input.gs -o output.ly --lyrics-style line
-uv run groovescript compile input.gs -o output.ly --lyrics-style off
-
-# Lint a .gs file (parse + compile check, no LilyPond output)
-uv run groovescript lint input.gs
-
-# Export a .gs file to MIDI
-uv run groovescript midi input.gs -o output.mid
-
-# Export a .gs file to MusicXML (experimental — less tested than LilyPond output)
-uv run groovescript musicxml input.gs -o output.xml
-
-# Cut a release (patch by default; --minor / --major also supported).
-# Bumps pyproject.toml, commits, pushes, tags vX.Y.Z, creates a GitHub release.
-./release
-./release --help     # full flag list (--title, --notes, --notes-file, --dry-run)
-```
-
-Source layout:
-
-```
-src/groovescript/
-  cli.py              # argparse entry point (compile, lint, midi, musicxml, --watch)
-  parser.py           # Lark grammar → AST (via Transformer)
-  ast_nodes.py        # AST dataclasses
-  compiler.py         # AST → IR (flat event list per bar)
-  lilypond.py         # IR → LilyPond source
-  midi.py             # IR → MIDI file bytes (Format 1, GM drums on channel 10)
-  lyrics.py           # Implied-duration rhythm for timed lyrics
-  musicxml.py         # IR → MusicXML
-  lint.py             # Style checker used by `lint --style`
-  grammar.lark        # Lark EBNF grammar
-  groove_library.gs     # Built-in groove library
-  fill_library.gs       # Built-in fill library
-  variation_library.gs  # Built-in variation library
-  library.py            # Loader for groove / fill / variation libraries
-  lilypond_template.ly  # Static LilyPond boilerplate
-tests/
-  fixtures/           # .gs / .ly / .pdf reference files
-```
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the source layout, the
+fixture workflow and the checklist to follow after each change.

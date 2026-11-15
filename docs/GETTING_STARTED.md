@@ -1,6 +1,9 @@
 # Getting started with GrooveScript
 
-This guide walks you from zero to a rendered drum chart PDF. For a deeper
+This guide walks you from zero to a rendered drum chart PDF on your own
+machine. If you'd rather not install anything, the
+[web editor](https://groovescript.github.io/groovescript/) runs the same
+compiler in your browser. For a deeper
 walkthrough of every language feature, see [`TUTORIAL.md`](TUTORIAL.md). For
 a searchable reference of the DSL, see [`DSL_REFERENCE.md`](DSL_REFERENCE.md).
 
@@ -75,17 +78,30 @@ Under the hood `./build-pdf` runs `uv run groovescript compile` followed
 by `lilypond -o`, but you should almost never need to invoke those
 directly.
 
-## 4. What to read next
+## 4. Check, export, and iterate
+
+A few more commands are handy while you work (run from the repo root):
+
+```bash
+uv run groovescript lint --style charts/first.gs              # check for errors + style warnings
+uv run groovescript compile charts/first.gs -o charts/first.ly --watch  # recompile on save
+uv run groovescript midi charts/first.gs -o charts/first.mid  # MIDI for playback
+```
+
+See [Usage in the README](../README.md#command-line-interface) for every
+command and flag.
+
+## 5. What to read next
 
 - **Want a guided walkthrough of the language?** Read
   [`TUTORIAL.md`](TUTORIAL.md). It builds up a real chart piece by piece,
   introducing metadata, form, grooves, placeholder fills, variations, and
   real fills in order.
 - **Looking up a specific feature?** Search [`DSL_REFERENCE.md`](DSL_REFERENCE.md).
-  It's organized by topic (metadata, instruments, beat labels, grooves,
-  fills, sections, variations, modifiers) and is the authoritative reference
+  It's organized by topic (metadata, instruments, beat labels, modifiers,
+  grooves, fills, sections, variations) and is the authoritative reference
   for the DSL.
 - **Editor integration.** A Vim / Neovim syntax-highlighting plugin lives in
-  [`editors/vim/`](editors/vim/README.md).
+  [`editors/vim/`](../editors/vim/README.md).
 - **More examples.** The `tests/fixtures/` directory has `.gs` files with
   their compiled `.ly` and rendered `.pdf` committed alongside.
