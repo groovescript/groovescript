@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -90,3 +91,55 @@ def test_library_groove_shuffle():
     assert any(e.instrument == "HH" and e.beat_position == 0 for e in ir.bars[0].events)
     from fractions import Fraction
     assert any(e.instrument == "HH" and e.beat_position == Fraction(2, 12) for e in ir.bars[0].events)
+
+
+def test_library_diagnostics_do_not_point_into_users_file():
+    """Regression: library entries kept the line numbers of the library .gs
+    files, so a warning or error coming from a library groove or variation
+    was rendered against an unrelated line of the user's file (or past its
+    end)."""
+    from groovescript.compiler import compile_song
+    from groovescript.lint import check_notation
+    from groovescript.parser import parse
+
+    src = (
+        'section "a":\n  bars: 1\n  groove: "rock"\n'
+        '  variation "flam-backbeat" at bar 1\n'
+    )
+    warnings = check_notation(compile_song(parse(src)))
+    assert warnings, "expected the flam playability warning"
+    assert all(w.line is None for w in warnings)
+
+
+@pytest.mark.parametrize("ts, body, kind, name", [
+    ("3/4", '  groove: "rock"\n', "groove", "rock"),
+    ("6/8", '  groove: "rock"\n', "groove", "rock"),
+    ("6/8", '  play:\n    groove "funk" x1\n', "groove", "funk"),
+    ("5/4", '  groove: "mine"\n  fill "tom-roll" at bar 1\n', "fill", "tom-roll"),
+    ("6/8", '  groove: "mine"\n  variation "open-hat-4&" at bar 1\n', "variation", "open-hat-4&"),
+])
+def test_library_entries_outside_four_four_are_rejected_by_name(ts, body, kind, name):
+    """Regression: built-in entries are written in 4/4 but were not guarded.
+    In 3/4 they failed with an unexplained "Beat number 4 is out of range";
+    in 6/8 and 5/4 they silently compiled to the wrong music."""
+    from groovescript.errors import GrooveScriptError
+
+    src = (
+        f"time_signature: {ts}\n"
+        'groove "mine":\n  BD: 1\n'
+        f'section "A":\n  bars: 1\n{body}'
+    )
+    with pytest.raises(GrooveScriptError, match=f"built-in {kind} '{re.escape(name)}' is written for 4/4"):
+        compile_song(parse(src))
+
+
+def test_user_groove_shadowing_library_name_works_in_other_meters():
+    """A user definition named like a built-in is the user's, not the
+    library's, so the 4/4 guard must not apply to it."""
+    src = (
+        "time_signature: 6/8\n"
+        'groove "rock":\n  BD: 1, 4\n  SN: 6\n'
+        'section "A":\n  bars: 1\n  groove: "rock"\n'
+    )
+    song = compile_song(parse(src))
+    assert len(song.bars[0].events) == 3

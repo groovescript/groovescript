@@ -71,10 +71,10 @@ class StyleWarning:
 # line styles in a textual pass. These mirror the patterns in
 # ``grammar.lark`` (and ``parser._PP_INSTRUMENT_RE`` / ``_PP_BEAT_LABEL_RE``).
 _INSTRUMENT_RE = (
-    r"(?:SRS|SCS|cross-stick|rimshot|floortom|hightom|hitom|lowtom|midtom"
-    r"|openhat|hihatfoot|footchick|hihat|snare|crash|click"
+    r"(?:SRS|SCS|scs|cross-stick|hi-hat-foot|hi-hat|foot-chick|rimshot|floortom|hightom|hitom|lowtom|midtom"
+    r"|openhat|hihatfoot|footchick|hihat|snare|secondcrash|splash|stack|china|crash2|crash|click"
     r"|ridebell|cowbell|bell|ride|bass|kick|open|hat"
-    r"|BD|bd|SN|sn|OH|oh|RD|rd|RB|rb|CR|cr|CB|cb|FT|ft|HH|hh|HT|ht|MT|mt|HF|hf)"
+    r"|BD|bd|SN|sn|OH|oh|RD|rd|RB|rb|CR2|cr2|CR|cr|CB|cb|CH|ch|FT|ft|HH|hh|HT|ht|MT|mt|HF|hf|SP|sp|ST|st)"
 )
 _BEAT_LABEL_RE = r"[1-9][0-9]?(?:trip|let|and|[e&atl])?"
 

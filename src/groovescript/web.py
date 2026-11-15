@@ -98,6 +98,19 @@ def _warning_diagnostic(w: StyleWarning, source: str, severity: str) -> dict:
     }
 
 
+def _plain_error(exc: ValueError, source: str) -> dict:
+    """Diagnostic for a ``ValueError`` raised by the compiler or emitters.
+
+    Many user mistakes (an unknown groove name, a beat out of range) are
+    still raised as plain ``ValueError`` without a source location. The CLI
+    renders those as ordinary errors, so the editor does the same rather
+    than calling them internal errors.
+    """
+    return _error_diagnostic(
+        GrooveScriptError(message=str(exc), filename=EDITOR_FILENAME), source
+    )
+
+
 def build(source: str, *, style: bool = True, outputs: bool = True) -> BuildResult:
     """Parse, compile and (optionally) emit ``source``.
 
@@ -112,6 +125,9 @@ def build(source: str, *, style: bool = True, outputs: bool = True) -> BuildResu
         song = parse(source, filename=EDITOR_FILENAME)
     except GrooveScriptError as err:
         result.diagnostics.append(_error_diagnostic(err, source))
+        return result
+    except ValueError as exc:  # a user mistake reported without a location
+        result.diagnostics.append(_plain_error(exc, source))
         return result
     except Exception as exc:  # defence-in-depth: never let a bug kill the worker
         result.diagnostics.append(_internal_error(exc, source))
@@ -138,12 +154,18 @@ def build(source: str, *, style: bool = True, outputs: bool = True) -> BuildResu
     except GrooveScriptError as err:
         result.diagnostics.append(_error_diagnostic(err, source))
         return result
+    except ValueError as exc:  # a user mistake reported without a location
+        result.diagnostics.append(_plain_error(exc, source))
+        return result
     except Exception as exc:
         result.diagnostics.append(_internal_error(exc, source))
         return result
 
-    for w in check_notation(ir):
-        result.diagnostics.append(_warning_diagnostic(w, source, "warning"))
+    try:
+        for w in check_notation(ir):
+            result.diagnostics.append(_warning_diagnostic(w, source, "warning"))
+    except Exception:  # playability hints are advisory; never block a build
+        pass
 
     if isinstance(ir, IRSong):
         result.bar_count = len(ir.bars)
@@ -156,6 +178,9 @@ def build(source: str, *, style: bool = True, outputs: bool = True) -> BuildResu
             result.midi = emit_midi(ir)
         except GrooveScriptError as err:
             result.diagnostics.append(_error_diagnostic(err, source))
+            result.musicxml = result.midi = None
+        except ValueError as exc:
+            result.diagnostics.append(_plain_error(exc, source))
             result.musicxml = result.midi = None
         except Exception as exc:
             result.diagnostics.append(_internal_error(exc, source))

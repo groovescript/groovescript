@@ -3,6 +3,8 @@ through Pyodide. It must never raise: every outcome is data."""
 
 from pathlib import Path
 
+import pytest
+
 from groovescript.midi import emit_midi
 from groovescript.musicxml import emit_musicxml
 from groovescript.compiler import compile_song
@@ -196,3 +198,19 @@ def test_vocabulary_library_matches_the_compiler_libraries():
     assert {e["name"] for e in library["variations"]} == set(get_library_variations())
     rock = next(e for e in library["grooves"] if e["name"] == "rock")
     assert rock["text"].startswith('groove "rock":\n  ')
+
+
+@pytest.mark.parametrize("src, message", [
+    ('section "v":\n  bars: 2\n  groove: "nope"\n', "unknown groove 'nope'"),
+    ('groove "g":\n  BD: 1, 9\nsection "a":\n  bars: 1\n  groove: "g"\n',
+     "Beat number 9 is out of range"),
+])
+def test_plain_value_errors_are_user_errors_not_internal(src, message):
+    """Regression: ordinary mistakes raised by the compiler as plain
+    ``ValueError`` were reported as "internal error ... please report this"
+    in the editor, while the CLI shows them as normal errors."""
+    result = build(src)
+    errors = [d for d in result.diagnostics if d["severity"] == "error"]
+    assert len(errors) == 1
+    assert message in errors[0]["message"]
+    assert "internal error" not in errors[0]["message"]

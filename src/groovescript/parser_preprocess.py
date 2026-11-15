@@ -48,10 +48,9 @@ _BARE_SUFFIX_TOKENS: dict[str, str] = {
 }
 
 # Instrument tokens recognized by the preprocessor. Must stay in sync with
-# grammar.lark's INSTRUMENT terminal (minus the `hi-hat` variant which is
-# only accepted inside count+notes string bodies, not on DSL lines).
+# grammar.lark's INSTRUMENT terminal.
 _PP_INSTRUMENT_RE = (
-    r"(?:SRS|SCS|cross-stick|rimshot|floortom|hightom|hitom|lowtom|midtom"
+    r"(?:SRS|SCS|scs|cross-stick|hi-hat-foot|hi-hat|foot-chick|rimshot|floortom|hightom|hitom|lowtom|midtom"
     r"|openhat|hihatfoot|footchick|hihat|snare|secondcrash|splash|stack|china|crash2|crash|click"
     r"|ridebell|cowbell|bell|ride|bass|kick|open|hat"
     r"|BD|bd|SN|sn|OH|oh|RD|rd|RB|rb|CR2|cr2|CR|cr|CB|cb|CH|ch|FT|ft|HH|hh|HT|ht|MT|mt|HF|hf|SP|sp|ST|st)"

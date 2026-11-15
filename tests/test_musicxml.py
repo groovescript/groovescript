@@ -1041,3 +1041,24 @@ section "s":
     marked = sum(1 for n in notes if n.find("notations/technical/open-string") is not None)
     assert marked == 2
     assert "circle-x" not in emit_musicxml(compile_song(parse(src))).decode()
+
+
+def test_straight_path_triplets_carry_tuplet_brackets():
+    """Regression: triplets written with ``t``/``l`` labels were emitted with
+    ``<time-modification>`` but no ``<tuplet>`` start/stop, so Verovio (the
+    web editor's renderer) read them as plain eighths and every later note,
+    highlight and seek position drifted."""
+    src = (
+        'groove "g":\n  HH: 1, 1t, 1l, 2, 2t, 2l, 3, 4\n  BD: 1\n'
+        'section "A":\n  bars: 1\n  groove: "g"\n'
+    )
+    root = _parse_xml(emit_musicxml(compile_song(parse(src))))
+    notes = [
+        n for n in _measures(root)[0].iter("note")
+        if n.find("chord") is None
+    ]
+    kinds = [
+        [t.get("type") for t in n.findall("notations/tuplet")] for n in notes
+    ]
+    triplet_notes = [k for n, k in zip(notes, kinds) if n.find("time-modification") is not None]
+    assert triplet_notes == [["start"], [], ["stop"], ["start"], [], ["stop"]]

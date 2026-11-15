@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -622,3 +623,36 @@ fill "mix":
     assert set(by_name.keys()) == {"SN", "BD"}
     assert "accent" in by_name["SN"].modifiers
     assert by_name["BD"].modifiers == []
+
+
+@pytest.mark.parametrize("notes, message", [
+    ("SN, BD)", "unexpected ')'"),
+    ("SN)", "unexpected ')'"),
+    ("(SN, BD", "unclosed '('"),
+])
+def test_unbalanced_parens_in_notes_string_raise(notes, message):
+    """Regression: a stray ``)`` in a notes string looped forever (the token
+    reader stopped on it without advancing), hanging lint, compile and the
+    web editor; an unclosed ``(`` failed with a raw "substring not found"."""
+    from groovescript.parser_notation import _parse_notes_tokens
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        _parse_notes_tokens(notes)
+
+
+@pytest.mark.parametrize("src", [
+    'fill "f":\n  count: 1 2\n  notes: accent SN\n'
+    'section "s":\n  bars: 1\n  fill "f" at bar 1\n',
+    'groove "g":\n  count: "1 2 3 4"\n  notes: "BD, SN)"\n'
+    'section "a":\n  bars: 1\n  groove: "g"\n',
+])
+def test_notes_string_error_points_at_notes_line(src):
+    """Regression: syntax errors inside a ``notes:`` string were reported at
+    the ``count:`` line above it (fill form) or with no location at all
+    (groove form)."""
+    from groovescript.errors import GrooveScriptError
+    from groovescript.parser import parse
+
+    with pytest.raises(GrooveScriptError) as excinfo:
+        parse(src)
+    assert excinfo.value.line == 3

@@ -126,6 +126,23 @@ def _checked_time_signature(token) -> str:
         )
     return text
 
+
+def _located_notes_tokens(token, notes_str: str):
+    """Parse a ``notes:`` string, reporting syntax errors at the string's own
+    position (``token``) rather than at the start of the enclosing rule,
+    which is the ``count:`` line above it."""
+    try:
+        return _parse_notes_tokens(notes_str)
+    except GrooveScriptError:
+        raise
+    except ValueError as err:
+        raise GrooveScriptError(
+            message=str(err),
+            line=getattr(token, "line", None),
+            column=getattr(token, "column", None),
+            length=len(str(token)),
+        ) from err
+
 class _GrooveScriptTransformer(Transformer):
     def __init__(self):
         super().__init__()
@@ -270,6 +287,9 @@ class _GrooveScriptTransformer(Transformer):
     def groove_cn_body(self, items):
         count_str = _ast.literal_eval(str(items[0]))
         notes_str = _ast.literal_eval(str(items[1]))
+        # Validated here, where the source position is known; the compiler
+        # expands it again later.
+        _located_notes_tokens(items[1], notes_str)
         return {"count_notes": (count_str, notes_str)}
 
     def extend_body(self, items):
@@ -572,7 +592,7 @@ class _GrooveScriptTransformer(Transformer):
             note_groups = [[InstrumentHit("SN")] for _ in beat_labels]
         else:
             notes_str = _ast.literal_eval(str(items[1]))
-            note_groups = _parse_notes_tokens(notes_str)
+            note_groups = _located_notes_tokens(items[1], notes_str)
             if len(beat_labels) != len(note_groups):
                 raise ValueError(
                     _format_count_notes_mismatch("fill block", count_str, notes_str)
@@ -1558,6 +1578,7 @@ class _GrooveScriptTransformer(Transformer):
         # items: [ESCAPED_STRING count, ESCAPED_STRING notes]
         count_str = _ast.literal_eval(str(items[0]))
         notes_str = _ast.literal_eval(str(items[1]))
+        _located_notes_tokens(items[1], notes_str)
         return VariationAction(
             action="substitute",
             count_notes=(count_str, notes_str),
