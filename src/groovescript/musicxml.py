@@ -462,8 +462,8 @@ def _fill_part(
 # ---------------------------------------------------------------------------
 
 def _musicxml_from_groove(groove: IRGroove) -> bytes:
-    ts = _DEFAULT_TS
-    bpm = _DEFAULT_TEMPO
+    ts = groove.time_signature
+    bpm = groove.tempo if groove.tempo is not None else _DEFAULT_TEMPO
     bar_divs = _bar_total_divs(ts)
     n, d = ts.split("/")
     beats_per_bar = int(n)
@@ -490,7 +490,7 @@ def _musicxml_from_groove(groove: IRGroove) -> bytes:
             _add_time(attrs, ts)
             clef = SubElement(attrs, "clef")
             SubElement(clef, "sign").text = "percussion"
-            _add_tempo_direction(measure, bpm)
+            _add_tempo_direction(measure, bpm, beat_unit)
 
         bar_tuplets = (
             groove.bar_beat_tuplets[bar_num - 1]

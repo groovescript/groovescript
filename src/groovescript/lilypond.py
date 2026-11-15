@@ -437,6 +437,17 @@ def _drum_measure_straight(
     slots_in_quarter = max(1, subdivision // beats_per_bar)
     slots_in_eighth = max(1, subdivision // (beats_per_bar * 2))
 
+    # Positions carrying a cue, fill-placeholder label or hairpin endpoint
+    # need a note or rest of their own to attach to, so a longer note must
+    # not swallow them during consolidation.
+    marker_positions: set[Fraction] = set()
+    for markers in (cue_map, placeholder_map, dynamic_start_map, dynamic_stop_set):
+        if markers:
+            marker_positions.update(p for p in markers if p >= 0)
+
+    def _occupied(pos: Fraction) -> bool:
+        return bool(pos_map.get(pos)) or pos in marker_positions
+
     tokens: list[str] = []
     i = 0
     while i < subdivision:
@@ -538,7 +549,7 @@ def _drum_measure_straight(
             if not blocked:
                 match = True
                 for j in range(1, slots_in_quarter):
-                    if pos_map.get(Fraction(i + j, subdivision)):
+                    if _occupied(Fraction(i + j, subdivision)):
                         match = False
                         break
                 if match:
@@ -559,7 +570,7 @@ def _drum_measure_straight(
                 (i + j in doubled_slots) or (i + j in buzz_span_slots) or (i + j in buzz_start_map)
                 for j in range(1, 3)
             )
-            if not blocked and not pos_map.get(Fraction(i + 1, subdivision)) and not pos_map.get(Fraction(i + 2, subdivision)):
+            if not blocked and not _occupied(Fraction(i + 1, subdivision)) and not _occupied(Fraction(i + 2, subdivision)):
                 consolidated = 3
                 dotted = True
 
@@ -571,7 +582,7 @@ def _drum_measure_straight(
             if not blocked:
                 match = True
                 for j in range(1, slots_in_eighth):
-                    if pos_map.get(Fraction(i + j, subdivision)):
+                    if _occupied(Fraction(i + j, subdivision)):
                         match = False
                         break
                 if match:
@@ -588,6 +599,66 @@ def _drum_measure_straight(
         i += consolidated
 
     return " ".join(tokens)
+
+
+def _buzz_token(buzz_event, beats_per_bar: int, beat_unit: int) -> str:
+    """LilyPond token for a buzz roll event (``sn2:32``, with accent /
+    fermata / tie suffixes)."""
+    if buzz_event.buzz_duration is not None and not getattr(
+        buzz_event, "tied_to_next", False
+    ):
+        ly_dur = _buzz_duration_to_lily(buzz_event.buzz_duration)
+    else:
+        ly_dur = _span_to_ly_duration(buzz_event.duration, beats_per_bar, beat_unit)
+    name = _INSTRUMENT_TO_LY.get(buzz_event.instrument, buzz_event.instrument.lower())
+    token = f"{name}{ly_dur}:32"
+    if "accent" in buzz_event.modifiers:
+        token = f"{token}->"
+    if "fermata" in buzz_event.modifiers:
+        token = f"{token}\\fermata"
+    if getattr(buzz_event, "tied_to_next", False):
+        token = f"{token}~"
+    return token
+
+
+def _beatwise_buzz_spans(
+    events, beats_per_bar: int, is_tuplet_beat
+) -> tuple[list, dict[int, tuple[int, object]]]:
+    """Split buzz rolls out of a bar rendered beat-by-beat (the triplet and
+    tuplet paths).
+
+    Returns ``(point_events, buzz_starts)`` where ``buzz_starts`` maps a
+    starting beat index to ``(beat_count, event)``. Only rolls that start on
+    a beat, last a whole number of beats, and cover only non-tuplet beats
+    with no other hits can be written in these paths; anything else raises
+    rather than silently dropping the roll.
+    """
+    buzzes = [e for e in events if e.duration is not None and "buzz" in e.modifiers]
+    if not buzzes:
+        return list(events), {}
+    buzz_ids = {id(e) for e in buzzes}
+    point_events = [e for e in events if id(e) not in buzz_ids]
+    starts: dict[int, tuple[int, object]] = {}
+    for ev in buzzes:
+        start = ev.beat_position * beats_per_bar
+        span = ev.duration * beats_per_bar
+        ok = start.denominator == 1 and span.denominator == 1 and span >= 1
+        if ok:
+            first, count = int(start), int(span)
+            covered = range(first, min(first + count, beats_per_bar))
+            ok = not any(is_tuplet_beat(b) for b in covered) and not any(
+                Fraction(first, beats_per_bar) <= e.beat_position
+                < Fraction(first + count, beats_per_bar)
+                for e in point_events
+            )
+        if not ok:
+            raise ValueError(
+                f"bar {ev.bar}: a buzz roll in a bar with triplets or tuplets "
+                "must start on a beat, last whole beats, and not overlap "
+                "tuplet beats or other hits"
+            )
+        starts[first] = (count, ev)
+    return point_events, starts
 
 
 def _drum_measure_mixed(
@@ -612,6 +683,15 @@ def _drum_measure_mixed(
     d_beat = str(beat_unit)
     d_half = str(beat_unit * 2)
     d_quarter = str(beat_unit * 4)
+
+    def _is_triplet_beat_idx(beat_idx: int) -> bool:
+        lo, hi = Fraction(beat_idx, beats_per_bar), Fraction(beat_idx + 1, beats_per_bar)
+        return any(
+            lo <= e.beat_position < hi and _is_triplet_only(e.beat_position, beats_per_bar)
+            for e in events
+        )
+
+    events, buzz_starts = _beatwise_buzz_spans(events, beats_per_bar, _is_triplet_beat_idx)
     pos_map: dict[Fraction, list[tuple]] = defaultdict(list)
     for event in events:
         ly_name = _INSTRUMENT_TO_LY.get(event.instrument, event.instrument.lower())
@@ -624,9 +704,17 @@ def _drum_measure_mixed(
         )
 
     tokens: list[str] = []
+    skip_until = 0
     for beat_idx in range(beats_per_bar):
+        if beat_idx < skip_until:
+            continue
         beat_start = Fraction(beat_idx, beats_per_bar)
         beat_end = Fraction(beat_idx + 1, beats_per_bar)
+        if beat_idx in buzz_starts:
+            count, buzz_event = buzz_starts[beat_idx]
+            tokens.append(_attach_markup(_buzz_token(buzz_event, beats_per_bar, beat_unit), beat_start))
+            skip_until = beat_idx + count
+            continue
 
         beat_positions = [p for p in pos_map if beat_start <= p < beat_end]
         is_triplet_beat = any(_is_triplet_only(p, beats_per_bar) for p in beat_positions)
@@ -699,6 +787,10 @@ def _drum_measure_with_tuplets(
     (5:4, 6:4, 7:4, 9:8) and half-beat tuplet splits are all driven by this
     annotation rather than position-based inference.
     """
+    events, buzz_starts = _beatwise_buzz_spans(
+        events, beats_per_bar,
+        lambda b: b < len(beat_tuplets) and beat_tuplets[b] is not None,
+    )
     pos_map: dict[Fraction, list[tuple]] = defaultdict(list)
     for event in events:
         ly_name = _INSTRUMENT_TO_LY.get(event.instrument, event.instrument.lower())
@@ -794,8 +886,16 @@ def _drum_measure_with_tuplets(
         return f"{t1} {t2}"
 
     tokens: list[str] = []
+    skip_until = 0
     for beat_idx in range(beats_per_bar):
+        if beat_idx < skip_until:
+            continue
         beat_start = Fraction(beat_idx, beats_per_bar)
+        if beat_idx in buzz_starts:
+            count, buzz_event = buzz_starts[beat_idx]
+            tokens.append(_attach_markup(_buzz_token(buzz_event, beats_per_bar, beat_unit), beat_start))
+            skip_until = beat_idx + count
+            continue
         annot = beat_tuplets[beat_idx] if beat_idx < len(beat_tuplets) else None
         if annot is None:
             tokens.append(_emit_straight_beat(beat_start, beat_idx))
@@ -1513,6 +1613,9 @@ def _group_bars(
             if show_swing and mark:
                 state.swing_shown = True
             forced_bar = "      \\bar \".|:\"\n" if i == 0 else ""
+            # Collect what the inner call actually engraves: it may collapse
+            # bars of the phrase further, and the vocal stream must match.
+            inner_printed: list[tuple[IRBar, int]] = []
             inner_measures = _group_bars(
                 pattern_bars,
                 is_top_level=False,
@@ -1520,6 +1623,7 @@ def _group_bars(
                 beat_unit=state.current_beat_unit,
                 global_time_signature=state.current_ts,
                 forced_voice_split_ids=forced_voice_split_ids,
+                printed=inner_printed,
             )
             # The inner call tracks its own meter, so any ``\\time`` change it
             # emitted inside the repeat must be mirrored here; otherwise the
@@ -1528,7 +1632,7 @@ def _group_bars(
                 state.compute_time_signature_change(pb)
             inner_body = "\n".join(inner_measures)
             measures.append(f"{ts_change_cmd}{tempo_change_cmd}{mark}{forced_bar}      \\repeat volta {num_repeats} {{\n{inner_body}\n      }}")
-            printed.extend((pb, 1) for pb in pattern_bars)
+            printed.extend(inner_printed)
             i += num_repeats * phrase_length
             continue
 
@@ -1882,8 +1986,8 @@ def emit_lilypond(
             for bar_number in range(1, ir.bars + 1)
         ]
         title = None
-        tempo = None
-        time_signature = "4/4"
+        tempo = ir.tempo
+        time_signature = ir.time_signature
         feel = None
     else:
         bars = ir.bars

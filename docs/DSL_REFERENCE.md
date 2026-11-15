@@ -177,8 +177,8 @@ feel: swing
 | Field | Values | Default | Notes |
 |---|---|---|---|
 | `title` | string | none | Large centered title on the page. |
-| `tempo` | BPM (integer) | none | Shown in the score header; sections may override with their own `tempo:`. |
-| `time_signature` | `N/M` (numerator 1–99) | `4/4` | Song-level meter, e.g. `3/4`, `6/8`, `12/8`; see [Per-section meter](#per-section-meter) for overrides. |
+| `tempo` | BPM (integer) | none | Beats per minute of the meter's bottom note (see below). Shown in the score header; sections may override with their own `tempo:`. |
+| `time_signature` | `N/M` (numerator 1–99, power-of-two denominator) | `4/4` | Song-level meter, e.g. `3/4`, `6/8`, `12/8`; see [Per-section meter](#per-section-meter) for overrides. |
 | `feel` | `swing` | straight | Notational only; see below. |
 | `lyrics_style` | `staff` \| `line` | `staff` | How [timed lyrics](#timed-lyrics) are engraved. |
 | `default_groove` | groove name | none | Groove for sections that omit `groove:`. See [below](#default-groove-and-default-bars). |
@@ -187,6 +187,18 @@ feel: swing
 
 A bare top-level `crash in` line is also allowed here; see [Top-level
 `crash in`](#top-level-crash-in-and-the-per-section-no-crash-in-opt-out).
+
+`tempo` counts beats per minute, where a beat is the time signature's
+bottom note: in 4/4 it is quarter notes, in 6/8 or 12/8 eighth notes
+(printed as ♪ = 120). LilyPond, MIDI and MusicXML all use this reading.
+A tempo keeps its speed across later meter changes until a new `tempo:`
+is set, and it is read in the meter in force where it is declared.
+
+A `time_signature` whose bottom number isn't a power of two (`4/3`), or
+with a zero on either side (`4/0`, `0/4`), is an error.
+
+A file with grooves but no sections compiles its first groove on its own,
+using the file's `time_signature:` and `tempo:`.
 
 The `feel` field is optional and defaults to straight (omitted). Currently
 `swing` is the only accepted value. When set, the compiled sheet music
@@ -658,7 +670,9 @@ also be a built-in library groove (e.g. `extend: "rock"`).
 Extending a count+notes-defined groove works the same way as extending a
 pattern-line groove: the count+notes hits become the base, and the
 extending groove's pattern lines layer on top by instrument. Any inline
-tuplet groups inside the count string survive to the merged groove.
+tuplet groups inside the count string survive to the merged groove. A count+notes
+groove is always one bar, so the extend body over it must be one bar too;
+a `bar 1:` / `bar 2:` body is an error.
 
 Dynamic spans (`cresc` / `decresc` declared inside a groove body) travel
 through `extend:` — both spans on the base and spans declared inside the
@@ -888,7 +902,8 @@ Compatibility with other features:
 
 - **Fill placeholders** and **cues** overlay placeholder bars normally,
   so a placeholder section can still show `fill at bar 4` and `cue
-  "vocals in" at bar 1`.
+  "vocals in" at bar 1`. A real fill (`fill "big" at bar 4 beat 3`) on
+  a placeholder bar prints the fill's notes, with rests before it.
 - **Variations** that target a placeholder bar are an error — there
   are no notes to vary. Transcribe the groove first.
 - **`extend:`** cannot reference a placeholder groove (the placeholder

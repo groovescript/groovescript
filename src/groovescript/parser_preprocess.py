@@ -65,7 +65,7 @@ _PP_POS_LINE_RE = re.compile(
     rf"^(?P<indent>\s*)(?P<lhs>{_PP_BEAT_LABEL_RE}):(?P<rhs>.*)$"
 )
 _PP_VAR_ACTION_RE = re.compile(
-    r"^(?P<indent>\s*)(?P<prefix>(?:add|remove|replace)\b[^\n]*?\sat\s+)"
+    r"^(?P<indent>\s*)(?P<prefix>(?:modify\s+(?:add|remove)|add|remove|replace)\b[^\n]*?\sat\s+)"
     r"(?P<rhs>.*)$"
 )
 
