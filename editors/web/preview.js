@@ -91,6 +91,7 @@ export function createPreview(editor) {
     else if (msg.type === 'built') onBuilt(msg);
     else if (msg.type === 'rendered') onRendered(msg);
     else if (msg.type === 'render-failed') onRenderFailed(msg);
+    else if (msg.type === 'formatted') onFormatted(msg);
   };
   worker.onerror = (e) => {
     onStatus({ state: 'failed', message: e.message || 'the preview worker could not start' });
@@ -313,7 +314,33 @@ export function createPreview(editor) {
   els.xml.addEventListener('click', () =>
     lastGood && download(lastGood.musicxml, 'application/vnd.recordare.musicxml+xml', 'musicxml'));
 
-  return { sourceChanged, togglePlay: () => togglePlay() };
+  // ── Formatting (groovescript fmt) ──
+
+  let formatSeq = 0;
+  const pendingFormats = new Map(); // id -> resolve
+
+  /** Format ``source``; resolves to { ok, text, diagnostics }. */
+  function format(source) {
+    if (compilerState === 'failed') {
+      return Promise.resolve({ ok: false, text: null, diagnostics: [], unavailable: true });
+    }
+    const id = ++formatSeq;
+    worker.postMessage({ type: 'format', id, source });
+    return new Promise((resolve) => pendingFormats.set(id, resolve));
+  }
+
+  function onFormatted(msg) {
+    const resolve = pendingFormats.get(msg.id);
+    pendingFormats.delete(msg.id);
+    if (resolve) resolve(msg);
+  }
+
+  /** Show a transient message in the problems bar (until the next build). */
+  function flash(level, text) {
+    setProblems(level, text);
+  }
+
+  return { sourceChanged, togglePlay: () => togglePlay(), format, flash };
 }
 
 function fmtTime(s) {

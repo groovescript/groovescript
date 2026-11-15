@@ -17,7 +17,7 @@ uv run pytest
 
 ```
 src/groovescript/
-  cli.py                 # argparse entry point (compile, lint, midi, musicxml, --watch)
+  cli.py                 # argparse entry point (compile, lint, midi, musicxml, fmt, --watch)
   parser.py              # Public parse entry point; CURRENT_DSL_VERSION lives here
   parser_preprocess.py   # Source rewrites that run before Lark (optional commas, quoting)
   parser_transformer.py  # Lark Transformer: parse tree → AST
@@ -32,6 +32,7 @@ src/groovescript/
   musicxml.py            # IR → MusicXML
   lyrics.py              # Implied-duration rhythm for timed lyrics (shared by emitters)
   lint.py                # Style checker used by `lint --style`
+  fmt.py                 # `fmt`: canonical layout, verified against compiled output
   errors.py              # GrooveScriptError and Rust-style diagnostic rendering
   web.py                 # Browser entry point used by the web editor (never raises)
   library.py             # Loader for the built-in libraries below

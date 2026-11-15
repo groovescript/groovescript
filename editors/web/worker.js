@@ -5,10 +5,12 @@
 //   { type: 'init', local }                  start loading Pyodide
 //   { type: 'build', id, source }            parse + compile + emit
 //   { type: 'render', id, musicxml, width }  engrave MusicXML to SVG
+//   { type: 'format', id, source }           groovescript fmt
 // Messages out:
 //   { type: 'status', state: 'loading' | 'ready' | 'failed', message }
 //   { type: 'built', id, ok, diagnostics, musicxml, midi, title, barCount, ms }
 //   { type: 'rendered', id, svgs, timemap, ms } | { type: 'render-failed', id, message }
+//   { type: 'formatted', id, ok, text, diagnostics }
 //
 // Builds are latest-wins: if several sources arrive while one is compiling,
 // only the newest is compiled next.
@@ -19,7 +21,7 @@ const BUNDLE_URL = new URL('py/groovescript-py.zip', import.meta.url).href;
 const SITE_DIR = '/home/pyodide/groovescript-site';
 
 let urls = null;
-let pyReady = null; // Promise<build function>
+let pyReady = null; // Promise<groovescript.web module proxy>
 let vrvReady = null; // Promise<VerovioToolkit>
 let pendingBuild = null;
 let building = false;
@@ -47,7 +49,7 @@ async function loadPython() {
   // real build is as fast as the rest.
   web.build('groove "warmup":\n  BD: 1\n').destroy?.();
   post({ type: 'status', state: 'ready', message: 'Compiler ready' });
-  return web.build_js;
+  return web;
 }
 
 async function loadVerovio() {
@@ -69,7 +71,7 @@ async function pumpBuilds() {
       pendingBuild = null;
       let build;
       try {
-        build = await pyReady;
+        build = (await pyReady).build_js;
       } catch {
         return; // status 'failed' already reported
       }
@@ -146,6 +148,20 @@ async function pumpRenders() {
   }
 }
 
+async function formatSource(id, source) {
+  let web;
+  try {
+    web = await pyReady;
+  } catch {
+    post({ type: 'formatted', id, ok: false, text: null, diagnostics: [] });
+    return;
+  }
+  const pyResult = web.format_js(source);
+  const r = pyResult.toJs({ dict_converter: Object.fromEntries });
+  pyResult.destroy();
+  post({ type: 'formatted', id, ok: r.ok, text: r.text ?? null, diagnostics: r.diagnostics || [] });
+}
+
 self.onmessage = (e) => {
   const msg = e.data;
   switch (msg.type) {
@@ -160,6 +176,9 @@ self.onmessage = (e) => {
     case 'build':
       pendingBuild = { id: msg.id, source: msg.source };
       pumpBuilds();
+      break;
+    case 'format':
+      formatSource(msg.id, msg.source);
       break;
     case 'render':
       pendingRender = { id: msg.id, musicxml: msg.musicxml, width: msg.width };

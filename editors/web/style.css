@@ -79,6 +79,14 @@ body {
   z-index: 10;
 }
 
+/* Phones: the four header buttons need the room. */
+@media (max-width: 459px) {
+  .app-title { display: none; }
+  .header-actions { flex: 1; justify-content: flex-end; }
+  .header-actions { gap: 6px; }
+  .action-btn { padding: 0 9px; font-size: 13px; }
+}
+
 .app-title {
   font-size: 14px;
   font-weight: 600;

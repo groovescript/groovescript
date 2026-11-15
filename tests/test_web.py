@@ -7,7 +7,7 @@ from groovescript.midi import emit_midi
 from groovescript.musicxml import emit_musicxml
 from groovescript.compiler import compile_song
 from groovescript.parser import parse
-from groovescript.web import EDITOR_FILENAME, build, build_js
+from groovescript.web import EDITOR_FILENAME, build, build_js, format_js
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -116,3 +116,15 @@ def test_groove_only_source_honours_meter_and_tempo():
     assert result.ok, result.diagnostics
     assert "<beat-type>8</beat-type>" in result.musicxml
     assert "<beat-unit>eighth</beat-unit>" in result.musicxml
+
+
+def test_format_js_formats_valid_source():
+    result = format_js('groove "g":\nBD:1\n')
+    assert result == {"ok": True, "text": 'groove "g":\n  BD: 1\n', "diagnostics": []}
+
+
+def test_format_js_reports_errors_instead_of_raising():
+    result = format_js('groove "g":\n  snars: 1\n')
+    assert result["ok"] is False and result["text"] is None
+    [diag] = result["diagnostics"]
+    assert diag["severity"] == "error" and diag["line"] == 2
