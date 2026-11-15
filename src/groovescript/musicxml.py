@@ -42,7 +42,9 @@ _DISPLAY: dict[str, tuple[str, int, str, str]] = {
     "SN":  ("C", 5, "normal",   "up"),
     "SCS": ("C", 5, "x",        "up"),
     "HH":  ("G", 5, "x",        "up"),
-    "OH":  ("G", 5, "circle-x", "up"),
+    # Open hi-hat: x notehead with a small "o" above (<technical><open-string/>),
+    # the standard drum-set marking and what LilyPond's ``hho`` prints.
+    "OH":  ("G", 5, "x",        "up"),
     "HF":  ("D", 4, "x",        "down"),  # just below the staff, like LilyPond's hhp
     "RD":  ("F", 5, "x",        "up"),
     "RB":  ("F", 5, "diamond",  "up"),
@@ -922,6 +924,18 @@ def _append_tuplet_rest(
         SubElement(notations, "tuplet", number="1", type=bracket)
 
 
+# Instruments whose hits carry an "o" (open) marking above the notehead.
+_OPEN_MARKED = frozenset({"OH"})
+
+
+def _add_open_mark(notations: Element) -> None:
+    """The small circle above an open hi-hat. MusicXML 4 added <open/>, but
+    <open-string/> (3.1) is what engravers such as Verovio and MuseScore
+    read and draw as that circle."""
+    technical = SubElement(notations, "technical")
+    SubElement(technical, "open-string")
+
+
 def _append_tuplet_note(
     parent: Element,
     ev: Event,
@@ -960,8 +974,11 @@ def _append_tuplet_note(
         or "choke" in ev.modifiers
         or "fermata" in ev.modifiers
     )
-    if has_articulation or bracket is not None:
+    open_mark = ev.instrument in _OPEN_MARKED
+    if has_articulation or bracket is not None or open_mark:
         notations = SubElement(note, "notations")
+        if open_mark:
+            _add_open_mark(notations)
         if "accent" in ev.modifiers or "choke" in ev.modifiers:
             artic = SubElement(notations, "articulations")
             if "accent" in ev.modifiers:
@@ -1076,6 +1093,9 @@ def _append_note(
             SubElement(n, "tied", type="stop")
         if tie_start:
             SubElement(n, "tied", type="start")
+
+    if show_articulation and ev.instrument in _OPEN_MARKED:
+        _add_open_mark(_notations())
 
     if show_articulation and (
         "accent" in ev.modifiers or "choke" in ev.modifiers
