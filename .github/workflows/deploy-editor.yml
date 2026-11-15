@@ -4,6 +4,10 @@ on:
     branches: [main]
     paths:
       - 'editors/web/**'
+      # The editor runs the compiler in the browser, so redeploy when it changes.
+      - 'src/groovescript/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
       - '.github/workflows/deploy-editor.yml'
   workflow_dispatch:
 permissions:
@@ -21,6 +25,11 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.13'
+      - name: Bundle the compiler for the in-browser preview
+        run: uv run --no-dev python editors/web/scripts/build_py_bundle.py
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with: { path: ./editors/web }

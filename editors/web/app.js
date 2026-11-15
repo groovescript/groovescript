@@ -2,6 +2,7 @@ import {
   EditorView, keymap, drawSelection, highlightActiveLine,
   EditorState, Compartment,
   defaultKeymap, history, historyKeymap,
+  lintGutter, setDiagnostics, nextDiagnostic,
 } from './vendor/codemirror.bundle.js';
 
 import {
@@ -10,12 +11,14 @@ import {
   gsHighlightDark,
 } from './gs-mode.js';
 
+import { createPreview } from './preview.js';
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const STORAGE_KEY = 'groovescript_editor_v1';
 
 const SEED = `\
-// New GrooveScript chart — edit below, then tap Copy or Share
+// New GrooveScript chart — edit below. Preview shows the score; Play plays it.
 
 metadata:
   title: "My Chart"
@@ -161,6 +164,8 @@ function updateSymbolBarPosition() {
 
 // ── Editor setup ──────────────────────────────────────────────────────────────
 
+let preview = null;
+
 document.addEventListener('DOMContentLoaded', () => {
   const docContent = loadDoc();
 
@@ -171,12 +176,17 @@ document.addEventListener('DOMContentLoaded', () => {
       themeCompartment.of(activeHighlight()),
       EditorView.lineWrapping,
       history(),
+      // Before the default keymap, which binds Mod-Enter to insertBlankLine.
+      keymap.of([{ key: 'Mod-Enter', run: () => { preview.togglePlay(); return true; } }]),
       keymap.of([...defaultKeymap, ...historyKeymap]),
       highlightActiveLine(),
       drawSelection(),
+      lintGutter(),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
-          scheduleSave(update.state.doc.toString());
+          const text = update.state.doc.toString();
+          scheduleSave(text);
+          preview.sourceChanged(text);
         }
       }),
     ],
@@ -186,6 +196,14 @@ document.addEventListener('DOMContentLoaded', () => {
     state,
     parent: document.getElementById('editor'),
   });
+
+  // Live compile, diagnostics, score preview and playback
+  preview = createPreview({
+    showDiagnostics: (diags) => view.dispatch(setDiagnostics(view.state, diags)),
+    getDoc: () => view.state.doc,
+    jumpToProblem: () => { view.focus(); nextDiagnostic(view); },
+  });
+  preview.sourceChanged(view.state.doc.toString(), { immediate: true });
 
   // Copy button
   const copyBtn = document.getElementById('btn-copy');

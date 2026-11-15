@@ -7,3 +7,4 @@ build/
 *.swp
 *.swo
 editors/web/node_modules/
+editors/web/py/

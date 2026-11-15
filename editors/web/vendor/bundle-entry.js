@@ -8,3 +8,5 @@ export { StreamLanguage, HighlightStyle, syntaxHighlighting }
   from '@codemirror/language';
 export { tags }
   from '@lezer/highlight';
+export { linter, lintGutter, setDiagnostics, forEachDiagnostic, nextDiagnostic }
+  from '@codemirror/lint';
