@@ -215,6 +215,11 @@ class IRBar:
     # Timed lyric syllables sounding in this bar, sorted by position. They
     # never influence ``subdivision``; emitters build their own lyric grid.
     lyrics: list[LyricSyllable] = field(default_factory=list)
+    # ``remove`` actions that matched no hit, as (instrument, position,
+    # source line). Not an error -- a ``like … with variations`` section
+    # may restate a remove that its own bar's variation already made
+    # redundant -- but ``lint --style`` points them out.
+    noop_removes: list[tuple[str, Fraction, int | None]] = field(default_factory=list)
     # Backing-vocal parts (``lyrics "BGV":``), keyed by part name, each
     # sorted by position like ``lyrics`` (which is the lead part).
     vocal_parts: dict[str, list[LyricSyllable]] = field(default_factory=dict)
@@ -1912,8 +1917,13 @@ def _apply_variation_actions(
     absolute_bar: int,
     beats_per_bar: int = 4,
     beat_unit: int = 4,
+    noop_removes: list | None = None,
 ) -> list[Event]:
-    """Apply variation add/remove/replace/substitute actions to a list of events."""
+    """Apply variation add/remove/replace/substitute actions to a list of events.
+
+    ``noop_removes``, when given, collects ``remove`` targets that matched
+    no hit (see ``IRBar.noop_removes``).
+    """
     result = list(events)
 
     for action in actions:
@@ -1980,6 +1990,10 @@ def _apply_variation_actions(
             )
 
         if action.action == "remove":
+            if noop_removes is not None and action.beats != "*":
+                present = {e.beat_position for e in result if e.instrument == action.instrument}
+                for pos in sorted(set(positions) - present):
+                    noop_removes.append((action.instrument, pos, action.line))
             result = [
                 e for e in result
                 if not (e.instrument == action.instrument and e.beat_position in positions)
@@ -3517,6 +3531,7 @@ def compile_song(song: Song) -> IRSong:
                 )
                 is_rest = False  # fill replaces a rest bar entirely
 
+            bar_noop_removes: list = []
             if section_bar_offset in variation_coverage:
                 variation = variation_coverage[section_bar_offset]
                 if variation.time_signature is not None:
@@ -3535,7 +3550,8 @@ def compile_song(song: Song) -> IRSong:
                     var_subdivision = _infer_variation_subdivision(variation.actions, bpb)
                     bar_subdivision = max(bar_subdivision, var_subdivision)
                     arranged_events = _apply_variation_actions(
-                        arranged_events, variation.actions, bar_subdivision, absolute_bar, bpb, beat_unit
+                        arranged_events, variation.actions, bar_subdivision, absolute_bar, bpb, beat_unit,
+                        noop_removes=bar_noop_removes,
                     )
 
             if (
@@ -3586,6 +3602,7 @@ def compile_song(song: Song) -> IRSong:
                     phrase_position=phrase_position,
                     phrase_length=phrase_length,
                     beat_tuplets=bar_beat_tuplets,
+                    noop_removes=bar_noop_removes,
                 )
             )
         return new_bars, ir_section
@@ -3770,6 +3787,7 @@ def compile_song(song: Song) -> IRSong:
             is_rest = False
             is_meter_override = False
 
+            bar_noop_removes: list = []
             if section_bar_offset in variation_coverage:
                 variation = variation_coverage[section_bar_offset]
                 if variation.time_signature is not None:
@@ -3788,7 +3806,8 @@ def compile_song(song: Song) -> IRSong:
                     var_subdivision = _infer_variation_subdivision(variation.actions, bpb)
                     bar_subdivision = max(bar_subdivision, var_subdivision)
                     arranged_events = _apply_variation_actions(
-                        arranged_events, variation.actions, bar_subdivision, absolute_bar, bpb, beat_unit
+                        arranged_events, variation.actions, bar_subdivision, absolute_bar, bpb, beat_unit,
+                        noop_removes=bar_noop_removes,
                     )
 
             if (
@@ -3847,6 +3866,7 @@ def compile_song(song: Song) -> IRSong:
                     phrase_position=bar_phrase_position,
                     phrase_length=bar_phrase_length,
                     beat_tuplets=list(groove_bar_tuplets),
+                    noop_removes=bar_noop_removes,
                 )
             )
         return new_bars, ir_section

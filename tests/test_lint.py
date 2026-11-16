@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from fractions import Fraction
+
 from groovescript.compiler import compile_groove, compile_song
 from groovescript.lint import check_notation, check_style
 from groovescript.parser import parse
@@ -397,3 +399,24 @@ def test_mixed_style_scan_stops_at_next_inline_groove_in_play_block():
     )
     warnings = check_style(src, parse(src))
     assert not [w for w in warnings if "mixes" in w.message]
+
+
+def test_remove_that_removes_nothing_is_a_style_warning():
+    """``remove X at <beat>`` where X doesn't play stays legal (a ``like …
+    with variations`` section may restate a remove its own bar variation
+    made redundant) but ``lint --style`` reports it, since it is usually a
+    wrong beat or instrument. ``remove X at *`` is never reported."""
+    from groovescript.lint import check_compiled_style
+
+    song = compile_song(parse(
+        'groove "g":\n    BD: 1, 3\n    SN: 2, 4\n'
+        'section "a":\n  bars: 2\n  groove: "g"\n'
+        '  variation at bar 2:\n    remove snare at 2&, 4\n    remove kick at *\n'
+    ))
+    warnings = check_compiled_style(song)
+    assert [w.message for w in warnings] == [
+        "`remove SN at 2&` does nothing (bar 2 has no SN there)"
+    ]
+    assert warnings[0].line == 8
+    # The removal that did match still happened.
+    assert not [e for e in song.bars[1].events if e.instrument == "SN" and e.beat_position == Fraction(3, 4)]

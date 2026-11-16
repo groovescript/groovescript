@@ -84,9 +84,9 @@ section "verse":
   bars: 4
   groove: "sixteenth run"
   fill "dynamic run" at bar 4
-  // Multi-instrument remove: drop both snare and hat on beat 2.
+  // Multi-instrument remove: drop snare and hat for the whole bar.
   variation at bar 2:
-    remove snare hat at 2
+    remove snare hat at *
   // Multi-instrument add + per-hit modifiers.
   variation at bar 3:
     add snare ghost kick accent at 3e
