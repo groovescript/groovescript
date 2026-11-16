@@ -2124,29 +2124,37 @@ def test_cue_on_play_rest_bar_is_printed():
     assert '"Band in"' in ly
 
 
-def test_one_bar_hairpin_on_single_note_bar_ends_at_bar_line():
+def test_one_bar_hairpin_on_single_note_bar_is_terminated():
     """Regression (found by the LilyPond fuzz run): ``decresc from bar 2 to
     bar 2`` in a bar with one note put ``\\!`` before the ``\\>`` on that
-    note, so the hairpin was never terminated."""
+    note, so the hairpin was never terminated. It now ends on the bar's
+    last beat (a rest); a span starting in the final half-beat ends at the
+    bar line."""
     song = parse(
         'time_signature: 2/4\n'
         'groove "g":\n    HT: 1\n'
         'section "a":\n  bars: 2\n  groove: "g"\n  decresc from bar 2 to bar 2\n'
     )
     ly = emit_lilypond(compile_song(song))
-    assert "tomh4\\> r4 <>\\! |" in ly
+    assert "tomh4\\> r4\\! |" in ly
     assert "\\!\\>" not in ly
+    late = emit_lilypond(compile_song(parse(
+        'groove "g":\n    HT: 4&\n'
+        'section "a":\n  bars: 1\n  groove: "g"\n  cresc from bar 1 beat 4& to bar 1\n'
+    )))
+    assert "tomh8\\< <>\\! |" in late
 
 
 def test_one_bar_tempo_span_on_single_note_bar_is_closed():
     """Regression: the same collision for ``accel from bar N to bar N``
-    left the ``accel.`` text spanner unterminated."""
+    left the ``accel.`` text spanner unterminated. It ends on a rest, not
+    on ``<>`` at the bar line, where LilyPond can't break a text spanner."""
     song = parse(
         'groove "g":\n    HT: 1\n'
         'section "a":\n  bars: 1\n  groove: "g"\n  accel from bar 1 to bar 1 to tempo 150\n'
     )
     ly = emit_lilypond(compile_song(song))
-    assert "<>\\stopTextSpan |" in ly
+    assert "r4 r4 r4\\stopTextSpan |" in ly
 
 
 def test_explicit_repeat_with_differing_passes_is_written_out():
