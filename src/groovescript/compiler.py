@@ -57,6 +57,13 @@ def _beat_unit(time_signature: str) -> int:
     return int(denominator)
 
 
+# Span-stop sentinels on ``IRBar.dynamic_stops`` / ``tempo_span_stops``:
+# "end of this bar" for a span that started in an earlier bar, and for one
+# that started in this same bar.
+END_OF_BAR = Fraction(-1)
+END_OF_SPAN_BAR = Fraction(-2)
+
+
 @dataclass
 class Event:
     """A single drum hit in the intermediate representation.
@@ -2811,7 +2818,10 @@ def _resolve_dynamic_spans(
             # terminator, we need to place \! on the last event's position
             # in the target bar. We use a sentinel Fraction(-1) meaning
             # "end of bar" and resolve it in the emitter to the last event.
-            stop_pos = Fraction(-1)
+            # A span that also *starts* in that bar gets END_OF_SPAN_BAR, so
+            # the emitter can tell when the last event is not after the start
+            # (a one-note bar) and end at the bar line instead.
+            stop_pos = END_OF_SPAN_BAR if from_offset == to_offset else END_OF_BAR
 
         starts[from_offset].append((start_pos, span.kind))
         stops[to_offset].append(stop_pos)
@@ -4063,7 +4073,9 @@ def _apply_section_tempo_changes(
                 e_off = int(end)
                 bar_at(e_off).tempo_span_stops.append(end - e_off)
             else:
-                bar_at(span.to_bar - 1).tempo_span_stops.append(Fraction(-1))
+                bar_at(span.to_bar - 1).tempo_span_stops.append(
+                    END_OF_SPAN_BAR if span.to_bar - 1 == s_off else END_OF_BAR
+                )
             sounding = target
         previous_end = end
         previous_line = item.line

@@ -3,7 +3,7 @@ from collections import defaultdict
 from fractions import Fraction
 from pathlib import Path
 
-from .compiler import IRBar, IRGroove, IRSong, LyricSyllable
+from .compiler import END_OF_BAR, END_OF_SPAN_BAR, IRBar, IRGroove, IRSong, LyricSyllable
 from .lyrics import (
     LyricSegment, beat_grid, is_power_of_two, lyric_segments, starts_with_hold, ties_out, tuplet_normal,
 )
@@ -381,14 +381,21 @@ def _snap_to_event(pos: Fraction, events, *, before: bool = False) -> Fraction:
 
 def _span_markup_maps(
     bar: IRBar, bpb: int,
-) -> tuple[dict[Fraction, str] | None, dict[Fraction, str] | None]:
+) -> tuple[dict[Fraction, str] | None, dict[Fraction, str] | None, str]:
     """Build position -> post-event maps for span starts and stops.
 
     Stops come first on a note (a span may end where the next begins).
-    ``Fraction(-1)`` ("end of bar") resolves to the bar's last onset.
+    An end-of-bar stop resolves to the bar's last onset. For a span that
+    also starts in this bar (``END_OF_SPAN_BAR``), the last onset may not be
+    after the start -- a one-note bar, or a start on the last note -- and
+    stopping there would put ``\\!`` before (or on) the start, leaving the
+    span unterminated. Such stops go in the returned tail instead, which
+    the caller appends to the measure as ``<>…`` so the span ends at the
+    bar line.
     """
     starts: dict[Fraction, str] = {}
     stops: dict[Fraction, str] = {}
+    tail: list[str] = []
     last = max((e.beat_position for e in bar.events), default=Fraction(bpb - 1, bpb))
 
     def add(target: dict[Fraction, str], pos: Fraction, text: str) -> None:
@@ -396,16 +403,31 @@ def _span_markup_maps(
         if text not in current:  # two spans ending on one note need one \!
             target[pos] = current + text
 
+    def end_of_bar(text: str, starts_here: list[Fraction]) -> None:
+        if starts_here and last <= max(starts_here):
+            if text not in tail:
+                tail.append(text)
+        else:
+            add(stops, last, text)
+
+    hairpin_starts = [pos for pos, _ in bar.dynamic_starts]
+    tempo_starts = [_snap_to_event(pos, bar.events) for pos, _ in bar.tempo_span_starts]
     for pos, kind in bar.dynamic_starts:
         add(starts, pos, _DYNAMIC_HAIRPIN[kind])
     for pos in bar.dynamic_stops:
-        add(stops, last if pos == Fraction(-1) else pos, _HAIRPIN_STOP)
-    for pos, kind in bar.tempo_span_starts:
-        add(starts, _snap_to_event(pos, bar.events), _TEMPO_SPAN_START[kind])
+        if pos == END_OF_SPAN_BAR:
+            end_of_bar(_HAIRPIN_STOP, hairpin_starts)
+        else:
+            add(stops, last if pos == END_OF_BAR else pos, _HAIRPIN_STOP)
+    for (pos, kind), snapped in zip(bar.tempo_span_starts, tempo_starts):
+        add(starts, snapped, _TEMPO_SPAN_START[kind])
     for pos in bar.tempo_span_stops:
-        stop = last if pos == Fraction(-1) else _snap_to_event(pos, bar.events, before=True)
-        add(stops, stop, _TEMPO_SPAN_STOP)
-    return starts or None, stops or None
+        if pos == END_OF_SPAN_BAR:
+            end_of_bar(_TEMPO_SPAN_STOP, tempo_starts)
+        else:
+            stop = last if pos == END_OF_BAR else _snap_to_event(pos, bar.events, before=True)
+            add(stops, stop, _TEMPO_SPAN_STOP)
+    return starts or None, stops or None, "".join(tail)
 
 
 def _attach_position_markup(
@@ -1373,6 +1395,30 @@ def _explicit_repeat_span(bars: list[IRBar], start: int) -> int:
     return (phrase_end - start) * (bars[start].repeat_times or 1)
 
 
+def _pass_markings(bar: IRBar) -> tuple:
+    """What a bar prints besides its notes (and isn't repeated by a volta)."""
+    return (
+        tuple(bar.cues), tuple(bar.fill_placeholders), bar.bar_text,
+        tuple(bar.dynamic_starts), tuple(bar.dynamic_stops),
+        tuple(bar.tempo_span_starts), tuple(bar.tempo_span_stops),
+        tuple(bar.tempo_texts),
+    )
+
+
+def _repeat_passes_differ(block: list[IRBar], times: int) -> bool:
+    """True when the passes of an explicit ``repeat:`` block carry different
+    markings, so printing the phrase once under a volta would drop some --
+    e.g. a crescendo from pass 1 to pass 2 would lose its end."""
+    if times < 2 or len(block) % times:
+        return False
+    length = len(block) // times
+    first = [_pass_markings(b) for b in block[:length]]
+    return any(
+        [_pass_markings(b) for b in block[k * length:(k + 1) * length]] != first
+        for k in range(1, times)
+    )
+
+
 # ── Timed lyrics ──────────────────────────────────────────────────────────
 
 LYRICS_STYLES: tuple[str, ...] = ("staff", "line", "off")
@@ -1713,7 +1759,9 @@ def _group_bars(
         )
         if is_repeat_start:
             span = _explicit_repeat_span(bars, i)
-            if any(b.has_any_lyrics for b in bars[i : i + span]):
+            if any(b.has_any_lyrics for b in bars[i : i + span]) or _repeat_passes_differ(
+                bars[i : i + span], bar.repeat_times or 1
+            ):
                 written_out_end = i + span
                 is_repeat_start = False
         if is_repeat_start:
@@ -1902,7 +1950,7 @@ def _group_bars(
         # Span start/stop commands keyed by position. Each value is the
         # LilyPond post-event text appended to the note at that position
         # (hairpins and tempo-change text spanners share the plumbing).
-        dynamic_start_map, dynamic_stop_set = _span_markup_maps(bar, state.current_bpb)
+        dynamic_start_map, dynamic_stop_set, span_tail = _span_markup_maps(bar, state.current_bpb)
         # "a tempo" prints like a cue (italic text above the staff).
         if bar.tempo_texts:
             cue_map = dict(cue_map or {})
@@ -1916,6 +1964,8 @@ def _group_bars(
             cue_map, placeholder_map, dynamic_start_map, dynamic_stop_set,
             forced_voice_split_ids, beat_tuplets=bar.beat_tuplets,
         )
+        if span_tail:
+            bar_measure = f"{bar_measure} <>{span_tail}"
         if not has_annotations:
             for k in range(1, max_lookahead):
                 next_bar = bars[i + k]
