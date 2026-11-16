@@ -124,6 +124,8 @@ After implementing a change that affects compiled output, always:
 
 `tests/test_fixtures_fresh.py` fails whenever a committed `.ly` under `tests/fixtures/`, `templates/` or `charts/` no longer matches the compiler's output (with the CLI's default `--compact`). Recompile and re-render the PDF rather than editing the test.
 
+Fuzz checks: `tests/test_fuzz_consistency.py` (150 seeds in `uv run pytest`; `GS_FUZZ_SEEDS=N` for more) checks MIDI/MusicXML bar lengths and onsets against the IR for charts from `tests/fuzz_charts.py`; `uv run python -m tests.fuzz_lilypond START STOP` renders them with LilyPond and fails on warnings. A failing seed is either a generator bug (it wrote something the language forbids) or a real bug. Extend the generator when adding language features.
+
 ## Regression tests for bug fixes
 
 When fixing a bug, always add a regression test that would have caught the bug

@@ -74,6 +74,17 @@ After any change that affects compiled output:
 compiler's output. Recompile and re-render the PDF rather than editing
 the test.
 
+### Fuzz checks
+
+`tests/test_fuzz_consistency.py` compiles randomly generated charts
+(`tests/fuzz_charts.py`, seeded, so failures reproduce) and checks that
+MIDI and MusicXML agree with the compiled IR on bar count, bar lengths and
+every note onset. It runs 150 seeds as part of `uv run pytest`; run more
+with `GS_FUZZ_SEEDS=2000 uv run pytest tests/test_fuzz_consistency.py`.
+`uv run python -m tests.fuzz_lilypond 0 200` also renders each chart with
+LilyPond and fails on any warning. When you add a language feature, teach
+the generator to produce it.
+
 ## Adding a test fixture
 
 Place the `.gs` source under `tests/fixtures/`, compile it to `.ly`, render to `.pdf`, and commit all three files together.

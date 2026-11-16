@@ -2107,7 +2107,15 @@ def emit_lilypond(
         [] if isinstance(ir, IRSong) and style != "off" and ir.has_lyrics else None
     )
 
-    beats_per_bar, beat_unit = _parse_time_signature(time_signature)
+    # The prelude's \time / \tempo describe where the music *starts*. When
+    # the first section overrides the song's meter or tempo, use its values
+    # there: emitting the song's and then the section's at the same moment
+    # makes LilyPond discard one ("conflict with event: tempo-change-event").
+    # The score header still shows the song-level values.
+    start_ts = (bars[0].time_signature if bars and bars[0].time_signature else None) or time_signature
+    start_tempo = bars[0].tempo if bars and bars[0].tempo is not None else tempo
+
+    beats_per_bar, beat_unit = _parse_time_signature(start_ts)
 
     # Determine whether any bar carries a tempo (global or per-section).
     # This is used to suppress LilyPond's automatic MetronomeMark grob when
@@ -2120,8 +2128,8 @@ def emit_lilypond(
         bars,
         beats_per_bar=beats_per_bar,
         beat_unit=beat_unit,
-        global_tempo=tempo,
-        global_time_signature=time_signature,
+        global_tempo=start_tempo,
+        global_time_signature=start_ts,
         forced_voice_split_ids=forced_voice_split_ids,
         compact=compact,
         feel=feel,
@@ -2137,7 +2145,7 @@ def emit_lilypond(
     fragments = {
         "{{HEADER}}": _header_block(title),
         "{{SCORE_HEADER}}": _score_header_block(tempo, time_signature),
-        "{{SCORE_PRELUDE}}": _score_prelude(tempo, time_signature, suppress_metronome_mark=has_any_tempo),
+        "{{SCORE_PRELUDE}}": _score_prelude(start_tempo, start_ts, suppress_metronome_mark=has_any_tempo),
         "{{BODY}}": body,
         **staff_parts,
     }
