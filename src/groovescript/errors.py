@@ -23,18 +23,22 @@ import difflib
 from dataclasses import dataclass
 
 
-# Known instrument aliases (lowercase) used for spelling-suggestion hints.
-# Duplicated here rather than imported from parser.py to avoid a circular
-# import — parser.py imports this module.
-_KNOWN_INSTRUMENT_ALIASES: tuple[str, ...] = (
-    "bd", "sn", "scs", "hh", "oh", "rd", "cr", "ft", "ht", "mt", "hf",
-    "bass", "kick", "snare", "click", "cross-stick",
-    "hat", "hihat", "openhat", "open",
-    "ride", "crash", "floortom", "lowtom", "hightom", "hitom", "midtom",
-    "hihatfoot", "footchick",
-)
+def _known_instrument_aliases() -> list[str]:
+    """Every instrument name the parser accepts (lowercase), for hints.
 
-_KNOWN_MODIFIERS: tuple[str, ...] = ("ghost", "accent", "fermata", "flam", "drag", "double", "32nd")
+    Imported lazily from the parser's alias table -- the one list of
+    instrument names -- because the parser modules import this one.
+    """
+    from .parser_notation import _INSTRUMENT_ALIASES
+
+    return sorted(_INSTRUMENT_ALIASES)
+
+
+def _known_modifiers() -> list[str]:
+    """Every modifier keyword the parser accepts, for hints."""
+    from .parser_notation import _MODIFIER_TOKENS
+
+    return sorted(_MODIFIER_TOKENS | {"buzz"})
 
 
 @dataclass
@@ -116,12 +120,12 @@ class GrooveScriptError(ValueError):
 
 def suggest_instrument(token: str) -> str | None:
     """Suggest a known instrument alias close to ``token``, or ``None``."""
-    matches = difflib.get_close_matches(token.lower(), _KNOWN_INSTRUMENT_ALIASES, n=1, cutoff=0.6)
+    matches = difflib.get_close_matches(token.lower(), _known_instrument_aliases(), n=1, cutoff=0.6)
     return matches[0] if matches else None
 
 
 def suggest_modifier(token: str) -> str | None:
-    matches = difflib.get_close_matches(token.lower(), _KNOWN_MODIFIERS, n=1, cutoff=0.6)
+    matches = difflib.get_close_matches(token.lower(), _known_modifiers(), n=1, cutoff=0.6)
     return matches[0] if matches else None
 
 

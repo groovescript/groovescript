@@ -44,6 +44,26 @@ _INSTRUMENT_ALIASES: dict[str, str] = {
 }
 
 
+def _grammar_instrument_pattern() -> str:
+    """The ``INSTRUMENT`` terminal's regex from ``grammar.lark``.
+
+    The single source for every textual instrument match (the comma
+    preprocessor, lint's groove-style scan), so a new instrument or alias
+    added to the grammar is recognised everywhere.
+    """
+    from pathlib import Path
+
+    text = (Path(__file__).parent / "grammar.lark").read_text()
+    match = re.search(r"^INSTRUMENT:\s*/(.*)/\s*$", text, re.MULTILINE)
+    if match is None:  # pragma: no cover - grammar edited incompatibly
+        raise RuntimeError("INSTRUMENT terminal not found in grammar.lark")
+    return match.group(1)
+
+
+#: Regex alternation matching any instrument name the grammar accepts.
+INSTRUMENT_PATTERN: str = _grammar_instrument_pattern()
+
+
 def _normalize_instrument(name: str) -> str:
     """Normalise an instrument name or alias to its canonical abbreviation."""
     canon = _INSTRUMENT_ALIASES.get(name.lower())

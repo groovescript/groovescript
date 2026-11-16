@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 
 from .ast_nodes import PlayGroove, Section, Song
+from .parser_notation import INSTRUMENT_PATTERN
 
 
 @dataclass
@@ -68,14 +69,9 @@ class StyleWarning:
 
 
 # Instrument and beat-label regex fragments used to detect the two groove
-# line styles in a textual pass. These mirror the patterns in
-# ``grammar.lark`` (and ``parser._PP_INSTRUMENT_RE`` / ``_PP_BEAT_LABEL_RE``).
-_INSTRUMENT_RE = (
-    r"(?:SRS|SCS|scs|cross-stick|hi-hat-foot|hi-hat|foot-chick|rimshot|floortom|hightom|hitom|lowtom|midtom"
-    r"|openhat|hihatfoot|footchick|hihat|snare|secondcrash|splash|stack|china|crash2|crash|click"
-    r"|ridebell|cowbell|bell|ride|bass|kick|open|hat"
-    r"|BD|bd|SN|sn|OH|oh|RD|rd|RB|rb|CR2|cr2|CR|cr|CB|cb|CH|ch|FT|ft|HH|hh|HT|ht|MT|mt|HF|hf|SP|sp|ST|st)"
-)
+# line styles in a textual pass. The instrument pattern is the grammar's
+# own INSTRUMENT terminal; the beat label mirrors ``_PP_BEAT_LABEL_RE``.
+_INSTRUMENT_RE = f"(?:{INSTRUMENT_PATTERN})"
 _BEAT_LABEL_RE = r"[1-9][0-9]?(?:trip|let|and|[e&atl])?"
 
 _INSTR_LINE_RE = re.compile(rf"^(?P<indent>\s+){_INSTRUMENT_RE}\s*:")
