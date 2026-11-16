@@ -480,10 +480,7 @@ def check_compiled_style(ir) -> list[StyleWarning]:
                 f"(bar {bar_number} has no {instrument} there)"
             ),
             line=line,
-            hint=(
-                "delete it, or fix the beat/instrument. A section's own "
-                "`variation at bar N` already replaces an inherited one for that bar"
-            ),
+            hint="delete it, or fix the beat or instrument",
         ))
     return warnings
 

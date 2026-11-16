@@ -420,3 +420,25 @@ def test_remove_that_removes_nothing_is_a_style_warning():
     assert warnings[0].line == 8
     # The removal that did match still happened.
     assert not [e for e in song.bars[1].events if e.instrument == "SN" and e.beat_position == Fraction(3, 4)]
+
+
+def test_remove_that_cancels_an_inherited_variation_is_not_reported():
+    """A ``like … with variations`` section can only cancel an inherited
+    variation on a bar by giving that bar a block of its own (empty blocks
+    aren't allowed), and a ``remove`` of what the inherited block added is
+    the natural way to write it -- even though, since only the last block
+    applies, it matches nothing. That idiom (used in a real chart) must not
+    be reported: deleting the block would bring the inherited hits back."""
+    from groovescript.lint import check_compiled_style
+
+    song = compile_song(parse(
+        'groove "g":\n    BD: 1, 3\n    SN: 2, 4\n'
+        'section "a":\n  bars: 2\n  groove: "g"\n'
+        '  variation at bar 2:\n    add snare at 2&\n'
+        'section "b":\n  like "a" with variations\n'
+        '  variation at bar 2:\n    remove snare at 2&\n'
+    ))
+    assert check_compiled_style(song) == []
+    # The override still cancels the inherited add.
+    b_bar2 = song.bars[3]
+    assert Fraction(3, 8) not in [e.beat_position for e in b_bar2.events if e.instrument == "SN"]
