@@ -114,11 +114,15 @@ def generate(seed: int) -> str:
     """Return the source of one random, valid chart."""
     rng = random.Random(seed)
     xrng = random.Random(seed * 7919 + 17)  # second stream: see module doc
+    yrng = random.Random(seed * 104729 + 3)  # third stream (round 3 features)
     ts = rng.choice(METERS)
     bpb = _beats(ts)
     beat_unit = int(ts.split("/")[1])
     song_tempo = rng.choice([72, 96, 120, 144])
-    out = [f'title: "fuzz {seed}"', f"tempo: {song_tempo}", f"time_signature: {ts}", ""]
+    out = [f'title: "fuzz {seed}"', f"tempo: {song_tempo}", f"time_signature: {ts}"]
+    if yrng.random() < 0.1:
+        out.append("feel: swing")
+    out.append("")
 
     grooves = []
     for gi in range(rng.randint(1, 3)):
@@ -146,6 +150,58 @@ def generate(seed: int) -> str:
         # else uses, so no variation collides with it).
         grooves.append("gx")
         out += ['groove "gx":', '    extend: "g0"', "    SP: 1", ""]
+    # ── round 3: more groove forms (third stream) ──
+    beat_labels = [str(b) for b in range(1, bpb + 1)]
+    if yrng.random() < 0.25:
+        # count+notes groove on an 8th grid
+        count = " ".join(f"{b} and" for b in beat_labels)
+        notes = ", ".join(
+            yrng.choice(["BD", "HH", "SN", "(BD HH)", "SN ghost", "HH accent"])
+            for _ in range(2 * bpb)
+        )
+        grooves.append("gc")
+        out += ['groove "gc":', f'  count: "{count}"', f'  notes: "{notes}"', ""]
+    if yrng.random() < 0.2 and bpb >= 2:
+        # star with exclusions, plus half-beat (16th-note) triplets on a
+        # beat no other line touches
+        tb = yrng.randint(1, bpb)
+        others = [b for b in beat_labels if b != str(tb)]
+        grooves.append("gt")
+        out += [
+            'groove "gt":',
+            f"    SN: {tb}{{triplet/8 1, 2, 3}}, {tb}&{{triplet/8 1, 3}}",
+            f"    BD: {', '.join(others)}",
+            "",
+        ]
+    if yrng.random() < 0.2 and beat_unit == 4:
+        grooves.append("gs")
+        kind = yrng.choice(["sextuplet", "triplet", "quintuplet"])
+        out += ['groove "gs":', f"    HH: *{kind}", "    BD: 1", ""]
+    if yrng.random() < 0.2:
+        grooves.append("ge")
+        out += ['groove "ge":', f"    HH: *8 except {yrng.choice(beat_labels)}&", "    BD: 1", ""]
+    if yrng.random() < 0.2:
+        # two-bar groove, bar 2 built from bar 1
+        grooves.append("gm")
+        out += [
+            'groove "gm":',
+            "    bar 1:",
+            "      BD: 1",
+            f"      SN: {beat_labels[-1]}",
+            "      HH: *8",
+            "    bar 2:",
+            "      like: bar 1",
+            f"      BD: 1, {beat_labels[-1]}&",
+            "",
+        ]
+    named_variation = yrng.random() < 0.2
+    # ST (stack) is used nowhere else, so adding it never collides. Half the
+    # time the definition goes after the sections: top-level definitions may
+    # come anywhere in the file.
+    v0_def = ['variation "v0":', "  add ST at 1", ""]
+    v0_at_end = yrng.random() < 0.5
+    if named_variation and not v0_at_end:
+        out += v0_def
     multibar_fill = xrng.random() < 0.2
     if multibar_fill:
         count = " ".join(str(b) for b in range(1, bpb + 1))
@@ -175,6 +231,7 @@ def generate(seed: int) -> str:
             out.append(f'  like "s{rng.randrange(si)}"{extra}')
             out.append("")
             continue
+        section_ts = ts
         if rng.random() < 0.12:
             # A per-section meter with at least as many beats, so every
             # groove's beat labels still fit.
@@ -183,12 +240,14 @@ def generate(seed: int) -> str:
                 if _beats(m) >= bpb and m != ts and m.endswith(f"/{beat_unit}")
             ]
             if wider:
-                out.append(f"  time_signature: {rng.choice(wider)}")
+                section_ts = rng.choice(wider)
+                out.append(f"  time_signature: {section_ts}")
         placeholder_bars: set[int] = set()  # variations can't target these
         if rng.random() < 0.2:
             # play: list mixing grooves and rests
             out.append("  play:")
             total = 0
+            bar_defined = False
             for _ in range(rng.randint(1, 3)):
                 if rng.random() < 0.25:
                     n = rng.randint(1, 3)
@@ -197,6 +256,14 @@ def generate(seed: int) -> str:
                     n = rng.randint(1, 2)
                     out.append(f"    groove placeholder x{n}")
                     placeholder_bars.update(range(total + 1, total + n + 1))
+                elif not bar_defined and yrng.random() < 0.15:
+                    # inline one-off bar, then a reference to it
+                    bar_defined = True
+                    n = 2
+                    out += [f'    bar "b{si}":', "      BD: 1", f"      SN: {beat_labels[-1]}", f'    bar "b{si}"']
+                elif yrng.random() < 0.15:
+                    n = rng.randint(1, 2)
+                    out += [f"    groove x{n}:", "      BD: 1", "      HH: *8"]
                 else:
                     n = rng.randint(1, 2)
                     out.append(f'    groove "{rng.choice(grooves)}" x{n}')
@@ -208,7 +275,12 @@ def generate(seed: int) -> str:
             placeholder_bars.update(range(1, bars + 1))
         else:
             out.append(f"  bars: {bars}")
-            out.append(f'  groove: "{rng.choice(grooves)}"')
+            choice = rng.choice(grooves)
+            if yrng.random() < 0.1:
+                # an inline unnamed groove instead of a named one
+                out += ["  groove:", "      BD: 1", f"      SN: {beat_labels[-1]}", "      HH: *8"]
+            else:
+                out.append(f'  groove: "{choice}"')
             if bars in (2, 4) and rng.random() < 0.2:
                 out.append(f"  repeat: {rng.choice([d for d in (1, 2) if bars % d == 0])}")
         section_tempo = song_tempo
@@ -256,6 +328,33 @@ def generate(seed: int) -> str:
         if rng.random() < 0.2:
             bar = rng.randint(1, bars)
             out.append(f'  cue "c{si}" at bar {bar}')
+        if yrng.random() < 0.15:
+            bar = yrng.randint(1, bars)
+            if bar not in used_bars:
+                used_bars.add(bar)
+                if yrng.random() < 0.5:
+                    out.append(f"  fill at bar {bar}")
+                else:
+                    out.append(f'  fill placeholder "build" at bar {bar} beat {bpb}')
+        if yrng.random() < 0.12:
+            bar = yrng.randint(1, bars)
+            if bar not in used_bars:
+                used_bars.add(bar)
+                out += [
+                    f"  variation at bar {bar}:",
+                    f'    count: "1 {beat_labels[-1]}"' if bpb > 1 else '    count: "1"',
+                    '    notes: "(BD CR), SN"' if bpb > 1 else '    notes: "(BD CR)"',
+                ]
+        if named_variation and yrng.random() < 0.4:
+            bar = yrng.randint(1, bars)
+            if bar not in used_bars:
+                used_bars.add(bar)
+                out.append(f'  variation "v0" at bar {bar}')
+        if yrng.random() < 0.1 and section_ts == "4/4":
+            bar = yrng.randint(1, bars)
+            if bar not in used_bars:
+                used_bars.add(bar)
+                out.append(f'  variation "drop-kick" at bar {bar}')
         if rng.random() < 0.15:
             a = rng.randint(1, bars)
             b = rng.randint(a, bars)
@@ -266,6 +365,8 @@ def generate(seed: int) -> str:
                 t = section_tempo - 30 if kind == "rit" else section_tempo + 30
                 target = f" to tempo {t}"
             out.append(f"  {kind} from bar {a} to bar {b}{target}")
+            if b < bars and yrng.random() < 0.5:
+                out.append(f"  a tempo at bar {b + 1}")
         if rng.random() < 0.15:
             a = rng.randint(1, bars)
             b = rng.randint(a, bars)
@@ -274,6 +375,8 @@ def generate(seed: int) -> str:
         if free and rng.random() < 0.15:
             bar = rng.choice(free)
             words = " ".join(f"la{i}" for i in range(1, min(bpb, 3) + 1))
+            if min(bpb, 3) == 3 and yrng.random() < 0.4:
+                words = f"la1 {yrng.choice(['_', '.', ','])} la3"
             count = " ".join(str(b) for b in range(1, min(bpb, 3) + 1))
             out.append("  lyrics:")
             out.append(f'    bar {bar}: "{count}" "{words}"')
@@ -281,4 +384,6 @@ def generate(seed: int) -> str:
                 out.append('  lyrics "bv":')
                 out.append(f'    bar {bar}: "1" "ooh"')
         out.append("")
+    if named_variation and v0_at_end:
+        out += v0_def
     return "\n".join(out)

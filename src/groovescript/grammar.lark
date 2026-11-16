@@ -5,6 +5,18 @@
 
 start: statement*
 
+// Top-level definitions start at the beginning of a line. The grammar is
+// otherwise indentation-insensitive, and sections (and extend: bodies) also
+// contain lines starting with ``groove`` / ``fill`` / ``variation``, so
+// without a line-start token the parser could not tell a new top-level
+// definition after a section from one more item of that section. These
+// win over the plain keywords only at column 0 (priority 2); an indented
+// top-level definition still parses with the plain keyword wherever it is
+// unambiguous (e.g. before any section).
+_TOP_GROOVE.2: /^groove(?![\w-])/m
+_TOP_FILL.2: /^fill(?![\w-])/m
+_TOP_VARIATION.2: /^variation(?![\w-])/m
+
 ?statement: metadata_block
           | metadata_line
           | groove_def
@@ -38,8 +50,9 @@ FEEL_VALUE: "swing"
 lyrics_style_line: "lyrics_style" ":" LYRICS_STYLE_VALUE
 LYRICS_STYLE_VALUE: "staff" | "line"
 
-groove_def: "groove" ESCAPED_STRING ":" groove_body
-          | "groove" "placeholder" ESCAPED_STRING                  -> groove_placeholder_def
+groove_def: _groove_kw ESCAPED_STRING ":" groove_body
+          | _groove_kw "placeholder" ESCAPED_STRING                  -> groove_placeholder_def
+_groove_kw: _TOP_GROOVE | "groove"
 groove_body: pattern_content
            | groove_cn_body
            | extend_body
@@ -65,10 +78,11 @@ pattern_bar_text: "text" ":" ESCAPED_STRING
 pattern_line: INSTRUMENT ":" pattern_value      // instrument→positions: BD: 1, 3
 groove_pos_line: BEAT_LABEL ":" fill_instruments // position→instruments: 1: BD, HH
 
-fill_def: "fill" ESCAPED_STRING ":" fill_extend_clause fill_bar_block* fill_dynamic_line*
-        | "fill" ESCAPED_STRING ":" fill_bar_block+ fill_dynamic_line*
-        | "fill" ESCAPED_STRING ":" fill_extend_clause fill_count_item+ fill_dynamic_line* -> fill_def_extend_bare
-        | "fill" ESCAPED_STRING ":" fill_count_item+ fill_dynamic_line* -> fill_def_bare
+fill_def: _fill_kw ESCAPED_STRING ":" fill_extend_clause fill_bar_block* fill_dynamic_line*
+        | _fill_kw ESCAPED_STRING ":" fill_bar_block+ fill_dynamic_line*
+        | _fill_kw ESCAPED_STRING ":" fill_extend_clause fill_count_item+ fill_dynamic_line* -> fill_def_extend_bare
+        | _fill_kw ESCAPED_STRING ":" fill_count_item+ fill_dynamic_line* -> fill_def_bare
+_fill_kw: _TOP_FILL | "fill"
 fill_extend_clause: "extend" ":" ESCAPED_STRING
 fill_dynamic_line: section_dynamic_line
 ?fill_bar_block: fill_count_block | fill_cn_bar | fill_bar_numbered
@@ -211,7 +225,8 @@ A_TEMPO: /a[ \t]+tempo/
 // Top-level reusable variation definition. Referenced from a section via
 // `variation "name" at bar N` (no trailing body). User-defined names
 // override the built-in variation library.
-variation_def: "variation" ESCAPED_STRING ":" variation_action+
+variation_def: _variation_kw ESCAPED_STRING ":" variation_action+
+_variation_kw: _TOP_VARIATION | "variation"
 
 section_variation_block: "variation" ESCAPED_STRING "at" "bar" bar_number_list ":" variation_action+
                        | "variation" "at" "bar" bar_number_list ":" variation_action+

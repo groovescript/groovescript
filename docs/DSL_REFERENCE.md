@@ -76,6 +76,11 @@ the language, start with [`GETTING_STARTED.md`](GETTING_STARTED.md) or
 A small set of parser-level conveniences apply across the language. They
 are listed up front so later sections can use them without explanation.
 
+Top-level `groove`, `fill` and `variation` definitions start at the
+beginning of a line and may appear anywhere in the file, before or after
+the sections that use them. (Sections play in file order; definitions
+don't.)
+
 ### Optional commas
 
 Commas between items in a list are **optional** — wherever a list of beats
