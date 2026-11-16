@@ -1655,6 +1655,14 @@ class _BarGroupState:
         return f"      \\time {bar_ts}\n"
 
 
+def _rest_bar_has_annotations(bar: IRBar) -> bool:
+    return bool(
+        bar.cues or bar.fill_placeholders or bar.bar_text
+        or bar.dynamic_starts or bar.dynamic_stops
+        or bar.has_any_lyrics or _has_tempo_changes(bar)
+    )
+
+
 def _group_bars(
     bars: list[IRBar],
     is_top_level: bool = True,
@@ -1819,17 +1827,21 @@ def _group_bars(
         # consecutive rest bars collapse into a single multi-measure
         # rest measure with the count displayed above the staff
         # (``\compressMMRests { R1*N | }``); a single rest bar emits
-        # a plain ``R1 |``. Rest bars cannot have annotations, so the
-        # only span breakers are section boundaries, time-signature
-        # changes, or a non-rest bar (e.g. a fill bar mid-section).
-        if is_top_level and bar.is_rest:
+        # a plain ``R1 |``. A rest bar that carries an annotation (cue,
+        # fill-placeholder label, lyrics, dynamics, tempo change) can't be
+        # a whole-bar rest token -- there is no note to hang it on, and
+        # inside a multi-bar rest its lyrics would lose their bar -- so it
+        # falls through to the ordinary bar path, which writes rests that
+        # carry the markup. Other span breakers: section boundaries,
+        # time-signature changes, or a non-rest bar.
+        if is_top_level and bar.is_rest and not _rest_bar_has_annotations(bar):
             ts_change_cmd = state.compute_time_signature_change(bar)
             cur_tempo_str, tempo_change_cmd = state.compute_tempo_info(bar)
             rest_token = _whole_bar_rest(state.current_bpb, state.current_beat_unit)
             num_rests = 1
             while i + num_rests < len(bars):
                 nb = bars[i + num_rests]
-                if not nb.is_rest:
+                if not nb.is_rest or _rest_bar_has_annotations(nb):
                     break
                 if is_top_level and nb.section_name is not None:
                     break
