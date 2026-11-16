@@ -6,9 +6,11 @@ generator wrote something the language forbids (fix the generator) or the
 compiler rejects valid input (a bug). Either way the failing test prints
 the seed and the source.
 
-Deliberately avoided, because they make exact onset comparison ambiguous
-rather than because they're unsupported: grace notes (flam / drag),
-``double``, buzz rolls, and HH/OH on the same beat (rejected by design).
+Features beyond the basic arrangement (articulations, buzz rolls,
+``extend:``, placeholders, multi-bar fills, ``crash in``, ``break on bar``,
+backing vocals) are drawn from a second random stream, so adding one
+doesn't reshuffle every existing seed's base chart. HH and OH never share
+a beat (rejected by design).
 """
 
 from __future__ import annotations
@@ -91,9 +93,27 @@ def _fill(rng: random.Random, name: str, bpb: int) -> tuple[list[str], int]:
     return ([f'fill "{name}":', f'  count: "{count}"', f'  notes: "{notes}"'], start)
 
 
+def _articulate(xrng: random.Random, line: str, sixteenths: bool) -> str:
+    """Maybe add a flam/drag (snare) or, on a plain 16th grid, a ``double``
+    to one hit of a pattern line (not star or tuplet lines)."""
+    inst, _, hits = line.partition(": ")
+    if hits.startswith("*") or "{" in hits:
+        return line
+    items = hits.split(", ")
+    i = xrng.randrange(len(items))
+    label = items[i].split()[0]
+    if inst == "SN" and xrng.random() < 0.3:
+        items[i] = f"{label} {xrng.choice(['flam', 'drag'])}"
+    elif sixteenths and xrng.random() < 0.15:
+        # ``double`` needs exactly 4 slots per beat (a 16th grid).
+        items[i] = f"{label} double"
+    return f"{inst}: " + ", ".join(items)
+
+
 def generate(seed: int) -> str:
     """Return the source of one random, valid chart."""
     rng = random.Random(seed)
+    xrng = random.Random(seed * 7919 + 17)  # second stream: see module doc
     ts = rng.choice(METERS)
     bpb = _beats(ts)
     beat_unit = int(ts.split("/")[1])
@@ -105,8 +125,39 @@ def generate(seed: int) -> str:
         name = f"g{gi}"
         grooves.append(name)
         out.append(f'groove "{name}":')
-        out += [f"    {line}" for line in _groove_lines(rng, bpb, beat_unit)]
+        lines = _groove_lines(rng, bpb, beat_unit)
+        body = " ".join(line.partition(": ")[2] for line in lines)
+        words = body.replace(",", " ").split()
+        sixteenths = (
+            (any(w[-1:] in ("e", "a") and w[0].isdigit() for w in words) or "*16" in words)
+            and "{" not in body and "*8t" not in words
+            and not any(w[-1:] in ("t", "l") and w[0].isdigit() for w in words)
+        )
+        out += [f"    {_articulate(xrng, line, sixteenths)}" for line in lines]
         out.append("")
+    if xrng.random() < 0.25:
+        # A buzz roll lasting one beat, alone on the snare.
+        grooves.append("gb")
+        # Not on beat 1: crashes land there (``crash in``, ``add CR at 1``)
+        # and no hand can play during a buzz roll.
+        out += ['groove "gb":', f"    SN: {xrng.randint(2, bpb)} buzz:{beat_unit}", "    BD: 1", ""]
+    if xrng.random() < 0.25:
+        # A derived groove: the base plus a splash (an instrument nothing
+        # else uses, so no variation collides with it).
+        grooves.append("gx")
+        out += ['groove "gx":', '    extend: "g0"', "    SP: 1", ""]
+    multibar_fill = xrng.random() < 0.2
+    if multibar_fill:
+        count = " ".join(str(b) for b in range(1, bpb + 1))
+        out += [
+            'fill "fm":',
+            f'  count "{count}":',
+            f"    SN: {' '.join(str(b) for b in range(1, bpb + 1))}",
+            f'  count "{count}":',
+            "    FT: 1",
+            "    BD: 1",
+            "",
+        ]
 
     fills = []
     for fi in range(rng.randint(0, 2)):
@@ -133,6 +184,7 @@ def generate(seed: int) -> str:
             ]
             if wider:
                 out.append(f"  time_signature: {rng.choice(wider)}")
+        placeholder_bars: set[int] = set()  # variations can't target these
         if rng.random() < 0.2:
             # play: list mixing grooves and rests
             out.append("  play:")
@@ -141,11 +193,19 @@ def generate(seed: int) -> str:
                 if rng.random() < 0.25:
                     n = rng.randint(1, 3)
                     out.append(f"    rest x{n}")
+                elif xrng.random() < 0.15:
+                    n = rng.randint(1, 2)
+                    out.append(f"    groove placeholder x{n}")
+                    placeholder_bars.update(range(total + 1, total + n + 1))
                 else:
                     n = rng.randint(1, 2)
                     out.append(f'    groove "{rng.choice(grooves)}" x{n}')
                 total += n
             bars = total
+        elif xrng.random() < 0.08:
+            out.append(f"  bars: {bars}")
+            out.append("  groove: placeholder")
+            placeholder_bars.update(range(1, bars + 1))
         else:
             out.append(f"  bars: {bars}")
             out.append(f'  groove: "{rng.choice(grooves)}"')
@@ -155,7 +215,21 @@ def generate(seed: int) -> str:
         if rng.random() < 0.25:
             section_tempo = rng.choice([80, 100, 132])
             out.append(f"  tempo: {section_tempo}")
-        used_bars: set[int] = set()
+        used_bars: set[int] = set(placeholder_bars)
+        if xrng.random() < 0.12:
+            out.append("  crash in")
+        has_break = False
+        if xrng.random() < 0.1:
+            bar = xrng.randint(1, bars)
+            if bar not in used_bars:
+                used_bars.add(bar)
+                has_break = True
+                out.append(f"  break on bar {bar}")
+        if multibar_fill and xrng.random() < 0.3:
+            bar = xrng.randint(1, bars)
+            if bar not in used_bars and bar + 1 not in used_bars:
+                used_bars.update((bar, bar + 1))
+                out.append(f'  fill "fm" at bar {bar}')
         if fills and rng.random() < 0.5:
             name, start = rng.choice(fills)
             bar = rng.randint(1, bars)
@@ -170,7 +244,8 @@ def generate(seed: int) -> str:
                 out.append(f"    add CR at 1")
         if rng.random() < 0.15 and bpb >= 2:
             bar = rng.randint(1, bars)
-            if bar not in used_bars:
+            # A break may span several bars; none may change meter.
+            if bar not in used_bars and not has_break:
                 used_bars.add(bar)
                 other = rng.choice([m for m in ("3/4", "2/4", "5/4", "6/8", "7/8") if m != ts])
                 obpb = _beats(other)
@@ -202,5 +277,8 @@ def generate(seed: int) -> str:
             count = " ".join(str(b) for b in range(1, min(bpb, 3) + 1))
             out.append("  lyrics:")
             out.append(f'    bar {bar}: "{count}" "{words}"')
+            if xrng.random() < 0.4:
+                out.append('  lyrics "bv":')
+                out.append(f'    bar {bar}: "1" "ooh"')
         out.append("")
     return "\n".join(out)

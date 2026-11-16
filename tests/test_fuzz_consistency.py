@@ -24,7 +24,7 @@ from fractions import Fraction
 import pytest
 
 from groovescript.compiler import compile_song
-from groovescript.midi import TICKS_PER_BEAT, _NOTE, emit_midi
+from groovescript.midi import _GRACE_TICKS, TICKS_PER_BEAT, _NOTE, emit_midi
 from groovescript.musicxml import _DIVS_PER_BEAT, emit_musicxml
 from groovescript.parser import parse
 
@@ -40,14 +40,18 @@ def _bar_quarters(ts: str) -> Fraction:
 
 
 def _ir_bars(song):
-    """[(meter, bar length in quarters, {(onset in quarters, instrument)})]."""
+    """[(meter, bar length in quarters, {(onset, instrument, modifiers, grace)})].
+
+    Onsets are in quarter notes from the bar start."""
     out = []
     ts = song.metadata.time_signature
     for bar in song.bars:
         ts = bar.time_signature or ts
         length = _bar_quarters(ts)
         hits = Counter(
-            (e.beat_position * length, e.instrument)
+            (e.beat_position * length, e.instrument, tuple(sorted(
+                m for m in e.modifiers if m in ("flam", "drag", "double")
+            )), e.grace_instrument)
             for e in bar.events
             if not getattr(e, "tied_from_prev", False)
         )
@@ -64,9 +68,19 @@ def _check_midi(song, bars, src):
     expected = Counter()
     start = Fraction(0)
     for _ts, length, hits in bars:
-        for (onset, inst), n in hits.items():
+        for (onset, inst, mods, grace), n in hits.items():
             tick = round((start + onset) * TICKS_PER_BEAT)
-            expected[(tick, _NOTE[inst])] += n
+            pitch = _NOTE[inst]
+            expected[(tick, pitch)] += n
+            # Articulations MIDI plays as extra strokes (see midi._add_hit).
+            grace_pitch = _NOTE[grace] if grace else pitch
+            if "flam" in mods:
+                expected[(max(0, tick - _GRACE_TICKS), grace_pitch)] += n
+            if "drag" in mods:
+                for k in (2, 1):
+                    expected[(max(0, tick - k * _GRACE_TICKS), grace_pitch)] += n
+            if "double" in mods:
+                expected[(tick + TICKS_PER_BEAT // 8, pitch)] += n
         start += length
 
     def _near(counter, key):
@@ -121,7 +135,7 @@ def _check_musicxml(song, bars, src):
             )
             if part.get("id") == "P1":
                 expected = Counter()
-                for (onset, _inst), n in hits.items():
+                for (onset, _inst, _mods, _grace), n in hits.items():
                     expected[int(onset * _DIVS_PER_BEAT)] += n
                 assert onsets == expected, (
                     f"bar {idx} ({ts}): MusicXML onsets {sorted(onsets.items())} "
