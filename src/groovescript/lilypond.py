@@ -1781,6 +1781,18 @@ class _BarGroupState:
         return f"      \\time {bar_ts}\n"
 
 
+def _rest_bar_annotated_on_downbeat(bar: IRBar) -> bool:
+    """A rest bar whose annotations can all sit on a whole-bar rest token:
+    lyrics (on their own staff) and cues / fill labels on beat 1."""
+    return (
+        _rest_bar_has_annotations(bar)
+        and not bar.bar_text
+        and not (bar.dynamic_starts or bar.dynamic_stops or _has_tempo_changes(bar))
+        and all(pos == 0 for pos, _ in bar.cues)
+        and all(pos == 0 for pos, _ in bar.fill_placeholders)
+    )
+
+
 def _rest_bar_has_annotations(bar: IRBar) -> bool:
     return bool(
         bar.cues or bar.fill_placeholders or bar.bar_text
@@ -2026,6 +2038,26 @@ def _group_bars(
                 measures.append(f"{ts_change_cmd}{tempo_change_cmd}{mark}      {rest_token} |")
             printed.append((bar, num_rests))
             i += num_rests
+            continue
+
+        # 2b. A rest bar whose only extras are lyrics and/or a cue or fill
+        # label on beat 1: still one whole-bar rest, with the label on it.
+        # (Mid-bar labels, hairpins and tempo changes need real rests to
+        # attach to, so those bars take the ordinary path below.)
+        if is_top_level and bar.is_rest and _rest_bar_annotated_on_downbeat(bar):
+            ts_change_cmd = state.compute_time_signature_change(bar)
+            cur_tempo_str, tempo_change_cmd = state.compute_tempo_info(bar)
+            show_swing = is_top_level and state.feel == "swing" and not state.swing_shown
+            mark = _section_mark(bar, tempo_str=cur_tempo_str, show_swing=show_swing)
+            if show_swing and mark:
+                state.swing_shown = True
+            token = _attach_position_markup(
+                _whole_bar_rest(state.current_bpb, state.current_beat_unit), Fraction(0),
+                dict(bar.cues) or None, dict(bar.fill_placeholders) or None, None, None,
+            )
+            measures.append(f"{ts_change_cmd}{tempo_change_cmd}{mark}      {token} |")
+            printed.append((bar, 1))
+            i += 1
             continue
 
         # Compute any pending \time change before we start consolidating

@@ -2223,3 +2223,20 @@ def test_explicit_repeat_of_identical_bars_is_not_nested():
     assert ly.count("\\repeat volta") == 1
     assert "\\repeat volta 2 {\n        bd4 sn4 bd4 sn4 |\n        bd4 sn4 bd4 sn4 |\n      }" in ly
     assert '"Play 2x"' in ly
+
+
+def test_rest_bar_with_downbeat_cue_or_lyrics_stays_a_whole_bar_rest():
+    """A ``rest`` bar carrying only a beat-1 cue (or lyrics, which live on
+    their own staff) prints as one whole-bar rest with the label, not as
+    four quarter rests. A mid-bar cue still needs real rests to sit on."""
+    def bars(extra):
+        ly = emit_lilypond(compile_song(parse(
+            'groove "g":\n  BD: 1\n'
+            'section "a":\n  play:\n    rest x3\n    groove "g" x1\n' + extra
+        )))
+        return [l.strip() for l in ly.splitlines() if l.strip().endswith("|")]
+
+    assert 'R1^\\markup { \\italic \\fontsize #-1 "Band in" } |' in bars('  cue "Band in" at bar 2\n')
+    lyric_bars = bars('  lyrics:\n    bar 2: "1 2 3" "la la la"\n')
+    assert "r4 r4 r4 r4 |" not in lyric_bars
+    assert 'r8^\\markup { \\italic \\fontsize #-1 "x" }' in " ".join(bars('  cue "x" at bar 2 beat 2&\n'))
