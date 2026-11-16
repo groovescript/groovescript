@@ -1792,9 +1792,20 @@ def _fill_bar_subdivision(
     triplet grid under a straight one-beat fill would otherwise be emitted
     as non-power-of-two durations (``r6.``) with no tuplet bracket.
     """
-    if any(e.beat_position < start_position for e in groove_events):
-        return max(groove_subdivision, fill_bar.subdivision)
-    return fill_bar.subdivision
+    kept = [e for e in groove_events if e.beat_position < start_position]
+    if not kept:
+        return fill_bar.subdivision
+    # Only the groove hits before the fill survive, so size the grid from
+    # them rather than from the groove's whole-bar grid: a 16th groove with
+    # a sextuplet on beat 3 has a 12-slot-per-beat grid, and once a fill
+    # replaces beat 3 that grid would print beat 1 as 48th-note rests.
+    # An LCM (not a max) so both the kept hits and the fill land on slots.
+    needed = fill_bar.subdivision
+    for e in kept:
+        needed = lcm(needed, e.beat_position.denominator)
+        if e.duration is not None:
+            needed = lcm(needed, (e.beat_position + e.duration).denominator)
+    return needed
 
 
 def _fill_only_bar(
@@ -3528,6 +3539,11 @@ def compile_song(song: Song) -> IRSong:
             for break_spec in section.breaks:
                 arranged_events = _apply_break(arranged_events, break_spec, section_bar_offset, bpb, total_bars)
 
+            if arranged_events:
+                # A variation ``add`` (or anything else) that put hits on a
+                # ``rest`` bar makes it a played bar; left flagged as a rest,
+                # every emitter would drop the hits.
+                is_rest = False
             bar_cues = _collect_bar_cues(section, section_bar_offset, bar_subdivision, bar_bpb)
             bar_placeholders = _collect_bar_placeholders(section, section_bar_offset, bar_subdivision, bar_bpb)
             bar_placeholders = bar_placeholders + placeholder_fill_coverage.get(section_bar_offset, [])
@@ -3775,6 +3791,11 @@ def compile_song(song: Song) -> IRSong:
             for break_spec in section.breaks:
                 arranged_events = _apply_break(arranged_events, break_spec, section_bar_offset, bpb, section.bars)
 
+            if arranged_events:
+                # A variation ``add`` (or anything else) that put hits on a
+                # ``rest`` bar makes it a played bar; left flagged as a rest,
+                # every emitter would drop the hits.
+                is_rest = False
             bar_cues = _collect_bar_cues(section, section_bar_offset, bar_subdivision, bar_bpb)
             bar_placeholders = _collect_bar_placeholders(section, section_bar_offset, bar_subdivision, bar_bpb)
             bar_placeholders = bar_placeholders + placeholder_fill_coverage.get(section_bar_offset, [])

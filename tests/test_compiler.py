@@ -1223,7 +1223,10 @@ def test_compile_triplet_positions():
 
 
 def test_compile_song_triplet_fill_bar_subdivision():
-    """A bar with a triplet fill should have subdivision 12."""
+    """A bar keeping the money beat's straight 8ths before a triplet fill
+    needs a grid both fit on: 6 slots per beat (24 per bar), the LCM of the
+    8th and triplet grids. (It used to be the max, 12, which leaves the
+    8th-note hats between slots.)"""
     triplet_fill = Fill(
         name="triplet",
         bars=[
@@ -1252,7 +1255,8 @@ def test_compile_song_triplet_fill_bar_subdivision():
     )
     ir = compile_song(song)
     bar4 = ir.bars[3]
-    assert bar4.subdivision == 12
+    assert bar4.subdivision == 24
+    assert all((e.beat_position * bar4.subdivision).denominator == 1 for e in bar4.events)
 
 
 def test_compile_song_triplet_fill_preserves_straight_groove():
@@ -3301,3 +3305,39 @@ def test_multi_bar_extend_over_count_notes_base_is_an_error():
     )
     with pytest.raises(ValueError, match="multi-bar extend: body"):
         compile_song(parse(src))
+
+
+def test_variation_add_on_play_rest_bar_makes_it_played():
+    """Regression (found by the fuzz consistency test): an ``add`` variation
+    on a ``rest`` bar of a ``play:`` list kept the bar flagged as a rest, so
+    LilyPond printed a multi-bar rest and MIDI / MusicXML dropped the hit."""
+    from groovescript.lilypond import emit_lilypond
+    from groovescript.midi import emit_midi
+
+    song = compile_song(parse(
+        'groove "g":\n  BD: 1\n'
+        'section "a":\n  play:\n    rest x3\n'
+        '  variation at bar 2:\n    add CR at 1\n'
+    ))
+    assert [b.is_rest for b in song.bars] == [True, False, True]
+    assert "cymc4 r4 r4 r4 |" in emit_lilypond(song)
+    assert b"\x99\x31" in emit_midi(song)  # note-on, channel 10, crash (49)
+
+
+def test_fill_over_partial_tuplet_groove_does_not_keep_tuplet_grid():
+    """Regression (found by the LilyPond fuzz run): a groove with 16ths on
+    beat 1 and a sextuplet on beat 3 has a 12-slot-per-beat grid. Once a
+    fill from beat 2 replaced the sextuplet, the bar kept that grid and
+    beat 1 was printed as 48th-note rests, which LilyPond rejects ("not a
+    duration")."""
+    from groovescript.lilypond import emit_lilypond
+
+    song = compile_song(parse(
+        'groove "g":\n    MT: 1, 1a, 2, 4\n    SN: 3{sextuplet 1, 6}\n'
+        'fill "f":\n  count: "2 2& 3 3& 4"\n  notes: "HT, MT, SN, (BD CR), FT"\n'
+        'section "a":\n  bars: 1\n  groove: "g"\n  fill "f" at bar 1 beat 2\n'
+    ))
+    assert song.bars[0].subdivision == 16
+    ly = emit_lilypond(song)
+    assert "48" not in ly
+    assert "tommh8. tommh16 tomh8 tommh8 sn8 <bd cymc>8 tomfh4 |" in ly
