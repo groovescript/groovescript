@@ -1910,6 +1910,12 @@ def _infer_variation_subdivision(actions: list[VariationAction], beats_per_bar: 
     return max(2, straight_needed) * beats_per_bar
 
 
+def _variations_targeting(section: Section, bar_offset: int) -> int:
+    """How many of ``section``'s variation blocks target the bar at
+    ``bar_offset`` (0-indexed); the last one is the one applied."""
+    return sum(1 for v in section.variations if bar_offset + 1 in v.bars)
+
+
 def _apply_variation_actions(
     events: list[Event],
     actions: list[VariationAction],
@@ -3531,7 +3537,14 @@ def compile_song(song: Song) -> IRSong:
                 )
                 is_rest = False  # fill replaces a rest bar entirely
 
-            bar_noop_removes: list = []
+            bar_noop_removes: list | None = []
+            # When several variation blocks target this bar (an inheritor's
+            # own block replacing an inherited one), only the last applies,
+            # and a block may consist of a remove that matches nothing just
+            # to cancel the inherited one -- an empty block isn't allowed.
+            # Don't report those as no-op removes.
+            if _variations_targeting(section, section_bar_offset) > 1:
+                bar_noop_removes = None
             if section_bar_offset in variation_coverage:
                 variation = variation_coverage[section_bar_offset]
                 if variation.time_signature is not None:
@@ -3602,7 +3615,7 @@ def compile_song(song: Song) -> IRSong:
                     phrase_position=phrase_position,
                     phrase_length=phrase_length,
                     beat_tuplets=bar_beat_tuplets,
-                    noop_removes=bar_noop_removes,
+                    noop_removes=bar_noop_removes or [],
                 )
             )
         return new_bars, ir_section
@@ -3787,7 +3800,14 @@ def compile_song(song: Song) -> IRSong:
             is_rest = False
             is_meter_override = False
 
-            bar_noop_removes: list = []
+            bar_noop_removes: list | None = []
+            # When several variation blocks target this bar (an inheritor's
+            # own block replacing an inherited one), only the last applies,
+            # and a block may consist of a remove that matches nothing just
+            # to cancel the inherited one -- an empty block isn't allowed.
+            # Don't report those as no-op removes.
+            if _variations_targeting(section, section_bar_offset) > 1:
+                bar_noop_removes = None
             if section_bar_offset in variation_coverage:
                 variation = variation_coverage[section_bar_offset]
                 if variation.time_signature is not None:
@@ -3866,7 +3886,7 @@ def compile_song(song: Song) -> IRSong:
                     phrase_position=bar_phrase_position,
                     phrase_length=bar_phrase_length,
                     beat_tuplets=list(groove_bar_tuplets),
-                    noop_removes=bar_noop_removes,
+                    noop_removes=bar_noop_removes or [],
                 )
             )
         return new_bars, ir_section
