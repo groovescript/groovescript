@@ -90,9 +90,9 @@ section "verse":
   // Multi-instrument add + per-hit modifiers.
   variation at bar 3:
     add snare ghost kick accent at 3e
-  // Pairwise replace: snare → ride, hat → crash, both on beat 4.
-  variation at bar 4:
-    replace snare hat with ride crash at 4
+  // Pairwise replace: snare → cross-stick, hat → ride, wherever each plays.
+  variation at bar 1:
+    replace snare hat with click ride at *
 
 section "chorus":
   bars: 4

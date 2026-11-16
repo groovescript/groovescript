@@ -122,14 +122,13 @@ drumPitchNames =
       }
       <bd hh cymc>8-> hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
-      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "VERSE: 4" } \vspace #0.3 \italic \fontsize #-1 "Play 2x" }
-      \repeat volta 2 {
-        bd16 hh16 sn16 hh16 bd16 hh16 sn16 hh16 bd16 hh16 sn16 hh16 bd16 hh16 sn16 hh16 |
-      }
+      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "VERSE: 4" }
+      bd16 cymr16 ss16 cymr16 bd16 cymr16 ss16 cymr16 bd16 cymr16 ss16 cymr16 bd16 cymr16 ss16 cymr16 |
+      bd16 hh16 sn16 hh16 bd16 hh16 sn16 hh16 bd16 hh16 sn16 hh16 bd16 hh16 sn16 hh16 |
       bd16 hh16 sn16 hh16 bd16 hh16 sn16 hh16 bd16 <hh \parenthesize sn bd>16-> sn16 hh16 bd16 hh16 sn16 hh16 |
-      sn8-> \parenthesize sn8 \parenthesize sn8 \parenthesize sn8 sn8-> \parenthesize sn8 <cymr cymc>8 <bd cymc>8-> |
+      sn8-> \parenthesize sn8 \parenthesize sn8 \parenthesize sn8 sn8-> \parenthesize sn8 \parenthesize sn8 <bd cymc>8-> |
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
       \once \override Score.RehearsalMark.padding = #2

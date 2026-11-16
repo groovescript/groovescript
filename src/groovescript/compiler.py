@@ -2018,6 +2018,25 @@ def _apply_variation_actions(
                 }
             else:
                 replace_positions = positions
+                # Like ``modify``, an explicit position must name an existing
+                # hit: replacing nothing used to stamp the target anyway,
+                # e.g. an open hat added at 4& in a shuffle whose hat plays
+                # 4let.
+                source_positions = {
+                    e.beat_position for e in result if e.instrument == action.instrument
+                }
+                missing = sorted(set(replace_positions) - source_positions)
+                if missing:
+                    raise GrooveScriptError(
+                        message=(
+                            f"variation replace {action.instrument!r} with "
+                            f"{action.target_instrument!r} at "
+                            f"{_beat_label_for(missing[0], beats_per_bar)} (bar {absolute_bar}): "
+                            f"no {action.instrument!r} hit there to replace"
+                        ),
+                        line=action.line,
+                        hint=f"use `add {action.target_instrument} at ...` to add a new hit",
+                    )
             result = [
                 e for e in result
                 if not (e.instrument == action.instrument and e.beat_position in replace_positions)

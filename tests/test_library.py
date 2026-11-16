@@ -143,3 +143,35 @@ def test_user_groove_shadowing_library_name_works_in_other_meters():
     )
     song = compile_song(parse(src))
     assert len(song.bars[0].events) == 3
+
+
+def test_disco_is_closed_on_the_beat_open_on_the_and():
+    """Regression: ``disco`` alternated closed and open hats on every 16th
+    (open on every ``e`` and ``a``); the disco figure is a closed hat on
+    the beat and an open hat on every ``&``."""
+    from fractions import Fraction
+
+    src = 'section "A":\n  bars: 1\n  groove: "disco"\n'
+    events = compile_song(parse(src)).bars[0].events
+    hats = sorted((e.beat_position, e.instrument) for e in events if e.instrument in ("HH", "OH"))
+    assert hats == [
+        (Fraction(i, 8), "HH" if i % 2 == 0 else "OH") for i in range(8)
+    ]
+
+
+@pytest.mark.parametrize("groove, variation", [
+    ("shuffle", "open-hat-4&"),   # hat plays 4let, not 4&
+    ("jazz-ride", "open-hat-4"),  # no hi-hat at all
+])
+def test_library_variation_that_does_not_fit_groove_is_an_error(groove, variation):
+    """Regression: ``replace HH with OH at …`` stamped an open hat even when
+    there was no closed hat there to replace -- a straight-8th OH inside a
+    shuffle's triplet bar, or an OH on top of a ride pattern."""
+    from groovescript.errors import GrooveScriptError
+
+    src = (
+        f'section "A":\n  bars: 1\n  groove: "{groove}"\n'
+        f'  variation "{variation}" at bar 1\n'
+    )
+    with pytest.raises(GrooveScriptError, match="no 'HH' hit there to replace"):
+        compile_song(parse(src))

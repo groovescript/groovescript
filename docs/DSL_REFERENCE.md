@@ -802,7 +802,7 @@ the kick, snare, hats, and other voices land.
 | `rock-3`             | 8ths  | Rock with a pushed kick on the `&` of 3             | `HH: *8` / `BD: 1, 3, 3&` / `SN: 2, 4`                                |
 | `16th-rock`          | 16ths | 16th-note hi-hat driving a rock backbeat            | `HH: *16` / `BD: 1, 3` / `SN: 2, 4`                                   |
 | `four-on-the-floor`  | 8ths  | Kick on every beat, snare on 2 and 4                | `HH: *8` / `BD: 1, 2, 3, 4` / `SN: 2, 4`                              |
-| `disco`              | 16ths | Alternating closed/open hats on 8ths and 16ths      | `HH: 1, 1&, 2, 2&, 3, 3&, 4, 4&` / `OH: 1e, 1a, 2e, 2a, 3e, 3a, 4e, 4a` / `BD: 1, 2, 3, 4` / `SN: 2, 4` |
+| `disco`              | 8ths  | Four on the floor, closed hat on the beat, open hat on every `&` | `HH: 1, 2, 3, 4` / `OH: 1&, 2&, 3&, 4&` / `BD: 1, 2, 3, 4` / `SN: 2, 4` |
 | `funk`               | 16ths | Syncopated kick-and-snare funk with 16th hats       | `HH: *16` / `BD: 1, 2&, 3e` / `SN: 2, 4, 2a, 4a`                      |
 | `shuffle`            | trip  | 8th-note triplet shuffle on the hats                | `HH: 1, 1let, 2, 2let, 3, 3let, 4, 4let` / `BD: 1, 3` / `SN: 2, 4`    |
 | `jazz-ride`          | trip  | Classic jazz ride on the cymbal, backbeat on 2 & 4  | `RD: 1, 2, 2let, 3, 4, 4let` / `BD: 1, 3` / `SN: 2, 4`                |
@@ -1947,6 +1947,10 @@ variation at bar 4:
   add snare ghost kick accent at 3 # add SN (ghost) and BD (accent) on beat 3
   replace snare hat with ride crash at 4  # SN→RD and HH→CR on beat 4
 ```
+
+`replace … at <beats>` changes existing hits only: if the source
+instrument doesn't play at a listed beat, that's an error (use `add` for
+a new hit). `replace … at *` replaces the source wherever it plays.
 
 `substitute` replaces every event in the bar with the result of a
 `count:` / `notes:` body — the same positional notation used by fills and

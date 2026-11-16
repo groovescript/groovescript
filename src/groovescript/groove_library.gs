@@ -24,8 +24,8 @@ groove "four-on-the-floor":
         SN: 2, 4
 
 groove "disco":
-        HH: 1, 1&, 2, 2&, 3, 3&, 4, 4&
-        OH: 1e, 1a, 2e, 2a, 3e, 3a, 4e, 4a
+        HH: 1, 2, 3, 4
+        OH: 1&, 2&, 3&, 4&
         BD: 1, 2, 3, 4
         SN: 2, 4
 
