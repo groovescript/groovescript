@@ -389,9 +389,9 @@ def _span_markup_maps(
     also starts in this bar (``END_OF_SPAN_BAR``), the last onset may not be
     after the start -- a one-note bar, or a start on the last note -- and
     stopping there would put ``\\!`` before (or on) the start, leaving the
-    span unterminated. Such stops go in the returned tail instead, which
-    the caller appends to the measure as ``<>…`` so the span ends at the
-    bar line.
+    span unterminated. Such stops move to a rest later in the bar, or, for
+    a span starting in the final half-beat, into the returned tail, which
+    the caller appends to the measure as ``<>…`` (ending at the bar line).
     """
     starts: dict[Fraction, str] = {}
     stops: dict[Fraction, str] = {}
@@ -404,11 +404,21 @@ def _span_markup_maps(
             target[pos] = current + text
 
     def end_of_bar(text: str, starts_here: list[Fraction]) -> None:
-        if starts_here and last <= max(starts_here):
-            if text not in tail:
-                tail.append(text)
-        else:
+        if not starts_here or last > max(starts_here):
             add(stops, last, text)
+            return
+        # End on a rest later in the bar: the last beat, else its second
+        # half (every writer has a slot there). Only a span starting in the
+        # final half-beat falls back to ``<>`` at the bar line, which
+        # LilyPond can't break a text spanner on ("bounds of this piece
+        # aren't breakable").
+        begin = max(starts_here)
+        for candidate in (Fraction(bpb - 1, bpb), Fraction(2 * bpb - 1, 2 * bpb)):
+            if candidate > begin:
+                add(stops, candidate, text)
+                return
+        if text not in tail:
+            tail.append(text)
 
     hairpin_starts = [pos for pos, _ in bar.dynamic_starts]
     tempo_starts = [_snap_to_event(pos, bar.events) for pos, _ in bar.tempo_span_starts]
