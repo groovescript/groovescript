@@ -40,6 +40,8 @@ _IGNORED = ("Changing working directory", "Processing", "Parsing", "Interpreting
             "Preprocessing", "Finding", "Fitting", "Drawing", "Converting",
             "Layout output", "Success", "Element count", "Calculating",
             "Solving", "Copying")
+# Layout notices: a dense random chart may overfill a page; not a bug.
+_IGNORED_ANYWHERE = ("has been compressed", "compressing over-full page")
 
 
 def _midi_drum_onsets(data: bytes) -> Counter:
@@ -126,6 +128,7 @@ def _run_lilypond(ly: str, stem: Path) -> list[str]:
     messages = [
         line for line in (proc.stdout + proc.stderr).splitlines()
         if line.strip() and not line.startswith(_IGNORED)
+        and not any(text in line for text in _IGNORED_ANYWHERE)
     ]
     if proc.returncode != 0 and not messages:
         messages = [f"lilypond exited with {proc.returncode}"]

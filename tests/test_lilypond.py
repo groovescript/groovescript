@@ -2185,3 +2185,18 @@ def test_triplet_labels_beside_a_tuplet_group_are_kept():
     )
     ly = emit_lilypond(compile_song(song))
     assert "\\tuplet 3/2 { hh8 hh8 hh8 } r16 hh16 hh16 r16 \\tuplet 5/4" in ly
+
+
+def test_fill_on_last_pass_of_explicit_repeat_is_printed():
+    """Regression (found by the LilyPond fuzz run's onset check): an explicit
+    ``repeat:`` block was printed as its first pass under a volta, so a fill
+    or variation on a later pass never appeared in the PDF -- e.g. the
+    turnaround fill closing tests/fixtures/full_song_example's verse."""
+    song = parse(
+        'groove "g":\n    BD: 1\n    SN: 3\n'
+        'section "a":\n  bars: 4\n  groove: "g"\n  repeat: 2\n'
+        '  variation at bar 4:\n    add CR at 1\n'
+    )
+    ly = emit_lilypond(compile_song(song))
+    assert "<bd cymc>4 r4 sn4 r4 |" in ly
+    assert "\\repeat volta 3" in ly  # the three identical bars still fold

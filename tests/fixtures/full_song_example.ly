@@ -124,11 +124,13 @@ drumPitchNames =
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "VERSE: 16" } \vspace #0.3 \italic \fontsize #-1 "Play 8x" }
-      \repeat volta 8 {
-      <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
-      <bd hh>8 hh8 <sn hh>8 <bd hh>8 <bd hh>8 hh8 <bd sn hh>8 hh8 |
+      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "VERSE: 16" } \vspace #0.3 \italic \fontsize #-1 "Play 7x" }
+      \repeat volta 7 {
+        <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+        <bd hh>8 hh8 <sn hh>8 <bd hh>8 <bd hh>8 hh8 <bd sn hh>8 hh8 |
       }
+      <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      <bd hh>8 hh8 <sn hh>8 <bd hh>8 sn16 sn16 sn16 sn16 <bd cymc>4 |
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
       \once \override Score.RehearsalMark.padding = #2
@@ -149,11 +151,13 @@ drumPitchNames =
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "VERSE 2: 16" } \vspace #0.3 \italic \fontsize #-1 "Play 8x" }
-      \repeat volta 8 {
-      <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
-      <bd hh>8 hh8 <sn hh>8 <bd hh>8 <bd hh>8 hh8 <bd sn hh>8 hh8 |
+      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "VERSE 2: 16" } \vspace #0.3 \italic \fontsize #-1 "Play 7x" }
+      \repeat volta 7 {
+        <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+        <bd hh>8 hh8 <sn hh>8 <bd hh>8 <bd hh>8 hh8 <bd sn hh>8 hh8 |
       }
+      <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      <bd hh>8 hh8 <sn hh>8 <bd hh>8 sn16 sn16 sn16 sn16 <bd cymc>4 |
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
       \once \override Score.RehearsalMark.padding = #2
@@ -172,15 +176,17 @@ drumPitchNames =
       }
       <bd hh>8 hh8 <sn hh>8 hh8 sn16 sn16 sn16 sn16 <bd cymc>4 |
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
-      \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
+      \once \override Score.RehearsalMark.break-align-symbols = #'(left-edge)
       \once \override Score.RehearsalMark.padding = #2
-      \mark \markup \column { \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "BRIDGE: 8" } \vspace #0.3 \italic \fontsize #-1 "Play 2x" }
-      \repeat volta 2 {
+      \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "BRIDGE: 8" }
       <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       <bd hh>8 hh8 <sn hh>8 <bd hh>8 <bd hh>8 hh8 <bd sn hh>8 hh8 |
       <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
       <bd hh cymc>8-> hh8 <sn hh>8 <bd hh>8 <bd hh>8 hh8 <bd sn hh>8 hh8 |
-      }
+      <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      <bd hh>8 hh8 <sn hh>8 <bd hh>8 <bd hh>8 hh8 <bd sn hh>8 hh8 |
+      <bd hh>8 hh8 <sn hh>8 hh8 <bd hh>8 hh8 <sn hh>8 hh8 |
+      <bd hh>8 hh8 <sn hh>8 <bd hh>8 sn16 sn16 sn16 sn16 <bd cymc>4 |
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
       \once \override Score.RehearsalMark.break-align-symbols = #'(staff-bar)
       \once \override Score.RehearsalMark.padding = #2
