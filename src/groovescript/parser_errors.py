@@ -56,6 +56,11 @@ def _literal_patterns_for_terminals(
         if term is None:
             continue
         pattern = getattr(term, "pattern", None)
+        # Only plain-string terminals read as keywords. Regex terminals
+        # (``crash\s+in``, the line-start ``^groove`` tokens, ...) would show
+        # up as raw patterns in the hint.
+        if type(pattern).__name__ != "PatternStr":
+            continue
         value = getattr(pattern, "value", None)
         if not isinstance(value, str):
             continue
