@@ -21,7 +21,7 @@ from pathlib import Path
 from .compiler import IRSong, compile_song, compile_standalone_groove
 from .errors import GrooveScriptError
 from .fmt import format_source
-from .lint import StyleWarning, check_notation, check_style
+from .lint import StyleWarning, check_compiled_style, check_notation, check_style
 from .midi import emit_midi
 from .musicxml import emit_musicxml
 from .parser import parse
@@ -166,6 +166,13 @@ def build(source: str, *, style: bool = True, outputs: bool = True) -> BuildResu
             result.diagnostics.append(_warning_diagnostic(w, source, "warning"))
     except Exception:  # playability hints are advisory; never block a build
         pass
+
+    if style:
+        try:
+            for w in check_compiled_style(ir):
+                result.diagnostics.append(_warning_diagnostic(w, source, "info"))
+        except Exception:  # style checks are advisory; never block a build
+            pass
 
     if isinstance(ir, IRSong):
         result.bar_count = len(ir.bars)

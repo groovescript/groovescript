@@ -451,6 +451,43 @@ def check_notation(ir) -> list[StyleWarning]:
     return warnings
 
 
+def check_compiled_style(ir) -> list[StyleWarning]:
+    """Style checks that need the compiled IR (run by ``lint --style``).
+
+    Currently: ``remove`` actions that removed nothing -- usually a wrong
+    beat or instrument, or a line restating what the bar's own variation
+    already does.
+    """
+    from .compiler import IRSong, _beat_label_for
+
+    warnings: list[StyleWarning] = []
+    if not isinstance(ir, IRSong):
+        return warnings
+    ts = ir.metadata.time_signature
+    # One warning per (bar, instrument, source line), listing its beats.
+    grouped: dict[tuple, list[str]] = {}
+    for bar in ir.bars:
+        ts = bar.time_signature or ts
+        bpb = int(ts.split("/")[0])
+        for instrument, pos, line in bar.noop_removes:
+            label = _beat_label_for(pos, bpb).removeprefix("beat ")
+            grouped.setdefault((bar.number, instrument, line), []).append(label)
+    for (bar_number, instrument, line), labels in grouped.items():
+        beats = ", ".join(labels)
+        warnings.append(StyleWarning(
+            message=(
+                f"`remove {instrument} at {beats}` does nothing "
+                f"(bar {bar_number} has no {instrument} there)"
+            ),
+            line=line,
+            hint=(
+                "delete it, or fix the beat/instrument. A section's own "
+                "`variation at bar N` already replaces an inherited one for that bar"
+            ),
+        ))
+    return warnings
+
+
 def check_style(source: str, song: Song) -> list[StyleWarning]:
     """Run every style check against ``source`` / ``song`` and return the
     concatenated list of :class:`StyleWarning` values in source order

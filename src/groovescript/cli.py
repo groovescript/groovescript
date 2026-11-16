@@ -10,7 +10,7 @@ from .compiler import compile_song, compile_standalone_groove
 from .errors import GrooveScriptError
 from .fmt import format_source
 from .lilypond import LYRICS_STYLES, emit_lilypond
-from .lint import check_notation, check_style
+from .lint import check_compiled_style, check_notation, check_style
 from .midi import emit_midi
 from .musicxml import emit_musicxml
 from .parser import parse_file
@@ -194,6 +194,13 @@ def _run_lint(input_path: str, with_style: bool) -> int:
                 file=sys.stderr,
             )
             return 1
+    if with_style and ir is not None:
+        compiled_style = check_compiled_style(ir)
+        if compiled_style:
+            source = Path(input_path).read_text()
+            for w in compiled_style:
+                print(w.render(filename=input_path, source=source), file=sys.stderr)
+            style_warnings = list(style_warnings) + compiled_style
     notation_warnings = check_notation(ir) if ir is not None else []
     if notation_warnings:
         notation_source = Path(input_path).read_text()

@@ -1951,6 +1951,9 @@ variation at bar 4:
 `replace … at <beats>` changes existing hits only: if the source
 instrument doesn't play at a listed beat, that's an error (use `add` for
 a new hit). `replace … at *` replaces the source wherever it plays.
+`remove … at <beats>` is allowed to match nothing, but `lint --style`
+reports a remove that changed nothing, since it is usually a wrong beat or
+instrument.
 
 `substitute` replaces every event in the bar with the result of a
 `count:` / `notes:` body — the same positional notation used by fills and

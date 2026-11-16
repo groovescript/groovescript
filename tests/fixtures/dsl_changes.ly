@@ -126,7 +126,7 @@ drumPitchNames =
       \once \override Score.RehearsalMark.padding = #2
       \mark \markup \override #'(box-padding . 0.5) \box \bold \fontsize #-1 { "VERSE: 4" }
       bd16 cymr16 ss16 cymr16 bd16 cymr16 ss16 cymr16 bd16 cymr16 ss16 cymr16 bd16 cymr16 ss16 cymr16 |
-      bd16 hh16 sn16 hh16 bd16 hh16 sn16 hh16 bd16 hh16 sn16 hh16 bd16 hh16 sn16 hh16 |
+      bd4 bd4 bd4 bd4 |
       bd16 hh16 sn16 hh16 bd16 hh16 sn16 hh16 bd16 <hh \parenthesize sn bd>16-> sn16 hh16 bd16 hh16 sn16 hh16 |
       sn8-> \parenthesize sn8 \parenthesize sn8 \parenthesize sn8 sn8-> \parenthesize sn8 \parenthesize sn8 <bd cymc>8-> |
       \once \override Score.RehearsalMark.self-alignment-X = #LEFT
