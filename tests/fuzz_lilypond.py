@@ -42,6 +42,10 @@ _IGNORED = ("Changing working directory", "Processing", "Parsing", "Interpreting
             "Solving", "Copying")
 # Layout notices: a dense random chart may overfill a page; not a bug.
 _IGNORED_ANYWHERE = ("has been compressed", "compressing over-full page")
+# Machine noise, not about the chart: Fontconfig complaining that it can't
+# write its font cache (e.g. on a fresh CI runner); the directory list that
+# follows it is tab-indented.
+_IGNORED_ENVIRONMENT = ("Fontconfig error:", "Fontconfig warning:")
 
 
 def _midi_drum_onsets(data: bytes) -> Counter:
@@ -153,11 +157,19 @@ def _run_lilypond(ly: str, stem: Path) -> list[str]:
         ["lilypond", "--loglevel=WARN", "-dno-point-and-click", "-o", str(stem), str(stem.with_suffix(".ly"))],
         capture_output=True, text=True,
     )
-    messages = [
-        line for line in (proc.stdout + proc.stderr).splitlines()
-        if line.strip() and not line.startswith(_IGNORED)
-        and not any(text in line for text in _IGNORED_ANYWHERE)
-    ]
+    messages = []
+    in_fontconfig_list = False
+    for line in (proc.stdout + proc.stderr).splitlines():
+        if line.startswith(_IGNORED_ENVIRONMENT):
+            in_fontconfig_list = True
+            continue
+        if in_fontconfig_list and line.startswith("\t"):
+            continue
+        in_fontconfig_list = False
+        if line.strip() and not line.startswith(_IGNORED) and not any(
+            text in line for text in _IGNORED_ANYWHERE
+        ):
+            messages.append(line)
     if proc.returncode != 0 and not messages:
         messages = [f"lilypond exited with {proc.returncode}"]
     return messages
