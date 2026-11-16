@@ -116,7 +116,9 @@ def test_rit_ramps_linearly_to_target_and_holds():
     # Held: later bars in the section carry no points (nominal stays 120).
     assert b3.tempo_points == b4.tempo_points == []
     assert b2.tempo_span_starts == [(Fraction(0), "rit")]
-    assert b2.tempo_span_stops == [Fraction(-1)]
+    # Ends at the end of the bar it starts in.
+    from groovescript.compiler import END_OF_SPAN_BAR
+    assert b2.tempo_span_stops == [END_OF_SPAN_BAR]
 
 
 def test_default_targets_are_80_and_120_percent():
