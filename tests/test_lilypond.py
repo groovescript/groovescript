@@ -2208,3 +2208,18 @@ def test_fill_on_last_pass_of_explicit_repeat_is_printed():
     ly = emit_lilypond(compile_song(song))
     assert "<bd cymc>4 r4 sn4 r4 |" in ly
     assert "\\repeat volta 3" in ly  # the three identical bars still fold
+
+
+def test_explicit_repeat_of_identical_bars_is_not_nested():
+    """Regression: a ``repeat:`` section whose phrase is one bar played
+    several times (``bars: 4`` + ``repeat: 2``) printed as a repeat inside a
+    repeat, each with its own volta. The phrase is now written out inside
+    the author's single repeat, keeping "Play 2x"."""
+    song = parse(
+        'groove "g":\n    BD: 1, 3\n    SN: 2, 4\n'
+        'section "a":\n  bars: 4\n  groove: "g"\n  repeat: 2\n'
+    )
+    ly = emit_lilypond(compile_song(song))
+    assert ly.count("\\repeat volta") == 1
+    assert "\\repeat volta 2 {\n        bd4 sn4 bd4 sn4 |\n        bd4 sn4 bd4 sn4 |\n      }" in ly
+    assert '"Play 2x"' in ly

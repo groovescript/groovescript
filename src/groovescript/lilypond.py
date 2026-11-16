@@ -1789,6 +1789,15 @@ def _rest_bar_has_annotations(bar: IRBar) -> bool:
     )
 
 
+# One measure string that is a single volta and nothing else (besides
+# leading commands such as \\time), as the inner ``_group_bars`` call of an
+# explicit repeat produces when every bar of the phrase is identical.
+_single_volta = re.compile(
+    r"(?P<pre>(?:(?!      \\repeat).*\n)*)      \\repeat volta (?P<times>\d+) \{\n"
+    r"(?P<body>(?:(?!.*\\repeat).*\n?)*?)\n      \}"
+)
+
+
 def _group_bars(
     bars: list[IRBar],
     is_top_level: bool = True,
@@ -1879,6 +1888,22 @@ def _group_bars(
             for pb in pattern_bars[1:]:
                 state.compute_time_signature_change(pb)
             inner_body = "\n".join(inner_measures)
+            nested = (
+                _single_volta.fullmatch(inner_measures[0])
+                if len(inner_measures) == 1 else None
+            )
+            if nested:
+                # Every bar of the phrase is identical, so the inner call
+                # folded it into a volta of its own -- a repeat inside a
+                # repeat. Write the phrase's bars out inside the author's
+                # repeat instead: the phrase length and "Play Nx" stay
+                # as written.
+                body = nested.group("body")
+                inner_body = nested.group("pre").rstrip("\n")
+                inner_body = "\n".join(
+                    part for part in (inner_body, *[body] * int(nested.group("times"))) if part
+                )
+                inner_printed = [(pb, 1) for pb in pattern_bars]
             measures.append(f"{ts_change_cmd}{tempo_change_cmd}{mark}{forced_bar}      \\repeat volta {num_repeats} {{\n{inner_body}\n      }}")
             printed.extend(inner_printed)
             i += num_repeats * phrase_length

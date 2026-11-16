@@ -504,10 +504,11 @@ def test_vocal_staff_aligned_after_explicit_repeat_block():
         '  lyrics:\n    bar 1: "1 3" "hel- lo"\n    bar 2: "2" "you"\n'
     )))
     drum = ly[ly.index("\\repeat volta 2 {"):]
-    assert drum.count(" |\n") == 3  # 1 bar inside the repeat + 2 for section b
+    assert drum.count(" |\n") == 4  # the 2-bar phrase inside the repeat + 2 for section b
     # Vocal stream: one rest bar for section a, then section b's lyrics.
-    assert "R1 |\n      c2 c2 |\n      r4 c2. |" in ly
-    assert "R1 |\n      R1 |" not in ly
+    # Vocal stream: one rest per engraved repeat bar, then section b's lyrics.
+    assert "R1 |\n      R1 |\n      c2 c2 |\n      r4 c2. |" in ly
+    assert "R1 |\n      R1 |\n      R1 |" not in ly
 
 
 # ── Slice 5: holds, stops, breaths, multi-bar entries, backing parts ─────────
