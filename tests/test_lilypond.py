@@ -2110,3 +2110,15 @@ def test_cue_and_hairpin_between_notes_are_not_swallowed():
     ly = emit_lilypond(compile_song(song))
     assert 'bd4 sn8 r8^\\markup { \\italic \\fontsize #-1 "Stop" } bd4 sn4 |' in ly
     assert "bd4 sn8 r8\\< bd8 r8\\! sn4 |" in ly
+
+
+def test_cue_on_play_rest_bar_is_printed():
+    """Regression: the whole-bar-rest path ignored annotations, so a cue on a
+    ``rest`` bar of a ``play:`` list was never printed."""
+    song = parse(
+        'groove "g":\n  BD: 1\n'
+        'section "a":\n  play:\n    rest x3\n'
+        '  cue "Band in" at bar 2\n'
+    )
+    ly = emit_lilypond(compile_song(song))
+    assert '"Band in"' in ly

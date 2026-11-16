@@ -715,3 +715,21 @@ def test_lint_trailing_hyphen_checks_each_part():
     song = parse(_song(_section('lyrics:\n  bar 1: "1" "done"\nlyrics "BGV":\n  bar 1: "1 2" "ah- ."')))
     warnings = [w for w in check_style("", song) if "hyphen" in w.message]
     assert len(warnings) == 1 and 'part "BGV"' in warnings[0].message
+
+
+def test_lyrics_on_play_rest_bar_are_not_swallowed_by_multirest():
+    """Regression (found by the LilyPond fuzz run): a ``rest`` bar in a
+    ``play:`` list joined the multi-bar rest even when it carried lyrics, so
+    the vocal staff had no notes for them (LilyPond: "cannot find context:
+    Voice = lyricsrhythm") and the words vanished."""
+    from groovescript.compiler import compile_song
+    from groovescript.lilypond import emit_lilypond
+    from groovescript.parser import parse
+
+    ly = emit_lilypond(compile_song(parse(
+        'groove "g":\n  BD: 1\n'
+        'section "a":\n  play:\n    rest x3\n    groove "g" x1\n'
+        '  lyrics:\n    bar 2: "1 2 3" "la1 la2 la3"\n'
+    )))
+    assert "R1*3" not in ly
+    assert "R1 |\n      c4 c4 c2 |\n      R1 |" in ly  # vocal rhythm under bar 2
