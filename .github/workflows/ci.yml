@@ -14,3 +14,19 @@ jobs:
           enable-cache: true
       - run: uv sync
       - run: uv run pytest
+
+  lilypond-fuzz:
+    # Renders randomly generated charts with LilyPond and fails on any
+    # warning or on notes LilyPond plays differently from the compiled IR
+    # (see tests/fuzz_lilypond.py). Separate from `test` because it needs
+    # the lilypond binary.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.13'
+          enable-cache: true
+      - run: sudo apt-get update && sudo apt-get install -y lilypond
+      - run: uv sync
+      - run: uv run python -m tests.fuzz_lilypond --jobs 4 0 100
