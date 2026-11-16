@@ -441,3 +441,42 @@ def test_invalid_time_signature_is_rejected(where, ts):
     )
     with _pytest.raises(_GSError, match="invalid time signature"):
         parse(src)
+
+
+@_pytest.mark.parametrize("definition", [
+    'groove "b":\n  SN: 1\n',
+    'fill "f":\n  count: "1"\n  notes: "SN"\n',
+    'variation "v":\n  add ST at 1\n',
+])
+@_pytest.mark.parametrize("before", [
+    'section "s":\n  bars: 1\n  groove: "a"\n',
+    'section "s":\n  play:\n    groove "a" x1\n',
+    'groove "x":\n  extend: "a"\n  SP: 1\n',
+])
+def test_top_level_definition_may_follow_a_section_or_extend_groove(before, definition):
+    """Regression (found by the fuzz generator): a top-level groove / fill /
+    variation definition placed after a section (or after an ``extend:``
+    groove) failed to parse ("unexpected ':'"), because those blocks also
+    contain lines starting with ``groove`` / ``fill`` / ``variation`` and
+    the grammar ignores indentation. Definitions may come anywhere."""
+    from groovescript.parser import parse
+
+    song = parse('groove "a":\n  BD: 1\n\n' + before + "\n" + definition)
+    names = (
+        [g.name for g in song.grooves] + [f.name for f in song.fills]
+        + [v.name for v in song.variations]
+    )
+    assert definition.split('"')[1] in names
+
+
+def test_parse_error_hint_lists_keywords_not_regexes():
+    """Regression: the "expected one of" hint listed regex terminals
+    verbatim (``crash\\s+in``, ``a[ \\t]+tempo``, the new line-start tokens)."""
+    from groovescript.errors import GrooveScriptError
+    from groovescript.parser import parse
+
+    with _pytest.raises(GrooveScriptError) as excinfo:
+        parse('section "s":\n  bars: 1\n\n42\n')
+    hint = excinfo.value.hint or ""
+    assert "'section'" in hint
+    assert "\\s" not in hint and "^" not in hint and "(?" not in hint
