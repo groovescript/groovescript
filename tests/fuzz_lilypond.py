@@ -105,8 +105,20 @@ def _ir_onsets(song) -> Counter:
         length = Fraction(4 * n, d)
         if not bar.is_rest:
             for e in bar.events:
-                if not getattr(e, "tied_from_prev", False):
-                    onsets[round((start + e.beat_position * length) * 48)] += 1
+                if getattr(e, "tied_from_prev", False):
+                    continue
+                at = round((start + e.beat_position * length) * 48)
+                onsets[at] += 1
+                # How LilyPond's MIDI plays articulations (in 48ths of a
+                # quarter): grace notes just before the beat, a ``double``'s
+                # second stroke a 32nd note later. Buzz rolls play once.
+                if "flam" in e.modifiers:
+                    onsets[at - 3] += 1
+                if "drag" in e.modifiers:
+                    onsets[at - 6] += 1
+                    onsets[at - 3] += 1
+                if "double" in e.modifiers:
+                    onsets[at + 6] += 1
         start += length
     return onsets
 
