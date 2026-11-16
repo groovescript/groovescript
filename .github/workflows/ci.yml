@@ -28,5 +28,8 @@ jobs:
           python-version: '3.13'
           enable-cache: true
       - run: sudo apt-get update && sudo apt-get install -y lilypond
+      # Build the font cache up front: otherwise the first LilyPond runs on a
+      # fresh runner print "Fontconfig error: No writable cache directories".
+      - run: sudo fc-cache -f
       - run: uv sync
       - run: uv run python -m tests.fuzz_lilypond --jobs 4 0 100
