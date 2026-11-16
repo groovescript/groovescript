@@ -820,3 +820,18 @@ def test_tempo_in_eighth_meter_is_per_eighth_note():
     tracks = _parse_tracks(emit_midi(compile_song(parse(src))))
     assert b"\xFF\x51\x03" + (1_000_000).to_bytes(3, "big") in tracks[0]
     assert b"\xFF\x51\x03" + (500_000).to_bytes(3, "big") not in tracks[0]
+
+
+def test_double_second_stroke_is_half_a_slot_in_eighth_note_meter():
+    """Regression: MIDI put a ``double``'s second stroke a 32nd note after
+    the first in every meter; in 6/8 (eighth-note beat) the slot is a 32nd,
+    so the stroke belongs a 64th later (30 ticks, not 60)."""
+    src = (
+        'time_signature: 6/8\n'
+        'groove "g":\n  HH: 1e double\n'
+        'section "A":\n  bars: 1\n  groove: "g"\n'
+    )
+    tracks = _parse_tracks(emit_midi(compile_song(parse(src))))
+    hh = [t for t, pitch, _ in _collect_note_on(tracks[1]) if pitch == 42]
+    first = TICKS_PER_BEAT // 8  # 1e in 6/8: a quarter of an eighth
+    assert hh == [first, first + TICKS_PER_BEAT // 16]

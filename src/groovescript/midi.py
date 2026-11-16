@@ -260,6 +260,7 @@ def _add_hit(
     ev: Event,
     note: int,
     tick: int,
+    beat_unit: int = 4,
 ) -> None:
     """Append MIDI note events for one regular (non-buzz) drum hit.
 
@@ -290,9 +291,11 @@ def _add_hit(
     out.append((tick, _note_on(note, vel)))
     out.append((tick + _HIT_DURATION, _note_off(note)))
 
-    # Double: second stroke one 32nd note after the main hit
+    # Double: second stroke half a slot after the main hit. ``double`` needs
+    # a 4-slots-per-beat grid, so that is a 32nd note in a quarter-note beat
+    # and a 64th in an eighth-note beat (6/8, 7/8, 12/8).
     if "double" in mods:
-        d_tick = tick + TICKS_PER_BEAT // 8  # 1/32 note = TICKS_PER_BEAT / 8
+        d_tick = tick + TICKS_PER_BEAT * 4 // (8 * beat_unit)
         out.append((d_tick, _note_on(note, vel)))
         out.append((d_tick + _HIT_DURATION, _note_off(note)))
 
@@ -428,7 +431,7 @@ def _bars_to_drum_events(
                     out.append((off_tick, _note_off(note)))
                 continue
 
-            _add_hit(out, ev, note, tick)
+            _add_hit(out, ev, note, tick, _beat_unit(ts))
             if "choke" in ev.modifiers:
                 choked.setdefault(note, set()).add(tick)
 
@@ -481,7 +484,7 @@ def _midi_from_groove(groove: IRGroove) -> bytes:
                 drum_track.append((off_tick, _note_off(note)))
             continue
 
-        _add_hit(drum_track, ev, note, tick)
+        _add_hit(drum_track, ev, note, tick, _beat_unit(default_ts))
         if "choke" in ev.modifiers:
             choked.setdefault(note, set()).add(tick)
 

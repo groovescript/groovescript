@@ -94,9 +94,15 @@ def _midi_drum_onsets(data: bytes) -> Counter:
     return onsets
 
 
-def _ir_onsets(song) -> Counter:
-    """Drum onsets from the IR, in 48ths of a quarter (1/192 of a 4/4 bar)."""
+def _ir_onsets(song) -> tuple[Counter, list[tuple[int, int]]]:
+    """Drum onsets from the IR, in 48ths of a quarter (1/192 of a 4/4 bar),
+    plus the grace notes LilyPond will play: ``(main onset, count)``.
+
+    Grace notes are matched loosely (anywhere shortly before their main
+    note): LilyPond scales their timing inside tuplets.
+    """
     onsets: Counter = Counter()
+    graces: list[tuple[int, int]] = []
     ts = song.metadata.time_signature
     start = Fraction(0)
     for bar in song.bars:
@@ -109,18 +115,28 @@ def _ir_onsets(song) -> Counter:
                     continue
                 at = round((start + e.beat_position * length) * 48)
                 onsets[at] += 1
-                # How LilyPond's MIDI plays articulations (in 48ths of a
-                # quarter): grace notes just before the beat, a ``double``'s
-                # second stroke a 32nd note later. Buzz rolls play once.
+                # A ``double``'s second stroke comes half a 4-per-beat slot
+                # later; buzz rolls play once.
                 if "flam" in e.modifiers:
-                    onsets[at - 3] += 1
+                    graces.append((at, 1))
                 if "drag" in e.modifiers:
-                    onsets[at - 6] += 1
-                    onsets[at - 3] += 1
+                    graces.append((at, 2))
                 if "double" in e.modifiers:
-                    onsets[at + 6] += 1
+                    onsets[at + 24 // d] += 1
         start += length
-    return onsets
+    return onsets, graces
+
+
+def _take_graces(got: Counter, graces: list[tuple[int, int]]) -> Counter:
+    """Remove from ``got`` the notes that are the expected grace notes (up to
+    an eighth of a quarter before each graced main note)."""
+    got = Counter(got)
+    for at, count in graces:
+        for k in range(at - 1, at - 8, -1):
+            while count and got[k]:
+                got[k] -= 1
+                count -= 1
+    return +got
 
 
 def _diff(want: Counter, got: Counter) -> list[str]:
@@ -182,7 +198,13 @@ def check_seed(seed: int, workdir: Path) -> tuple[int, str] | None:
     midi = next((p for p in (stem.with_suffix(".midi"), stem.with_suffix(".mid")) if p.exists()), None)
     if midi is None:
         return seed, "no MIDI from LilyPond:\n" + "\n".join(messages) + f"\n--- source ---\n{src}"
-    diff = _diff(_ir_onsets(song), _midi_drum_onsets(midi.read_bytes()))
+    want, graces = _ir_onsets(song)
+    if any(at < 8 for at, _ in graces):
+        # A grace note before the first beat makes LilyPond shift the whole
+        # score later, so onsets can't be compared; the warning check above
+        # still ran.
+        return None
+    diff = _diff(want, _take_graces(_midi_drum_onsets(midi.read_bytes()), graces))
     if diff:
         return seed, "LilyPond's notes differ from the IR:\n" + "\n".join(diff[:12]) + f"\n--- source ---\n{src}"
     return None

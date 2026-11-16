@@ -210,7 +210,7 @@ def _format_hits(hits: list[tuple], duration: str) -> str:
     return f"{grace_prefix}{token}"
 
 
-def _format_doubled_hits(hits: list[tuple]) -> str:
+def _format_doubled_hits(hits: list[tuple], half: str = "32") -> str:
     """Format a 'double' (double-stroke) slot as two 32nd-note LilyPond tokens.
 
     The 'double' modifier means the slot is played as two equal 32nd notes
@@ -220,6 +220,9 @@ def _format_doubled_hits(hits: list[tuple]) -> str:
     - 'ghost' applies to both strokes (both notes are parenthesised).
     - 'accent' applies to the first stroke only.
     - 'flam'/'drag' are rejected at compile time and will not appear here.
+
+    ``half`` is the LilyPond duration of each stroke -- half the slot: a
+    32nd in a quarter-note beat, a 64th in an eighth-note beat (6/8, 7/8).
 
     Returns a string of two LilyPond tokens (e.g. ``"hh32 hh32"`` or
     ``"<hh32 sn32>-> hh32"`` when BD is not doubled but HH is).
@@ -258,9 +261,9 @@ def _format_doubled_hits(hits: list[tuple]) -> str:
         first_notes.append(note)
 
     if len(first_notes) == 1:
-        first_token = f"{first_notes[0]}32"
+        first_token = f"{first_notes[0]}{half}"
     else:
-        first_token = f"<{' '.join(first_notes)}>32"
+        first_token = f"<{' '.join(first_notes)}>{half}"
     if any_accent_first:
         first_token = f"{first_token}->"
     if any_choke_first:
@@ -277,9 +280,9 @@ def _format_doubled_hits(hits: list[tuple]) -> str:
         second_notes.append(note)
 
     if len(second_notes) == 1:
-        second_token = f"{second_notes[0]}32"
+        second_token = f"{second_notes[0]}{half}"
     else:
-        second_token = f"<{' '.join(second_notes)}>32"
+        second_token = f"<{' '.join(second_notes)}>{half}"
 
     return f"{first_token} {second_token}"
 
@@ -605,10 +608,13 @@ def _drum_measure_straight(
             i = end_slot
             continue
 
-        # If this slot has a 'double' hit, emit two 32nd notes and skip consolidation.
+        # If this slot has a 'double' hit, emit two half-slot strokes (32nds
+        # in a quarter-note beat) and skip consolidation.
         is_doubled_slot = i in doubled_slots
         if is_doubled_slot:
-            token = _format_doubled_hits(hits)
+            token = _format_doubled_hits(
+                hits, str(2 * beat_unit * subdivision // beats_per_bar)
+            )
             if cue_map and pos in cue_map:
                 escaped = _ly_str(cue_map[pos])
                 # Attach markup to the first of the two tokens.
@@ -1935,28 +1941,43 @@ def _group_bars(
             ts_change_cmd = state.compute_time_signature_change(bar)
             cur_tempo_str, tempo_change_cmd = state.compute_tempo_info(bar)
             skip_tokens = _placeholder_bar_skips(state.current_bpb, state.current_beat_unit)
-            # Bucket labels by the spacer they should attach to. Position
-            # ``p`` (bar-relative Fraction) maps to beat index
-            # ``floor(p * beats_per_bar)``; anything at or before beat 0
-            # goes on the first spacer so short accidental positions don't
-            # vanish.
-            beat_labels: dict[int, list[str]] = defaultdict(list)
-            for pos, label in bar.fill_placeholders:
-                idx = int(pos * state.current_bpb)
-                if idx < 0:
-                    idx = 0
-                if idx >= len(skip_tokens):
-                    idx = len(skip_tokens) - 1
-                beat_labels[idx].append(label)
-            for idx, labels in beat_labels.items():
-                token = skip_tokens[idx]
-                for label in labels:
-                    escaped = _ly_str(label)
-                    token = (
-                        f'{token}^\\markup {{ \\bold \\box '
-                        f'\\fontsize #-1 "{escaped}" }}'
-                    )
+            # Everything printed on the bar attaches to the spacer of its
+            # beat: fill labels, cues and "a tempo" text, and hairpin /
+            # tempo-span starts and stops (a span that ends on a placeholder
+            # bar must be closed there). Position ``p`` maps to beat
+            # ``floor(p * beats_per_bar)``, clamped to the bar.
+            bpb_here = state.current_bpb
+
+            def _beat_pos(p: Fraction) -> Fraction:
+                idx = min(max(int(p * bpb_here), 0), len(skip_tokens) - 1)
+                return Fraction(idx, bpb_here)
+
+            def _snap(pairs) -> dict[Fraction, str]:
+                out: dict[Fraction, str] = {}
+                for p, text in pairs:
+                    key = _beat_pos(p)
+                    out[key] = f"{out[key]}  {text}" if key in out else text
+                return out
+
+            cue_map = _snap(list(bar.cues) + list(bar.tempo_texts)) or None
+            span_starts, span_stops, span_tail = _span_markup_maps(bar, bpb_here)
+            start_map = _snap((span_starts or {}).items()) or None
+            stop_map = _snap((span_stops or {}).items()) or None
+            for idx in range(len(skip_tokens)):
+                pos = Fraction(idx, bpb_here)
+                token = _attach_position_markup(
+                    skip_tokens[idx], pos, cue_map, None, start_map, stop_map
+                )
+                for p, label in bar.fill_placeholders:
+                    if _beat_pos(p) == pos:
+                        escaped = _ly_str(label)
+                        token = (
+                            f'{token}^\\markup {{ \\bold \\box '
+                            f'\\fontsize #-1 "{escaped}" }}'
+                        )
                 skip_tokens[idx] = token
+            if span_tail:
+                skip_tokens[-1] = f"{skip_tokens[-1]} <>{span_tail}"
             show_swing = is_top_level and state.feel == "swing" and not state.swing_shown
             mark = _section_mark(bar, tempo_str=cur_tempo_str, bar_text=bar.bar_text, show_swing=show_swing)
             if show_swing and mark:

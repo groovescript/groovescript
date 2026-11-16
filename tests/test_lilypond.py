@@ -2240,3 +2240,31 @@ def test_rest_bar_with_downbeat_cue_or_lyrics_stays_a_whole_bar_rest():
     lyric_bars = bars('  lyrics:\n    bar 2: "1 2 3" "la la la"\n')
     assert "r4 r4 r4 r4 |" not in lyric_bars
     assert 'r8^\\markup { \\italic \\fontsize #-1 "x" }' in " ".join(bars('  cue "x" at bar 2 beat 2&\n'))
+
+
+def test_double_in_eighth_note_meter_uses_half_slot_strokes():
+    """Regression (found by the LilyPond fuzz run): ``double`` was always
+    written as two 32nd notes. In 6/8 a 16th-grid slot *is* a 32nd, so the
+    bar overflowed ("barcheck failed"); the strokes are half a slot each."""
+    song = parse(
+        'time_signature: 6/8\n'
+        'groove "g":\n    HH: 1e double\n    BD: 1, 4\n'
+        'section "a":\n  bars: 1\n  groove: "g"\n'
+    )
+    ly = emit_lilypond(compile_song(song))
+    assert "bd32 hh64 hh64 r16 r8 r8 bd8 r8 r8 |" in ly
+
+
+def test_placeholder_bar_keeps_cues_and_closes_spans():
+    """Regression (found by the LilyPond fuzz run): placeholder-groove bars
+    only attached fill labels, so a cue on one was dropped (despite the docs)
+    and a hairpin ending on one was never terminated."""
+    ly = emit_lilypond(compile_song(parse(
+        'fill "f":\n  count: "2 3"\n  notes: "SN, SN"\n'
+        'section "a":\n  play:\n    groove placeholder x2\n'
+        '  fill "f" at bar 1 beat 2\n'
+        '  decresc from bar 1 to bar 2\n'
+        '  cue "Vocals in" at bar 2\n'
+    )))
+    assert '"Vocals in"' in ly
+    assert ly.count("\\>") == 1 and ly.count("\\!") == 1

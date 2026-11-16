@@ -67,7 +67,8 @@ def _check_midi(song, bars, src):
             drum[(tick, pitch)] += 1
     expected = Counter()
     start = Fraction(0)
-    for _ts, length, hits in bars:
+    for ts, length, hits in bars:
+        beat_unit = int(ts.split("/")[1])
         for (onset, inst, mods, grace), n in hits.items():
             tick = round((start + onset) * TICKS_PER_BEAT)
             pitch = _NOTE[inst]
@@ -80,7 +81,8 @@ def _check_midi(song, bars, src):
                 for k in (2, 1):
                     expected[(max(0, tick - k * _GRACE_TICKS), grace_pitch)] += n
             if "double" in mods:
-                expected[(tick + TICKS_PER_BEAT // 8, pitch)] += n
+                # Half a 4-per-beat slot: a 32nd in x/4, a 64th in x/8.
+                expected[(tick + TICKS_PER_BEAT * 4 // (8 * beat_unit), pitch)] += n
         start += length
 
     def _near(counter, key):
