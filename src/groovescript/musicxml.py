@@ -1155,6 +1155,13 @@ def _append_note(
     if show_articulation and "fermata" in ev.modifiers:
         SubElement(_notations(), "fermata")
 
+    # ``double``: two strokes in the slot, written as one tremolo slash
+    # (play the note as two of half its value) -- the same reading in any
+    # meter.
+    if show_articulation and "double" in ev.modifiers:
+        ornaments = SubElement(_notations(), "ornaments")
+        SubElement(ornaments, "tremolo", type="single").text = "1"
+
 
 def _append_rest(parent: Element, dur: int) -> None:
     note = SubElement(parent, "note")

@@ -1062,3 +1062,13 @@ def test_straight_path_triplets_carry_tuplet_brackets():
     ]
     triplet_notes = [k for n, k in zip(notes, kinds) if n.find("time-modification") is not None]
     assert triplet_notes == [["start"], [], ["stop"], ["start"], [], ["stop"]]
+
+
+def test_double_is_written_as_a_single_tremolo_slash():
+    """Regression: MusicXML ignored ``double``, so the score and the web
+    editor's preview showed a single stroke. It is now one tremolo slash
+    (two notes of half the value), which reads right in any meter."""
+    src = 'groove "g":\n  HH: 1, 1e double, 1&\nsection "A":\n  bars: 1\n  groove: "g"\n'
+    root = _parse_xml(emit_musicxml(compile_song(parse(src))))
+    tremolos = root.findall(".//notations/ornaments/tremolo")
+    assert [(t.get("type"), t.text) for t in tremolos] == [("single", "1")]
