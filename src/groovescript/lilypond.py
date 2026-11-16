@@ -1460,8 +1460,14 @@ def _explicit_repeat_span(bars: list[IRBar], start: int) -> int:
 
 
 def _pass_markings(bar: IRBar) -> tuple:
-    """What a bar prints besides its notes (and isn't repeated by a volta)."""
+    """Everything a bar prints, for comparing the passes of a repeat: its
+    hits (a variation can change one pass) and its markings."""
     return (
+        tuple(sorted(
+            (e.beat_position, e.instrument, tuple(e.modifiers), e.duration)
+            for e in bar.events
+        )),
+        bar.is_rest,
         tuple(bar.cues), tuple(bar.fill_placeholders), bar.bar_text,
         tuple(bar.dynamic_starts), tuple(bar.dynamic_stops),
         tuple(bar.tempo_span_starts), tuple(bar.tempo_span_stops),
@@ -1470,9 +1476,9 @@ def _pass_markings(bar: IRBar) -> tuple:
 
 
 def _repeat_passes_differ(block: list[IRBar], times: int) -> bool:
-    """True when the passes of an explicit ``repeat:`` block carry different
-    markings, so printing the phrase once under a volta would drop some --
-    e.g. a crescendo from pass 1 to pass 2 would lose its end."""
+    """True when the passes of an explicit ``repeat:`` block differ, so
+    printing the phrase once under a volta would drop something -- a
+    variation on the second pass, or a crescendo from pass 1 to pass 2."""
     if times < 2 or len(block) % times:
         return False
     length = len(block) // times
