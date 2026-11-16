@@ -94,6 +94,12 @@ def _midi_drum_onsets(data: bytes) -> Counter:
     return onsets
 
 
+# Instruments engraved with a custom LilyPond drum name that has a notehead
+# but no MIDI pitch, so LilyPond's own MIDI leaves them out (the PDF and
+# groovescript's MIDI export include them): ST is ``stcym``.
+_NO_LILYPOND_MIDI_PITCH = {"ST"}
+
+
 def _ir_onsets(song) -> tuple[Counter, list[tuple[int, int]]]:
     """Drum onsets from the IR, in 48ths of a quarter (1/192 of a 4/4 bar),
     plus the grace notes LilyPond will play: ``(main onset, count)``.
@@ -112,6 +118,8 @@ def _ir_onsets(song) -> tuple[Counter, list[tuple[int, int]]]:
         if not bar.is_rest:
             for e in bar.events:
                 if getattr(e, "tied_from_prev", False):
+                    continue
+                if e.instrument in _NO_LILYPOND_MIDI_PITCH:
                     continue
                 at = round((start + e.beat_position * length) * 48)
                 onsets[at] += 1
