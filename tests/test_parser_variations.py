@@ -712,3 +712,20 @@ def test_modify_action_beat_list_commas_optional():
     ))
     accented = [e.beat_position for e in song.bars[1].events if "accent" in e.modifiers]
     assert accented == [Fraction(1, 4), Fraction(3, 4)]
+
+
+def test_replace_at_position_without_source_hit_is_an_error():
+    """Regression: ``replace`` at an explicit beat where the source
+    instrument doesn't play silently *added* the target instead, unlike
+    ``modify`` (which errors). ``at *`` still only touches existing hits."""
+    from fractions import Fraction
+
+    from groovescript.compiler import compile_song
+    from groovescript.errors import GrooveScriptError
+    from groovescript.parser import parse
+
+    base = 'groove "g":\n    HH: 1, 2, 3, 4\n    SN: 2, 4\nsection "a":\n  bars: 1\n  groove: "g"\n'
+    with pytest.raises(GrooveScriptError, match="no 'HH' hit there to replace"):
+        compile_song(parse(base + '  variation at bar 1:\n    replace HH with OH at 4&\n'))
+    ok = compile_song(parse(base + '  variation at bar 1:\n    replace HH with OH at 4\n'))
+    assert [e.instrument for e in ok.bars[0].events if e.beat_position == Fraction(3, 4)].count("OH") == 1
