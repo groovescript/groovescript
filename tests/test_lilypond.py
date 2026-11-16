@@ -2122,3 +2122,66 @@ def test_cue_on_play_rest_bar_is_printed():
     )
     ly = emit_lilypond(compile_song(song))
     assert '"Band in"' in ly
+
+
+def test_one_bar_hairpin_on_single_note_bar_ends_at_bar_line():
+    """Regression (found by the LilyPond fuzz run): ``decresc from bar 2 to
+    bar 2`` in a bar with one note put ``\\!`` before the ``\\>`` on that
+    note, so the hairpin was never terminated."""
+    song = parse(
+        'time_signature: 2/4\n'
+        'groove "g":\n    HT: 1\n'
+        'section "a":\n  bars: 2\n  groove: "g"\n  decresc from bar 2 to bar 2\n'
+    )
+    ly = emit_lilypond(compile_song(song))
+    assert "tomh4\\> r4 <>\\! |" in ly
+    assert "\\!\\>" not in ly
+
+
+def test_one_bar_tempo_span_on_single_note_bar_is_closed():
+    """Regression: the same collision for ``accel from bar N to bar N``
+    left the ``accel.`` text spanner unterminated."""
+    song = parse(
+        'groove "g":\n    HT: 1\n'
+        'section "a":\n  bars: 1\n  groove: "g"\n  accel from bar 1 to bar 1 to tempo 150\n'
+    )
+    ly = emit_lilypond(compile_song(song))
+    assert "<>\\stopTextSpan |" in ly
+
+
+def test_explicit_repeat_with_differing_passes_is_written_out():
+    """Regression: an explicit ``repeat:`` whose passes carry different
+    markings (here a crescendo from pass 1 to pass 2) was printed once under
+    a volta, losing the crescendo's end."""
+    song = parse(
+        'groove "g":\n    BD: 1, 3\n    SN: 2, 4\n'
+        'section "a":\n  bars: 2\n  groove: "g"\n  repeat: 2\n  cresc from bar 1 to bar 2\n'
+    )
+    ly = emit_lilypond(compile_song(song))
+    assert "\\repeat volta" not in ly
+    assert ly.count("\\<") == 1 and ly.count("\\!") == 1
+
+
+def test_beat_mixing_sixteenths_and_triplets_keeps_every_hit():
+    """Regression (found by the LilyPond fuzz run): a beat with both straight
+    off-beats (e/&/a) and triplet off-beats was written as three triplet
+    slots only, silently dropping the straight hits from the PDF. It is now
+    one 12-slot \\tuplet 3/2 beat."""
+    song = parse(
+        'groove "g":\n    HH: 1, 1e, 1&, 1a\n    BD: 1, 1t, 1l\n'
+        'section "a":\n  bars: 1\n  groove: "g"\n'
+    )
+    ly = emit_lilypond(compile_song(song))
+    assert "\\tuplet 3/2 { <hh bd>16. hh32 bd16 hh16 bd32 hh16. } r4 r4 r4 |" in ly
+
+
+def test_triplet_labels_beside_a_tuplet_group_are_kept():
+    """Regression: in a bar with an explicit tuplet group, a beat using plain
+    triplet labels (``1t``, ``1l``) went through the straight writer, which
+    dropped them."""
+    song = parse(
+        'groove "g":\n    HH: 1, 1t, 1l, 2e, 2&\n    SN: 3{quintuplet 1, 3, 5}\n'
+        'section "a":\n  bars: 1\n  groove: "g"\n'
+    )
+    ly = emit_lilypond(compile_song(song))
+    assert "\\tuplet 3/2 { hh8 hh8 hh8 } r16 hh16 hh16 r16 \\tuplet 5/4" in ly

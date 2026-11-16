@@ -744,6 +744,41 @@ def _beatwise_buzz_spans(
     return point_events, starts
 
 
+# Slot runs that one written note can fill inside a 12-slot \tuplet 3/2
+# beat, as (slots, written value relative to one slot): 8 slots = the
+# beat's own note value, 1 slot = an eighth of it.
+_MIXED_BEAT_CHUNKS = ((8, 1, ""), (6, 2, "."), (4, 2, ""), (3, 4, "."), (2, 4, ""), (1, 8, ""))
+
+
+def _mixed_beat_tuplet(
+    beat_start: Fraction, beats_per_bar: int, beat_unit: int,
+    pos_map: dict, positions: set, attach_markup,
+) -> str:
+    """Write one beat on a 12-slot grid as ``\\tuplet 3/2 { ... }``.
+
+    Each onset (hit or marker) lasts until the next; a run that no single
+    written value fills becomes the hit plus rests (drums don't sustain).
+    """
+    slot = Fraction(1, beats_per_bar * 12)
+    onsets = sorted({int((p - beat_start) / slot) for p in positions} | {0})
+    tokens: list[str] = []
+    for idx, start in enumerate(onsets):
+        end = onsets[idx + 1] if idx + 1 < len(onsets) else 12
+        remaining = end - start
+        first = True
+        while remaining:
+            size, factor, dot = next(c for c in _MIXED_BEAT_CHUNKS if c[0] <= remaining)
+            dur = f"{beat_unit * factor}{dot}"
+            pos = beat_start + slot * start
+            hits = pos_map.get(pos, []) if first else []
+            tok = _format_hits(hits, dur) if hits else f"r{dur}"
+            tokens.append(attach_markup(tok, pos) if first else tok)
+            start += size
+            remaining -= size
+            first = False
+    return f"\\tuplet 3/2 {{ {' '.join(tokens)} }}"
+
+
 def _drum_measure_mixed(
     events,
     beats_per_bar: int = 4,
@@ -802,7 +837,23 @@ def _drum_measure_mixed(
         beat_positions = [p for p in pos_map if beat_start <= p < beat_end]
         is_triplet_beat = any(_is_triplet_only(p, beats_per_bar) for p in beat_positions)
 
-        if is_triplet_beat:
+        marker_positions = {
+            p for m in (cue_map, placeholder_map, dynamic_start_map, dynamic_stop_set)
+            if m for p in m if beat_start <= p < beat_end
+        }
+        if is_triplet_beat and any(
+            ((p - beat_start) * beats_per_bar * 3).denominator != 1
+            for p in set(beat_positions) | marker_positions
+        ):
+            # Straight off-beats (e/&/a) and triplet off-beats in one beat:
+            # both fit a 12-slot grid, written as one \tuplet 3/2 of triplet
+            # 32nds (in a quarter-note beat). Writing only the three triplet
+            # slots dropped every straight hit.
+            tokens.append(_mixed_beat_tuplet(
+                beat_start, beats_per_bar, beat_unit, pos_map,
+                set(beat_positions) | marker_positions, _attach_markup,
+            ))
+        elif is_triplet_beat:
             # Three equal triplet-8th slots wrapped in \tuplet 3/2 { ... }
             triplet_grid = beats_per_bar * 3
             tuplet_tokens: list[str] = []
@@ -981,7 +1032,20 @@ def _drum_measure_with_tuplets(
             continue
         annot = beat_tuplets[beat_idx] if beat_idx < len(beat_tuplets) else None
         if annot is None:
-            tokens.append(_emit_straight_beat(beat_start, beat_idx))
+            beat_end = Fraction(beat_idx + 1, beats_per_bar)
+            here = {p for p in pos_map if beat_start <= p < beat_end} | {
+                p for m in (cue_map, placeholder_map, dynamic_start_map, dynamic_stop_set)
+                if m for p in m if beat_start <= p < beat_end
+            }
+            if any(((p - beat_start) * beats_per_bar * 4).denominator != 1 for p in here):
+                # Plain triplet labels (t / l / trip / let) on a beat with no
+                # tuplet group of its own: the straight writer only knows the
+                # 16th grid and dropped them.
+                tokens.append(_mixed_beat_tuplet(
+                    beat_start, beats_per_bar, beat_unit, pos_map, here, _attach_markup,
+                ))
+            else:
+                tokens.append(_emit_straight_beat(beat_start, beat_idx))
             continue
         if isinstance(annot, tuple) and annot and annot[0] == "full":
             _, actual, normal = annot
