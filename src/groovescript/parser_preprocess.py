@@ -17,6 +17,7 @@ import re
 from difflib import SequenceMatcher
 
 from .parser_notation import (
+    INSTRUMENT_PATTERN,
     _is_buzz_token,
     _is_grace_token,
     _is_modifier_token,
@@ -47,14 +48,9 @@ _BARE_SUFFIX_TOKENS: dict[str, str] = {
     "let": "let",
 }
 
-# Instrument tokens recognized by the preprocessor. Must stay in sync with
-# grammar.lark's INSTRUMENT terminal.
-_PP_INSTRUMENT_RE = (
-    r"(?:SRS|SCS|scs|cross-stick|hi-hat-foot|hi-hat|foot-chick|rimshot|floortom|hightom|hitom|lowtom|midtom"
-    r"|openhat|hihatfoot|footchick|hihat|snare|secondcrash|splash|stack|china|crash2|crash|click"
-    r"|ridebell|cowbell|bell|ride|bass|kick|open|hat"
-    r"|BD|bd|SN|sn|OH|oh|RD|rd|RB|rb|CR2|cr2|CR|cr|CB|cb|CH|ch|FT|ft|HH|hh|HT|ht|MT|mt|HF|hf|SP|sp|ST|st)"
-)
+# Instrument tokens recognized by the preprocessor: exactly what the
+# grammar's INSTRUMENT terminal accepts.
+_PP_INSTRUMENT_RE = f"(?:{INSTRUMENT_PATTERN})"
 _PP_BEAT_LABEL_RE = r"[1-9][0-9]?(?:trip|let|and|[e&atl])?"
 
 _PP_PATTERN_LINE_RE = re.compile(

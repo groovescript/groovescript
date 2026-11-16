@@ -656,3 +656,34 @@ def test_notes_string_error_points_at_notes_line(src):
     with pytest.raises(GrooveScriptError) as excinfo:
         parse(src)
     assert excinfo.value.line == 3
+
+
+def test_alias_table_and_grammar_accept_the_same_instruments():
+    """The parser's alias table and the grammar's INSTRUMENT terminal must
+    list the same names: an alias in only one of them is either rejected by
+    the grammar or unknown to normalisation. (They had drifted: ``scs``,
+    ``hi-hat``, ``hi-hat-foot`` and ``foot-chick`` were in the table only.)"""
+    from groovescript.parser_notation import INSTRUMENT_PATTERN, _INSTRUMENT_ALIASES
+
+    canonical = set(_INSTRUMENT_ALIASES.values())
+    for name in list(_INSTRUMENT_ALIASES) + sorted(canonical):
+        assert re.fullmatch(INSTRUMENT_PATTERN, name), f"grammar rejects {name!r}"
+    alternatives = [alt.split("(")[0] for alt in INSTRUMENT_PATTERN.split("|")]
+    for alt in alternatives:
+        assert alt.lower() in _INSTRUMENT_ALIASES, f"{alt!r} is in the grammar but not the alias table"
+
+
+def test_comma_preprocessor_and_hints_know_every_grammar_instrument():
+    """Regression: the comma preprocessor, lint and the "did you mean" hints
+    each kept a hand-copied instrument list (with leftover SRS/rimshot
+    entries, and missing CR2/splash/stack/china in the hints). They now come
+    from the grammar and the alias table."""
+    from groovescript.errors import suggest_instrument, suggest_modifier
+    from groovescript.parser import parse
+
+    song = parse('groove "g":\n    china: 1 3\n    scs: 2 4\n')
+    lines = {line.instrument: line for line in song.grooves[0].bars[0]}
+    assert set(lines) == {"CH", "SCS"}
+    assert suggest_instrument("splsh") == "splash"
+    assert suggest_instrument("secndcrash") == "secondcrash"
+    assert suggest_modifier("chok") == "choke"
