@@ -272,9 +272,12 @@ lilypond -o tests/fixtures/full_song_example tests/fixtures/full_song_example.ly
 ./release --help     # full flag list (--title, --notes, --notes-file, --dry-run)
 
 # Where main can't be pushed to directly (it is protected) or tags can't be
-# pushed, e.g. a Claude Code cloud session, release in two steps instead:
+# pushed, e.g. a Claude Code cloud session, release through a PR instead:
 ./release --pr       # bump on release/vX.Y.Z and open a "Bump version" PR
-./release --publish  # after merging it: GitHub creates the tag and the release
+# Merging that PR runs the Release workflow (.github/workflows/release.yml),
+# which creates the tag and the GitHub release. To do that step by hand
+# (cloud sessions can't create releases), run on an up-to-date main:
+./release --publish
 ```
 
 To work on the web editor locally:

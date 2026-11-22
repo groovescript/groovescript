@@ -1,0 +1,53 @@
+name: Release
+
+# Publishes the GitHub release (and creates its vX.Y.Z tag) for the version in
+# pyproject.toml, by running `./release --publish`:
+#   - automatically, when a "Bump version to X.Y.Z" PR (opened by
+#     `./release --pr`) is merged into main;
+#   - by hand, from the Actions tab ("Run workflow" on main).
+# Skips without failing when the tag already exists (e.g. the release was cut
+# from a maintainer's machine with the one-step `./release`).
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+       startsWith(github.event.pull_request.title, 'Bump version to '))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.13'
+          enable-cache: true
+      - name: Check whether this version is already tagged
+        id: check
+        run: |
+          version="$(grep -m1 -E '^version = "' pyproject.toml | sed -E 's/.*"(.*)".*/\1/')"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          if git ls-remote --tags --exit-code origin "v$version" >/dev/null; then
+            echo "v$version already exists; nothing to publish."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Publish
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./release --publish
