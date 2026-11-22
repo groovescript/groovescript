@@ -1134,6 +1134,27 @@ def test_emit_bar_text_markup():
     assert "Feel it" in ly
 
 
+def test_emit_play_bar_text_markup():
+    """Regression test: text on a play: bar (and on a groove played from a
+    play: list) never reached the LilyPond output."""
+    song = parse("""\
+groove "g":
+  bar 1:
+    text: "groove note"
+    BD: 1
+
+section "s":
+  play:
+    groove "g"
+    bar "b":
+      text: "bar note"
+      SN: 1
+""")
+    ly = emit_lilypond(compile_song(song))
+    assert '"groove note"' in ly
+    assert '"bar note"' in ly
+
+
 def test_emit_bar_text_merged_into_section_mark():
     """When bar_text lands on the first bar of a section, both the section box
     and the bar_text must be merged into a single \\mark command to avoid

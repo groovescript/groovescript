@@ -3398,6 +3398,7 @@ def compile_song(song: Song) -> IRSong:
         expanded = _expand_play_block(
             section.play, _get_groove, bpb, beat_unit, section.name, groove_defs,
             item_offsets=play_item_offsets,
+            groove_bar_texts=groove_bar_texts_map,
         )
         total_bars = len(expanded)
         if total_bars == 0:
@@ -3415,7 +3416,7 @@ def compile_song(song: Song) -> IRSong:
         # (``"Verse groove 1"``, ``"Verse groove 2"``, …) so they can be
         # told apart on the page.
         nameless_first_offsets = [
-            i for i, (_, _, _, ph, _, _, _) in enumerate(expanded)
+            i for i, (_, _, _, ph, _, _, _, _) in enumerate(expanded)
             if ph is not None and ph[0] is None and ph[1]
         ]
         display_name = full_section_name[:1].upper() + full_section_name[1:]
@@ -3450,7 +3451,7 @@ def compile_song(song: Song) -> IRSong:
         _validate_bar_targets(section, total_bars)
 
         new_bars: list[IRBar] = []
-        for section_bar_offset, (template_events, base_subdivision, is_rest, placeholder_info, phrase_position, phrase_length, base_beat_tuplets) in enumerate(expanded):
+        for section_bar_offset, (template_events, base_subdivision, is_rest, placeholder_info, phrase_position, phrase_length, base_beat_tuplets, bar_text) in enumerate(expanded):
             absolute_bar = start_bar_number + section_bar_offset
 
             if placeholder_info is not None:
@@ -3559,6 +3560,9 @@ def compile_song(song: Song) -> IRSong:
                     bar_beat_tuplets = []
                     phrase_position = None
                     phrase_length = None
+                    # The meter change discards the underlying bar, so its
+                    # text annotation no longer applies (as in classic sections).
+                    bar_text = None
                 else:
                     var_subdivision = _infer_variation_subdivision(variation.actions, bpb)
                     bar_subdivision = max(bar_subdivision, var_subdivision)
@@ -3616,6 +3620,7 @@ def compile_song(song: Song) -> IRSong:
                     phrase_length=phrase_length,
                     beat_tuplets=bar_beat_tuplets,
                     noop_removes=bar_noop_removes or [],
+                    bar_text=bar_text,
                 )
             )
         return new_bars, ir_section
@@ -4369,7 +4374,8 @@ def _expand_play_block(
     section_name: str,
     groove_defs: dict[str, "Groove"] | None = None,
     item_offsets: list[int] | None = None,
-) -> list[tuple[list[Event], int, bool, tuple[str | None, bool] | None, int | None, int | None, list[object]]]:
+    groove_bar_texts: dict[str, dict[int, str]] | None = None,
+) -> list[tuple[list[Event], int, bool, tuple[str | None, bool] | None, int | None, int | None, list[object], str | None]]:
     """Expand a play: block into a flat list of per-bar tuples.
 
     When ``item_offsets`` is given, the 0-indexed bar offset at which each
@@ -4383,7 +4389,10 @@ def _expand_play_block(
     :func:`_process_play_section` because numbering depends on how many
     nameless spans the section ends up with). ``beat_tuplets`` is the
     bar's per-beat tuplet annotation list (empty when the bar carries no
-    tuplet content).
+    tuplet content). The last element is the bar's ``text:`` annotation:
+    a groove's ``bar N:`` text (looked up in ``groove_bar_texts``, the
+    resolved name -> {bar: text} map, so it loops with the groove exactly
+    as in a classic section) or a ``bar "name":`` body's own ``text:``.
 
     ``phrase_position`` / ``phrase_length`` carry the source groove's
     natural phrase metadata so the lilypond emitter can group multi-bar
@@ -4403,11 +4412,12 @@ def _expand_play_block(
     here auto-promotes to a named placeholder so users can reference
     grooves they haven't transcribed yet.
     """
-    result: list[tuple[list[Event], int, bool, tuple[str | None, bool] | None, int | None, int | None, list[object]]] = []
-    # name → (events, subdivision, beat_tuplets)
-    named_bars: dict[str, tuple[list[Event], int, list[object]]] = {}
+    result: list[tuple[list[Event], int, bool, tuple[str | None, bool] | None, int | None, int | None, list[object], str | None]] = []
+    # name → (events, subdivision, beat_tuplets, text)
+    named_bars: dict[str, tuple[list[Event], int, list[object], str | None]] = {}
     last_groove_subdivision: int | None = None
     groove_defs = groove_defs or {}
+    groove_bar_texts = groove_bar_texts or {}
 
     def _emit_placeholder_span(label: str | None, repeat: int) -> None:
         # A placeholder span is one contiguous block of ``repeat`` bars; the
@@ -4415,7 +4425,7 @@ def _expand_play_block(
         # same label tuple but with ``is_first=False`` so the renderer knows
         # not to re-emit the rehearsal markup.
         for i in range(repeat):
-            result.append(([], 1, False, (label, i == 0), None, None, []))
+            result.append(([], 1, False, (label, i == 0), None, None, [], None))
 
     for item in play_items:
         if item_offsets is not None:
@@ -4444,6 +4454,7 @@ def _expand_play_block(
                 bn: [e for e in groove.events if e.bar == bn]
                 for bn in range(1, groove.bars + 1)
             }
+            texts = groove_bar_texts.get(item.groove_name, {})
             for _ in range(item.repeat):
                 for bar_num in range(1, groove.bars + 1):
                     bar_sub = groove.bar_subdivisions[bar_num - 1]
@@ -4453,7 +4464,8 @@ def _expand_play_block(
                         else []
                     )
                     result.append(
-                        (groove_events_by_bar[bar_num], bar_sub, False, None, bar_num, groove.bars, list(bar_tuplets))
+                        (groove_events_by_bar[bar_num], bar_sub, False, None, bar_num, groove.bars,
+                         list(bar_tuplets), texts.get(bar_num))
                     )
 
         elif isinstance(item, PlayBar):
@@ -4469,21 +4481,22 @@ def _expand_play_block(
                     beat_unit,
                     f"section {section_name!r} play bar {item.name!r}",
                 )
-                named_bars[item.name] = (events, subdiv, bar_tuplets)
+                text = item.text
+                named_bars[item.name] = (events, subdiv, bar_tuplets, text)
             else:
                 # Reference — must already be defined
                 if item.name not in named_bars:
                     raise ValueError(
                         f"play: bar {item.name!r} referenced before it was defined"
                     )
-                events, subdiv, bar_tuplets = named_bars[item.name]
+                events, subdiv, bar_tuplets, text = named_bars[item.name]
 
             for _ in range(item.repeat):
-                result.append((events, subdiv, False, None, None, None, list(bar_tuplets)))
+                result.append((events, subdiv, False, None, None, None, list(bar_tuplets), text))
 
         elif isinstance(item, PlayRest):
             subdiv = last_groove_subdivision if last_groove_subdivision is not None else _whole_bar_rest_subdivision(bpb)
             for _ in range(item.repeat):
-                result.append(([], subdiv, True, None, None, None, []))
+                result.append(([], subdiv, True, None, None, None, [], None))
 
     return result

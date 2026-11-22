@@ -1311,7 +1311,7 @@ Items allowed inside `play:`:
 | `groove "name" [xN]:` *(with indented body)* | Inline **named** groove definition played N times (default 1). Later `groove "name" [xN]` items in the same section reference this definition. |
 | `groove placeholder [xN]`                  | Nameless placeholder span N bars long. Renders as empty bars with a `"<Section> groove"` rehearsal label. |
 | `groove placeholder "label" [xN]`          | Named placeholder span N bars long, labelled `"label"`. |
-| `bar "name" [xN]:` *(with indented body)*  | Inline definition of a one-off bar, registered under `name` within this section, played N times. |
+| `bar "name" [xN]:` *(with indented body)*  | Inline definition of a one-off bar, registered under `name` within this section, played N times. The body takes pattern lines and an optional `text: "…"` annotation, which prints on every bar it plays (including later references). `like: bar N` is not allowed here. |
 | `bar "name" [xN]`  *(no body)*             | Reference to a previously-defined bar in this section, played N times. |
 | `rest [xN]`                                | N bars of whole-bar silence (default 1). A lone rest renders as a full-bar rest (`R1` in 4/4); two or more consecutive rest bars collapse into a single multi-bar rest measure with the count above the staff. See [Multi-bar rests](#multi-bar-rests). |
 
@@ -1683,7 +1683,10 @@ section "mid-section break":
   "vocals in"; for sung words pinned to beats, use
   [timed lyrics](#timed-lyrics).
 - `text: "…"` inside a groove `bar N:` block — attaches a text annotation
-  to that bar of the groove.
+  to that bar of the groove. It loops with the groove, in `bars:` +
+  `groove:` sections and in `play:` lists alike.
+- `text: "…"` inside a `play:` item's `bar "name":` body — annotates
+  that bar each time it plays.
 - `text: "…"` at the top of a groove `extend:` body — annotates bar 1 of
   the resolved groove. Useful for single-bar derived grooves where there
   is no `bar N:` block to nest the text in.
