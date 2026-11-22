@@ -944,21 +944,32 @@ class _GrooveScriptTransformer(Transformer):
         name = _ast.literal_eval(str(items[0]))
         repeat = 1
         pattern = None
+        text = None
         for item in items[1:]:
             if isinstance(item, int):
                 repeat = item
             elif isinstance(item, tuple) and item[0] == "play_bar_body":
-                pattern = item[1]
-        return PlayBar(name=name, pattern=pattern, repeat=repeat)
+                pattern, text = item[1], item[2]
+        return PlayBar(name=name, pattern=pattern, repeat=repeat, text=text)
 
     def play_bar_body(self, items):
         pattern: list[PatternLine] = []
+        text = None
         for item in items:
             if isinstance(item, PatternLine):
                 pattern.append(item)
             elif isinstance(item, list):
                 pattern.extend(item)
-        return ("play_bar_body", pattern)
+            elif isinstance(item, tuple) and item and item[0] == "bar_text":
+                if text is not None:
+                    raise ValueError("play: bar `text:` declared more than once")
+                text = item[1]
+            elif isinstance(item, tuple) and item and item[0] == "bar_like":
+                raise ValueError(
+                    "play: bar bodies cannot use `like: bar N` (it copies a bar of "
+                    "a multi-bar groove); write the bar out in full"
+                )
+        return ("play_bar_body", pattern, text)
 
     def play_rest(self, items):
         repeat = items[0] if items else 1

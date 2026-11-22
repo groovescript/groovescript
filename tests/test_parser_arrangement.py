@@ -250,6 +250,51 @@ section "s":
     assert instruments == {"BD", "CR"}
 
 
+def test_parse_play_bar_text():
+    """Regression test: a play: bar body's `text:` line used to be parsed and
+    then silently thrown away. It must land on PlayBar.text."""
+    src = """\
+section "s":
+  play:
+    bar "tacet" x2:
+      text: "tacet"
+    bar "tacet"
+"""
+    song = parse(src)
+    definition, reference = song.sections[0].play
+    assert definition.text == "tacet"
+    assert definition.pattern == []
+    assert reference.text is None  # a reference reuses the definition's text
+
+
+def test_parse_play_bar_duplicate_text_rejected():
+    """Two `text:` lines in one play: bar body are an error, as in groove bars."""
+    src = """\
+section "s":
+  play:
+    bar "b":
+      text: "one"
+      text: "two"
+      SN: 1
+"""
+    with pytest.raises(Exception, match="more than once"):
+        parse(src)
+
+
+def test_parse_play_bar_like_rejected():
+    """Regression test: `like: bar N` in a play: bar body used to be silently
+    dropped. It has nothing to copy there, so it must be an error."""
+    src = """\
+section "s":
+  play:
+    bar "b":
+      like: bar 1
+      SN: 1
+"""
+    with pytest.raises(Exception, match="like: bar N"):
+        parse(src)
+
+
 def test_parse_play_section_retains_fills():
     """fill placements are still parsed under a play: section."""
     song = parse(PLAY_BLOCK_SRC)

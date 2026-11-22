@@ -521,6 +521,7 @@ class PlayBar:
     name: str  # per-section identifier
     pattern: list[PatternLine] | None  # None => reference to a previously-defined bar
     repeat: int = 1
+    text: str | None = None  # `text: "…"` annotation from the bar body (definitions only)
 
 
 @dataclass

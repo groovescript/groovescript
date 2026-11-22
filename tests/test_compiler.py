@@ -1454,6 +1454,59 @@ def test_compile_song_bar_text_from_groove():
     assert ir.bars[0].bar_text == "Verse feel"
 
 
+def test_play_bar_text_reaches_ir():
+    """Regression test: `text:` in a play: bar body was dropped, so the bar
+    printed with no annotation. It must reach IRBar.bar_text on every
+    repetition and on later references to the same bar."""
+    ir = compile_song(parse("""\
+section "s":
+  play:
+    bar "tacet" x2:
+      text: "tacet"
+    groove "rock"
+    bar "tacet"
+"""))
+    assert [bar.bar_text for bar in ir.bars] == ["tacet", "tacet", None, "tacet"]
+
+
+def test_play_groove_bar_text_reaches_ir():
+    """Regression test: a groove's `bar N:` text printed in classic sections
+    but was dropped when the same groove was played from a play: list. It
+    must loop with the groove there too, including through `extend:`."""
+    ir = compile_song(parse("""\
+groove "two bar":
+  bar 1:
+    text: "feel"
+    BD: 1
+  bar 2:
+    SN: 1
+
+groove "derived":
+  extend: "two bar"
+
+section "s":
+  play:
+    groove "two bar" x2
+    groove "derived"
+"""))
+    assert [bar.bar_text for bar in ir.bars] == ["feel", None, "feel", None, "feel", None]
+
+
+def test_play_bar_text_dropped_by_meter_variation():
+    """A `time_signature:` variation replaces the bar outright, so the play:
+    bar's text no longer applies, matching classic sections."""
+    ir = compile_song(parse("""\
+section "s":
+  play:
+    bar "b" x2:
+      text: "note"
+      SN: 1
+  variation at bar 2:
+    time_signature: 2/4
+"""))
+    assert [bar.bar_text for bar in ir.bars] == ["note", None]
+
+
 # ---------------------------------------------------------------------------
 # Iteration 10 — Dual notation style (compiler-level)
 # ---------------------------------------------------------------------------
