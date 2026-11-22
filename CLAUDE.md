@@ -95,6 +95,8 @@ uv run groovescript fmt input.gs                      # Rewrite in canonical lay
 lilypond -o output output.ly                           # Render to PDF
 ./release                                              # Cut a patch release (bumps pyproject.toml, pushes, tags, GitHub release)
 ./release --minor                                      # Cut a minor release (--major also supported; see `./release --help`)
+./release --pr                                         # Cloud sessions (can't push main or tags): open a "Bump version" PR...
+./release --publish                                    # ...then, once it is merged, create the tag + GitHub release server-side
 ```
 
 ## Web editor

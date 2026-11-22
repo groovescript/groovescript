@@ -1,8 +1,17 @@
 #!/usr/bin/env bash
 # release — cut a patch (default), minor, or major version of GrooveScript.
 #
-# Bumps pyproject.toml, commits "Bump version to X.Y.Z" on main, pushes,
-# creates and pushes a lightweight tag vX.Y.Z, then opens a GitHub release.
+# Default (one step, needs push access to main and to tags): bumps
+# pyproject.toml, commits "Bump version to X.Y.Z" on main, pushes, creates
+# and pushes a lightweight tag vX.Y.Z, then opens a GitHub release.
+#
+# Two-step PR flow, for environments that can't push to the protected main
+# branch or push tags (e.g. a Claude Code cloud session):
+#   release --pr [--minor|--major]  # bump on a branch and open a "Bump version" PR
+#   (merge the PR)
+#   release --publish [--title ...] # on the updated main: create the GitHub
+#                                   # release; GitHub creates tag vX.Y.Z on the
+#                                   # server, so nothing is pushed
 #
 # Preflight (all enforced — no --force):
 #   - on main branch
@@ -15,6 +24,10 @@
 #   release                                  # patch bump (X.Y.Z -> X.Y.(Z+1))
 #   release --minor                          # minor bump (X.Y.Z -> X.(Y+1).0)
 #   release --major                          # major bump (X.Y.Z -> (X+1).0.0)
+#   release --pr                             # bump via a PR instead of pushing main
+#   release --branch <name>                  # PR branch name (default: release/vX.Y.Z)
+#   release --publish                        # release the version already in pyproject.toml
+#   release --trailer "<Key: value>"         # add a trailer to the bump commit (repeatable)
 #   release --title "vX.Y.Z — short summary" # release title (default: vX.Y.Z)
 #   release --notes "<body>"                 # release body literal
 #   release --notes-file <path>              # release body from file
@@ -33,6 +46,16 @@ TITLE=""
 NOTES=""
 NOTES_FILE=""
 DRY_RUN=false
+MODE="direct"
+PR_BRANCH=""
+TRAILERS=()
+
+set_mode() {
+    if [[ "$MODE" != direct ]]; then
+        die "--pr and --publish are mutually exclusive"
+    fi
+    MODE="$1"
+}
 
 die() { echo "release: $*" >&2; exit 1; }
 
@@ -58,6 +81,10 @@ while [[ $# -gt 0 ]]; do
         --title)      [[ $# -ge 2 ]] || die "--title needs a value"; TITLE="$2"; shift 2 ;;
         --notes)      [[ $# -ge 2 ]] || die "--notes needs a value"; NOTES="$2"; shift 2 ;;
         --notes-file) [[ $# -ge 2 ]] || die "--notes-file needs a path"; NOTES_FILE="$2"; shift 2 ;;
+        --pr)         set_mode pr; shift ;;
+        --publish)    set_mode publish; shift ;;
+        --branch)     [[ $# -ge 2 ]] || die "--branch needs a name"; PR_BRANCH="$2"; shift 2 ;;
+        --trailer)    [[ $# -ge 2 ]] || die "--trailer needs a value"; TRAILERS+=(--trailer "$2"); shift 2 ;;
         --dry-run)    DRY_RUN=true; shift ;;
         -h|--help)    usage 0 ;;
         *)            echo "release: unknown flag: $1" >&2; usage 1 ;;
@@ -69,6 +96,15 @@ if [[ -n "$NOTES" && -n "$NOTES_FILE" ]]; then
 fi
 if [[ -n "$NOTES_FILE" && ! -f "$NOTES_FILE" ]]; then
     die "--notes-file not found: $NOTES_FILE"
+fi
+if [[ "$MODE" == publish && "$BUMP_SET" == true ]]; then
+    die "--publish releases the version already in pyproject.toml; it takes no bump flag"
+fi
+if [[ "$MODE" == publish && ${#TRAILERS[@]} -gt 0 ]]; then
+    die "--trailer applies to the bump commit; --publish makes no commit"
+fi
+if [[ -n "$PR_BRANCH" && "$MODE" != pr ]]; then
+    die "--branch only applies with --pr"
 fi
 
 run() {
@@ -93,7 +129,7 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
 fi
 
 echo "release: fetching origin"
-run git fetch origin --quiet
+run git fetch origin --tags --quiet
 
 if [[ "$DRY_RUN" != true ]]; then
     LOCAL_SHA="$(git rev-parse HEAD)"
@@ -110,11 +146,13 @@ CURRENT="$(grep -E '^version = "[0-9]+\.[0-9]+\.[0-9]+"' pyproject.toml | head -
 [[ -n "$CURRENT" ]] || die "could not read version from pyproject.toml"
 
 IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
-case "$BUMP" in
-    patch) PATCH=$((PATCH + 1)) ;;
-    minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
-    major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
-esac
+if [[ "$MODE" != publish ]]; then
+    case "$BUMP" in
+        patch) PATCH=$((PATCH + 1)) ;;
+        minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+        major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+    esac
+fi
 NEW_VERSION="$MAJOR.$MINOR.$PATCH"
 TAG="v$NEW_VERSION"
 
@@ -127,11 +165,48 @@ fi
 
 GH_TITLE="${TITLE:-$TAG}"
 
+create_release() {  # create_release <target-sha-or-empty> <previous-tag-or-empty>
+    local target=() start=()
+    [[ -n "$1" ]] && target=(--target "$1")
+    [[ -n "$2" ]] && start=(--notes-start-tag "$2")
+    if [[ -n "$NOTES_FILE" ]]; then
+        run gh release create "$TAG" ${target[@]+"${target[@]}"} --title "$GH_TITLE" --notes-file "$NOTES_FILE"
+    elif [[ -n "$NOTES" ]]; then
+        run gh release create "$TAG" ${target[@]+"${target[@]}"} --title "$GH_TITLE" --notes "$NOTES"
+    else
+        run gh release create "$TAG" ${target[@]+"${target[@]}"} --title "$GH_TITLE" --generate-notes ${start[@]+"${start[@]}"}
+    fi
+}
+
+if [[ "$MODE" == publish ]]; then
+    PREV_TAG="$(git describe --tags --abbrev=0 HEAD 2>/dev/null || true)"
+    [[ "$PREV_TAG" != "$TAG" ]] || die "$TAG already tagged"
+    echo "release: publishing $NEW_VERSION from main ($(git rev-parse --short HEAD)), tag $TAG, title \"$GH_TITLE\""
+    echo "release: running uv run pytest"
+    run uv run pytest --quiet
+    # Tag on the server: gh creates $TAG at --target when it doesn't exist yet.
+    create_release "$(git rev-parse HEAD)" "$PREV_TAG"
+    run git fetch origin --tags --quiet
+    echo "release: done — $TAG"
+    exit 0
+fi
+
+if [[ "$MODE" == pr ]]; then
+    PR_BRANCH="${PR_BRANCH:-release/$TAG}"
+    if git ls-remote --heads --exit-code origin "$PR_BRANCH" >/dev/null 2>&1; then
+        die "branch $PR_BRANCH already exists on origin"
+    fi
+fi
+
 echo "release: $CURRENT -> $NEW_VERSION ($BUMP), tag $TAG, title \"$GH_TITLE\""
 
 # --- tests ----------------------------------------------------------------
 echo "release: running uv run pytest"
 run uv run pytest --quiet
+
+if [[ "$MODE" == pr ]]; then
+    run git switch -c "$PR_BRANCH"
+fi
 
 # --- bump pyproject.toml --------------------------------------------------
 echo "release: bumping pyproject.toml"
@@ -155,26 +230,28 @@ if [[ "$DRY_RUN" != true ]]; then
         || die "uv.lock did not pick up version $NEW_VERSION"
 fi
 
-# --- commit, push, tag, push tag -----------------------------------------
+# --- commit (and, for --pr, open the bump PR) ----------------------------
 run git add pyproject.toml uv.lock
-run git commit -m "Bump version to $NEW_VERSION"
+run git commit -m "Bump version to $NEW_VERSION" ${TRAILERS[@]+"${TRAILERS[@]}"}
+
+if [[ "$MODE" == pr ]]; then
+    run git push -u origin "$PR_BRANCH"
+    run gh pr create --base main --head "$PR_BRANCH" \
+        --title "Bump version to $NEW_VERSION" \
+        --body "Bumps pyproject.toml and uv.lock to $NEW_VERSION for release $TAG.
+
+After merging, run \`./release --publish\` on an up-to-date main to create the $TAG tag and GitHub release."
+    run git switch main
+    echo "release: opened the bump PR for $TAG — merge it, then run ./release --publish"
+    exit 0
+fi
+
+# --- push, tag, push tag ---------------------------------------------------
 run git push origin main
 run git tag "$TAG"
 run git push origin "$TAG"
 
 # --- GitHub release ------------------------------------------------------
-if [[ -n "$NOTES_FILE" ]]; then
-    run gh release create "$TAG" --title "$GH_TITLE" --notes-file "$NOTES_FILE"
-elif [[ -n "$NOTES" ]]; then
-    run gh release create "$TAG" --title "$GH_TITLE" --notes "$NOTES"
-else
-    PREV_TAG="$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)"
-    if [[ -n "$PREV_TAG" ]]; then
-        run gh release create "$TAG" --title "$GH_TITLE" \
-            --generate-notes --notes-start-tag "$PREV_TAG"
-    else
-        run gh release create "$TAG" --title "$GH_TITLE" --generate-notes
-    fi
-fi
+create_release "" "$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)"
 
 echo "release: done — $TAG"
