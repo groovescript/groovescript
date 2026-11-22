@@ -270,6 +270,11 @@ lilypond -o tests/fixtures/full_song_example tests/fixtures/full_song_example.ly
 # Bumps pyproject.toml, commits, pushes, tags vX.Y.Z, creates a GitHub release.
 ./release
 ./release --help     # full flag list (--title, --notes, --notes-file, --dry-run)
+
+# Where main can't be pushed to directly (it is protected) or tags can't be
+# pushed, e.g. a Claude Code cloud session, release in two steps instead:
+./release --pr       # bump on release/vX.Y.Z and open a "Bump version" PR
+./release --publish  # after merging it: GitHub creates the tag and the release
 ```
 
 To work on the web editor locally:
