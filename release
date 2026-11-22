@@ -5,13 +5,16 @@
 # pyproject.toml, commits "Bump version to X.Y.Z" on main, pushes, creates
 # and pushes a lightweight tag vX.Y.Z, then opens a GitHub release.
 #
-# Two-step PR flow, for environments that can't push to the protected main
-# branch or push tags (e.g. a Claude Code cloud session):
+# PR flow, for environments that can't push to the protected main branch or
+# push tags (e.g. a Claude Code cloud session):
 #   release --pr [--minor|--major]  # bump on a branch and open a "Bump version" PR
-#   (merge the PR)
-#   release --publish [--title ...] # on the updated main: create the GitHub
-#                                   # release; GitHub creates tag vX.Y.Z on the
-#                                   # server, so nothing is pushed
+#   (merge the PR)                  # the Release workflow (.github/workflows/
+#                                   # release.yml) then runs `release --publish`
+#   release --publish [--title ...] # or by hand, on the updated main: create the
+#                                   # GitHub release; GitHub creates tag vX.Y.Z on
+#                                   # the server, so nothing is pushed. Needs
+#                                   # permission to create releases, which Claude
+#                                   # Code cloud sessions don't have
 #
 # Preflight (all enforced — no --force):
 #   - on main branch
@@ -257,10 +260,10 @@ if [[ "$MODE" == pr ]]; then
         -f title="Bump version to $NEW_VERSION" \
         -f body="Bumps pyproject.toml and uv.lock to $NEW_VERSION for release $TAG.
 
-After merging, run \`./release --publish\` on an up-to-date main to create the $TAG tag and GitHub release." \
+Merging it runs the Release workflow, which creates the $TAG tag and GitHub release (\`./release --publish\` on an up-to-date main does the same by hand)." \
         --jq .html_url
     run git switch main
-    echo "release: opened the bump PR for $TAG — merge it, then run ./release --publish"
+    echo "release: opened the bump PR for $TAG — merging it publishes the release (Release workflow)"
     exit 0
 fi
 
